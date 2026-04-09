@@ -1,0 +1,1219 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Trophy, Play, RotateCcw, Volume2, VolumeX, Sparkles, Users, Crown, Skull, ArrowDown, Zap } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
+
+// ============================================================================
+// CONFIGURACIÓN DE FIREBASE
+// ============================================================================
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'stack-game-default';
+
+// ============================================================================
+// MOTOR DE AUDIO (Web Audio API)
+// ============================================================================
+class AudioEngine {
+constructor() {
+this.ctx = null;
+this.muted = false;
+}
+
+init() {
+if (!this.ctx) {
+this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+}
+if (this.ctx.state === 'suspended') {
+this.ctx.resume();
+}
+}
+
+playTone(freq, type = 'sine', duration = 0.1, vol = 0.1) {
+if (this.muted || !this.ctx) return;
+try {
+const osc = this.ctx.createOscillator();
+const gain = this.ctx.createGain();
+osc.type = type;
+osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+osc.connect(gain);
+gain.connect(this.ctx.destination);
+osc.start();
+osc.stop(this.ctx.currentTime + duration);
+} catch (e) {
+console.warn("Audio error", e);
+}
+}
+
+playPerfect(combo) {
+this.init();
+const baseFreq = 440;
+const note = baseFreq * Math.pow(1.059463094359, combo * 2);
+this.playTone(note, 'sine', 0.3, 0.15);
+this.playTone(note * 1.5, 'triangle', 0.2, 0.1);
+}
+
+playChop() {
+this.init();
+this.playTone(150, 'square', 0.1, 0.05);
+}
+
+playGameOver() {
+this.init();
+if (this.muted || !this.ctx) return;
+const osc = this.ctx.createOscillator();
+const gain = this.ctx.createGain();
+osc.type = 'sawtooth';
+osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 1);
+gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 1);
+osc.connect(gain);
+gain.connect(this.ctx.destination);
+osc.start();
+osc.stop(this.ctx.currentTime + 1);
+}
+
+playSabotage() {
+this.init();
+if (this.muted || !this.ctx) return;
+const osc = this.ctx.createOscillator();
+const gain = this.ctx.createGain();
+osc.type = 'square';
+osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.6);
+gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.6);
+osc.connect(gain);
+gain.connect(this.ctx.destination);
+osc.start();
+osc.stop(this.ctx.currentTime + 0.6);
+}
+}
+
+const audio = new AudioEngine();
+
+// ============================================================================
+// CONSTANTES DEL JUEGO Y FÍSICAS
+// ============================================================================
+const BASE_SIZE = 120;
+const PERFECT_TOLERANCE = 5;
+const ISO_ANGLE = Math.PI / 6;
+const COS_ISO = Math.cos(ISO_ANGLE);
+const SIN_ISO = Math.sin(ISO_ANGLE);
+const DROP_HEIGHT = 150;
+const PENDULUM_L = 250;
+const MAX_LEVEL_DIFF = 10;
+
+const SABOTAGES = ['WIND', 'SPEED', 'SHRINK'];
+
+const hslToObj = (h, s, l) => ({ h, s, l });
+const getBlockHeight = (mode) => mode.includes('GRAVITY') ? 35 : 15;
+
+// ============================================================================
+// FÍSICAS DE ESTABILIDAD
+// ============================================================================
+const checkStability = (blocks) => {
+let comX = 0;
+let comZ = 0;
+let totalArea = 0;
+let maxRx = 0;
+let maxRz = 0;
+let worstIndex = -1;
+let fallingIndex = -1;
+
+for (let i = blocks.length - 1; i > 0; i--) {
+const block = blocks[i];
+const area = block.w * block.d;
+
+comX = (comX * totalArea + block.x * area) / (totalArea + area);
+comZ = (comZ * totalArea + block.z * area) / (totalArea + area);
+totalArea += area;
+
+const support = blocks[i - 1];
+const dx = comX - support.x;
+const dz = comZ - support.z;
+
+const rx = dx / (support.w / 2);
+const rz = dz / (support.d / 2);
+
+if (Math.abs(rx) > 1 || Math.abs(rz) > 1) {
+if (fallingIndex === -1) fallingIndex = i;
+}
+
+const maxRatioAtJoint = Math.max(Math.abs(rx), Math.abs(rz));
+const currentMaxRatio = Math.max(Math.abs(maxRx), Math.abs(maxRz));
+if (maxRatioAtJoint > currentMaxRatio) {
+maxRx = rx;
+maxRz = rz;
+worstIndex = i;
+}
+}
+return { falling: fallingIndex !== -1, index: fallingIndex !== -1 ? fallingIndex : worstIndex, rx: maxRx, rz: maxRz };
+};
+
+// ============================================================================
+// COMPONENTE PRINCIPAL
+// ============================================================================
+export default function App() {
+const [appState, setAppState] = useState('MENU');
+const [gameMode, setGameMode] = useState('SINGLE');
+const [scores, setScores] = useState([0, 0]);
+const [combos, setCombos] = useState([0, 0]);
+const [playerStates, setPlayerStates] = useState(['playing', 'playing']);
+const [activeSabotages, setActiveSabotages] = useState([null, null]);
+
+const [isMuted, setIsMuted] = useState(false);
+const [highScore, setHighScore] = useState(0);
+const [user, setUser] = useState(null);
+const [leaderboard, setLeaderboard] = useState([]);
+const [isNewRecord, setIsNewRecord] = useState(false);
+
+const canvasRef = useRef(null);
+const gameRef = useRef({
+mode: 'SINGLE',
+players: [],
+bgParticles: [], // Partículas de fondo (polvo digital)
+time: 0,
+lastFrame: 0,
+animFrame: null
+});
+
+// FIREBASE INIT
+useEffect(() => {
+if (!auth) return;
+const initAuth = async () => {
+try {
+if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+await signInWithCustomToken(auth, __initial_auth_token);
+} else {
+await signInAnonymously(auth);
+}
+} catch (error) { console.error("Auth error:", error); }
+};
+initAuth();
+const unsubscribe = onAuthStateChanged(auth, setUser);
+return () => unsubscribe();
+}, []);
+
+useEffect(() => {
+if (!user || !db) return;
+const fetchPersonalScore = async () => {
+try {
+const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'highscore');
+const docSnap = await getDoc(docRef);
+if (docSnap.exists()) setHighScore(docSnap.data().score || 0);
+} catch (e) { console.error("Error score", e); }
+};
+fetchPersonalScore();
+
+const leaderboardRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+const unsubscribe = onSnapshot(leaderboardRef, (snapshot) => {
+const s = [];
+snapshot.forEach((d) => s.push({ id: d.id, ...d.data() }));
+s.sort((a, b) => b.score - a.score);
+setLeaderboard(s.slice(0, 5));
+}, (error) => console.error("Error leaderboard", error));
+
+return () => unsubscribe();
+}, [user]);
+
+const saveScoreSingle = useCallback(async (finalScore) => {
+if (!user || !db || finalScore <= 0 || gameMode.includes('LOCAL_MULTI')) return; try { if (finalScore> highScore) {
+    setHighScore(finalScore);
+    setIsNewRecord(true);
+    const personalRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'highscore');
+    await setDoc(personalRef, { score: finalScore, date: new Date().toISOString() });
+    const publicRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid);
+    await setDoc(publicRef, { score: finalScore, uid: user.uid, date: new Date().toISOString() });
+    }
+    } catch (e) { console.error("Save error", e); }
+    }, [user, db, gameMode, highScore]);
+
+    const createPlayerState = (hueOffset, mode) => {
+    const baseHue = (Math.floor(Math.random() * 360) + hueOffset) % 360;
+    const h = getBlockHeight(mode);
+    return {
+    blocks: [{ x: 0, y: 0, targetY: 0, z: 0, w: BASE_SIZE, h: h, d: BASE_SIZE, color: hslToObj(baseHue, 70, 50) }],
+    fallingBlocks: [],
+    particles: [],
+    level: 0,
+    movementTime: 0,
+    sabotage: { type: null, timer: 0 },
+    baseHue: baseHue,
+    speed: 120,
+    shake: 0,
+    state: 'playing',
+    showPerfect: false
+    };
+    };
+
+    const spawnBlock = useCallback((pIdx) => {
+    const p = gameRef.current.players[pIdx];
+    const mode = gameRef.current.mode;
+    const prev = p.blocks[p.blocks.length - 1];
+    const isX = p.level % 2 === 0;
+
+    p.speed = Math.min(350, 120 + p.level * 8);
+    p.level++;
+
+    const newColor = hslToObj((p.baseHue + p.level * 8) % 360, 70, 55);
+    const startRange = 200;
+
+    const h = getBlockHeight(mode);
+    const targetY = prev.targetY !== undefined ? prev.targetY + prev.h : prev.y + prev.h;
+    const startY = mode.includes('GRAVITY') ? targetY + DROP_HEIGHT : targetY;
+
+    p.blocks.push({
+    x: isX ? -startRange : prev.x,
+    y: startY,
+    targetY: targetY,
+    z: isX ? prev.z : -startRange,
+    w: prev.w,
+    h: h,
+    d: prev.d,
+    color: newColor,
+    isMoving: true,
+    isDropping: false,
+    vy: 0,
+    vx: 0,
+    vz: 0
+    });
+    }, []);
+
+    const initGame = useCallback((mode) => {
+    gameRef.current.mode = mode;
+    gameRef.current.players = mode.includes('LOCAL_MULTI')
+    ? [createPlayerState(0, mode), createPlayerState(180, mode)]
+    : [createPlayerState(0, mode)];
+
+    gameRef.current.time = 0;
+    gameRef.current.lastFrame = performance.now();
+    gameRef.current.currentZoom = undefined;
+    gameRef.current.globalCameraY = undefined;
+
+    // Inicializar partículas de fondo si no existen
+    if (gameRef.current.bgParticles.length === 0) {
+    gameRef.current.bgParticles = Array.from({ length: 60 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    size: Math.random() * 2 + 0.5,
+    speedY: Math.random() * 0.05 + 0.02,
+    hue: Math.random() > 0.5 ? 200 : 280,
+    opacity: Math.random() * 0.5 + 0.2
+    }));
+    }
+
+    setScores(mode.includes('LOCAL_MULTI') ? [0, 0] : [0]);
+    setCombos(mode.includes('LOCAL_MULTI') ? [0, 0] : [0]);
+    setPlayerStates(mode.includes('LOCAL_MULTI') ? ['playing', 'playing'] : ['playing']);
+    setActiveSabotages([null, null]);
+    setIsNewRecord(false);
+
+    gameRef.current.players.forEach((_, idx) => spawnBlock(idx));
+    }, [spawnBlock]);
+
+    const startGame = (mode) => {
+    audio.init();
+    setGameMode(mode);
+    setAppState('PLAYING');
+    initGame(mode);
+    };
+
+    const createParticles = (pIdx, x, y, z, w, d, color) => {
+    const p = gameRef.current.players[pIdx];
+    for (let i = 0; i < 15; i++) { p.particles.push({ x: x + (Math.random() - 0.5) * w, y: y, z: z + (Math.random() -
+        0.5) * d, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 5 + 2, vz: (Math.random() - 0.5) * 5, life: 1.0,
+        color: color, type: 'normal' }); } }; const processPlacement=useCallback((pIdx)=> {
+        const p = gameRef.current.players[pIdx];
+        if (!p || p.state !== 'playing') return;
+
+        const curr = p.blocks[p.blocks.length - 1];
+        const prev = p.blocks[p.blocks.length - 2];
+
+        curr.isMoving = false;
+        curr.isDropping = false;
+
+        const isX = (p.level - 1) % 2 === 0;
+        const delta = isX ? curr.x - prev.x : curr.z - prev.z;
+
+        let isPerfect = false;
+
+        if (Math.abs(delta) <= PERFECT_TOLERANCE) { isPerfect=true; if (isX) curr.x=prev.x; else curr.z=prev.z;
+            setCombos(prevCombos=> {
+            const newCombos = [...prevCombos];
+            newCombos[pIdx] += 1;
+            audio.playPerfect(newCombos[pIdx]);
+            if (newCombos[pIdx] >= 2) {
+            curr.w = Math.min(BASE_SIZE * 1.5, curr.w + 6);
+            curr.d = Math.min(BASE_SIZE * 1.5, curr.d + 6);
+            }
+            return newCombos;
+            });
+
+            createParticles(pIdx, curr.x, curr.y, curr.z, curr.w, curr.d, curr.color);
+            p.showPerfect = true;
+            setTimeout(() => { if(gameRef.current.players[pIdx]) gameRef.current.players[pIdx].showPerfect = false; },
+            500);
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            // SABOTAJE
+            if (gameMode.includes('LOCAL_MULTI')) {
+            const oppIdx = pIdx === 0 ? 1 : 0;
+            const oppP = gameRef.current.players[oppIdx];
+
+            if (oppP && oppP.state === 'playing') {
+            const chosenSabotage = SABOTAGES[Math.floor(Math.random() * SABOTAGES.length)];
+            audio.playSabotage();
+
+            const duration = chosenSabotage === 'SHRINK' ? 1 : 7;
+            oppP.sabotage = { type: chosenSabotage, timer: duration };
+
+            if (chosenSabotage === 'SHRINK') {
+            const oppCurr = oppP.blocks[oppP.blocks.length - 1];
+            if (oppCurr && oppCurr.isMoving) {
+            // Reducido a 70% en vez de 50%, y con un mínimo de 50% en vez de 35% para ser justo
+            oppCurr.w = Math.max(BASE_SIZE * 0.5, oppCurr.w * 0.7);
+            oppCurr.d = Math.max(BASE_SIZE * 0.5, oppCurr.d * 0.7);
+            }
+            }
+
+            setActiveSabotages(prev => {
+            const next = [...prev];
+            next[oppIdx] = chosenSabotage;
+            return next;
+            });
+
+            setTimeout(() => {
+            setActiveSabotages(prev => {
+            const next = [...prev];
+            if (next[oppIdx] === chosenSabotage) next[oppIdx] = null;
+            return next;
+            });
+            }, 7000);
+            }
+            }
+
+            } else {
+            setCombos(prevC => { const n = [...prevC]; n[pIdx] = 0; return n; });
+            audio.playChop();
+            p.shake = Math.abs(delta) * 0.1;
+            }
+
+            const stability = checkStability(p.blocks);
+            const fallIndex = stability.falling ? stability.index : -1;
+            let pIdxDied = false;
+
+            if (fallIndex !== -1) {
+            const support = p.blocks[fallIndex - 1] || p.blocks[0];
+            const falling = p.blocks.splice(fallIndex);
+
+            falling.forEach(b => {
+            b.vy = Math.random() * 200 + 50;
+            b.vx = (b.x - support.x) * 2 + (Math.random() - 0.5) * 100;
+            b.vz = (b.z - support.z) * 2 + (Math.random() - 0.5) * 100;
+            b.alpha = 1;
+            p.fallingBlocks.push(b);
+            });
+
+            p.state = 'dead';
+            pIdxDied = true;
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            audio.playGameOver();
+
+            if (!gameMode.includes('LOCAL_MULTI')) {
+            saveScoreSingle(p.level - falling.length);
+            }
+            } else {
+            setScores(prevS => { const n = [...prevS]; n[pIdx] += (isPerfect ? 2 : 1); return n; });
+            spawnBlock(pIdx);
+            }
+
+            setPlayerStates(prev => {
+            let next = [...prev];
+            if (pIdxDied) next[pIdx] = 'dead';
+
+            if (gameMode.includes('LOCAL_MULTI')) {
+            const maxLevel = Math.max(...gameRef.current.players.map((pl, i) => next[i] === 'playing' ? pl.level : -1));
+
+            gameRef.current.players.forEach((pl, i) => {
+            if (next[i] === 'playing' && maxLevel - pl.level >= MAX_LEVEL_DIFF) {
+            next[i] = 'dead';
+            pl.state = 'dead';
+
+            if (pl.blocks.length > 0) {
+            const falling = pl.blocks.splice(pl.blocks.length - 1);
+            falling.forEach(b => {
+            b.vy = Math.random() * 100 + 50;
+            b.vx = (Math.random() - 0.5) * 100;
+            b.vz = (Math.random() - 0.5) * 100;
+            b.alpha = 1;
+            pl.fallingBlocks.push(b);
+            });
+            }
+            audio.playGameOver();
+            }
+            });
+            }
+
+            if (next.every(state => state === 'dead')) {
+            setAppState('GAMEOVER');
+            }
+            return next;
+            });
+
+            }, [gameMode, spawnBlock, saveScoreSingle]);
+
+            const processPlacementRef = useRef(processPlacement);
+            useEffect(() => { processPlacementRef.current = processPlacement; }, [processPlacement]);
+
+            const handlePlayerInteraction = useCallback((pIdx) => {
+            if (appState !== 'PLAYING') return;
+            const p = gameRef.current.players[pIdx];
+            if (!p || p.state !== 'playing') return;
+
+            const curr = p.blocks[p.blocks.length - 1];
+            if (!curr.isMoving) return;
+
+            curr.isMoving = false;
+            if (gameMode.includes('GRAVITY')) {
+            curr.isDropping = true;
+            curr.vy = 0;
+            } else {
+            processPlacement(pIdx);
+            }
+            }, [appState, gameMode, processPlacement]);
+
+            useEffect(() => {
+            const handleKeyDown = (e) => {
+            if (appState !== 'PLAYING') return;
+            if (e.code === 'Space' || e.code === 'KeyW' || e.code === 'KeyA') handlePlayerInteraction(0);
+            if (gameMode.includes('LOCAL_MULTI') && (e.code === 'Enter' || e.code === 'ArrowUp' || e.code === 'KeyL'))
+            handlePlayerInteraction(1);
+            };
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [appState, gameMode, handlePlayerInteraction]);
+
+            const handleGlobalPointerDown = (e) => {
+            if (e.target.closest('button') || appState === 'MENU' || appState === 'GAMEOVER') return;
+            if (!gameMode.includes('LOCAL_MULTI')) handlePlayerInteraction(0);
+            else handlePlayerInteraction(e.clientX < window.innerWidth / 2 ? 0 : 1); };
+                //============================================================================// RENDER LOOP PRINCIPAL
+                //============================================================================useEffect(()=> {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d', { alpha: true }); // Permitir transparencia
+
+                const render = (timeNow) => {
+                gameRef.current.animFrame = requestAnimationFrame(render);
+                const dt = (timeNow - gameRef.current.lastFrame) / 1000;
+                gameRef.current.lastFrame = timeNow;
+                gameRef.current.time += dt;
+                const globalTime = gameRef.current.time;
+
+                if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                }
+
+                const w = canvas.width;
+                const h = canvas.height;
+                const cy = h * 0.85;
+
+                const isGravity = gameRef.current.mode.includes('GRAVITY');
+                const minPhysicalHeight = isGravity ? 800 : 500;
+                const topPadding = isGravity ? 450 : 200;
+
+                let maxLevel = 0;
+                let maxTargetY = 0;
+                const alivePlayers = gameRef.current.players.filter(p => p.state === 'playing');
+                const playersToCheck = alivePlayers.length > 0 ? alivePlayers : gameRef.current.players;
+
+                playersToCheck.forEach(p => {
+                if (p.level > maxLevel) maxLevel = p.level;
+                const lastBlock = p.blocks[p.blocks.length - 1];
+                if (lastBlock && lastBlock.targetY > maxTargetY) maxTargetY = lastBlock.targetY;
+                });
+
+                const baseZoom = Math.min(w, h) / minPhysicalHeight;
+                const zoomReduction = Math.max(isGravity ? 0.35 : 0.45, 1 - (maxLevel * 0.015));
+                const targetZoom = baseZoom * zoomReduction;
+
+                if (gameRef.current.currentZoom === undefined) gameRef.current.currentZoom = baseZoom;
+                gameRef.current.currentZoom += (targetZoom - gameRef.current.currentZoom) * 0.05;
+                const zoom = gameRef.current.currentZoom;
+
+                const targetCameraY = maxTargetY + topPadding - (0.70 * h) / zoom;
+
+                if (gameRef.current.globalCameraY === undefined) gameRef.current.globalCameraY = targetCameraY;
+                gameRef.current.globalCameraY += (targetCameraY - gameRef.current.globalCameraY) * 0.1;
+
+                const cameraY = gameRef.current.globalCameraY;
+
+                // 1. Limpiar el lienzo para revelar los destellos CSS del fondo
+                ctx.clearRect(0, 0, w, h);
+
+                // 2. Dibujar Polvo Cibernético (Parallax de fondo)
+                gameRef.current.bgParticles.forEach(p => {
+                p.y -= p.speedY * dt * 10;
+                if (p.y < 0) { p.y=1; p.x=Math.random(); } const px=p.x * w; // Ligero efecto parallax en Y según la
+                    cámara const py=p.y * h + (cameraY * 0.1); const wrappedY=((py % h) + h) % h;
+                    ctx.fillStyle=`hsla(${p.hue}, 80%, 70%, ${p.opacity})`; ctx.beginPath(); ctx.arc(px, wrappedY,
+                    p.size, 0, Math.PI * 2); ctx.fill(); }); // 3. Divisor central Multijugador if
+                    (gameRef.current.players.length===2) { const divGrad=ctx.createLinearGradient(w/2, 0, w/2, h);
+                    divGrad.addColorStop(0, 'rgba(255,255,255,0)' ); divGrad.addColorStop(0.5, 'rgba(255,255,255,0.15)'
+                    ); divGrad.addColorStop(1, 'rgba(255,255,255,0)' ); ctx.strokeStyle=divGrad; ctx.lineWidth=2;
+                    ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke(); } let
+                    sharedTargetCameraY=null; if (gameRef.current.mode.includes('LOCAL_MULTI')) { const
+                    alivePs=gameRef.current.players.filter(p=> p.state === 'playing');
+                    if (alivePs.length > 0) {
+                    sharedTargetCameraY = Math.max(...alivePs.map(p => p.targetCameraY));
+                    }
+                    }
+
+                    gameRef.current.players.forEach((p, idx) => {
+                    const cx = gameRef.current.players.length === 1 ? w / 2 : (idx === 0 ? w / 4 : w * 0.75);
+
+                    // LÓGICA DE SABOTAJES
+                    const isWind = p.sabotage.type === 'WIND' && p.sabotage.timer > 0;
+                    const isSpeed = p.sabotage.type === 'SPEED' && p.sabotage.timer > 0;
+
+                    if (p.sabotage.timer > 0) {
+                    p.sabotage.timer -= dt;
+                    if (p.sabotage.timer <= 0) p.sabotage.type=null; } p.movementTime +=dt * (isSpeed ? 2.5 : 1); if
+                        (isWind && Math.random() < 0.4) { p.particles.push({ x: (Math.random() - 0.5) * 2500, y:
+                        p.targetCameraY + (Math.random() - 0.5) * 2000, z: (Math.random() - 0.5) * 2500, vx: 45 +
+                        Math.random() * 25, vy: (Math.random() - 0.5) * 5, vz: 25 + Math.random() * 15, life: 1.0,
+                        color: {h: 195, s: 100, l: 85}, type: 'wind' , wave: Math.random() * Math.PI * 2 // Onda
+                        aleatoria para curvar el viento }); } // 4. Cuadrícula Retro-Wave ctx.lineWidth=1 * zoom;
+                        for(let i=-15; i <=15; i++) { // Desvanecimiento suave hacia los bordes de la cuadrícula const
+                        alpha=Math.max(0, 1 - Math.abs(i) / 12); ctx.strokeStyle=`rgba(99, 102, 241, ${0.15 * alpha})`;
+                        ctx.beginPath(); const p1=toScreen(i * 100, 0, -1500, cx, cy, zoom); const p2=toScreen(i * 100,
+                        0, 1500, cx, cy, zoom); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+                        ctx.beginPath(); const p3=toScreen(-1500, 0, i * 100, cx, cy, zoom); const p4=toScreen(1500, 0,
+                        i * 100, cx, cy, zoom); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke(); } const
+                        instability=checkStability(p.blocks); let leanFactorX=0; let leanFactorZ=0; let shakeAmt=0;
+                        const maxR=Math.max(Math.abs(instability.rx), Math.abs(instability.rz)); if (maxR> 0.5 &&
+                        p.state === 'playing') {
+                        const intensity = Math.min(1, (maxR - 0.5) * 2);
+                        shakeAmt = intensity * 3;
+                        leanFactorX = instability.rx * 3;
+                        leanFactorZ = instability.rz * 3;
+                        }
+
+                        const getBlockVisualOffset = (index, block) => {
+                        if (instability.index !== -1 && index >= instability.index && maxR > 0.5) {
+                        const heightDiff = index - instability.index + 1;
+                        const isMovingBlock = block ? (block.isMoving || block.isDropping) : false;
+                        const vibration = isMovingBlock ? 0 : Math.sin(globalTime * 40 + index) * shakeAmt;
+                        return {
+                        x: leanFactorX * heightDiff + vibration,
+                        z: leanFactorZ * heightDiff + vibration
+                        };
+                        }
+                        return { x: 0, z: 0 };
+                        };
+
+                        if (sharedTargetCameraY !== null && sharedTargetCameraY !== Infinity) {
+                        p.targetCameraY = sharedTargetCameraY;
+                        }
+
+                        p.cameraY += (p.targetCameraY - p.cameraY) * 0.1;
+                        if (p.shake > 0) p.shake = Math.max(0, p.shake - dt * 10);
+
+                        const shakeX = (Math.random() - 0.5) * p.shake * 10;
+                        const shakeY = (Math.random() - 0.5) * p.shake * 10;
+
+                        const finalCy = cy + cameraY * zoom + shakeY;
+                        const finalCx = cx + shakeX;
+
+                        // Físicas del bloque móvil
+                        if (p.state === 'playing' && p.blocks.length > 0) {
+                        const curr = p.blocks[p.blocks.length - 1];
+                        const prev = p.blocks.length > 1 ? p.blocks[p.blocks.length - 2] : {x:0, z:0};
+                        const isX = (p.level - 1) % 2 === 0;
+
+                        let windSwayX = 0;
+                        let windSwayZ = 0;
+                        // El viento solo mueve la pieza colgada en el modo normal. En gravedad afecta solo a la caída
+                        libre.
+                        if (isWind && curr.isMoving && !gameRef.current.mode.includes('GRAVITY')) {
+                        windSwayX = Math.sin(globalTime * 15) * 35;
+                        windSwayZ = Math.cos(globalTime * 17) * 35;
+                        }
+
+                        if (curr.isMoving) {
+                        if (gameRef.current.mode.includes('GRAVITY')) {
+                        const speed = p.speed / 60;
+                        const maxAngle = 0.8;
+                        const theta = Math.sin(p.movementTime * speed) * maxAngle;
+
+                        const centerPos = isX ? prev.x : prev.z;
+                        const pos = centerPos + PENDULUM_L * Math.sin(theta);
+                        const arcYOffset = PENDULUM_L - PENDULUM_L * Math.cos(theta);
+
+                        // No aplicamos viento (windSway) al péndulo para que apunte bien
+                        if (isX) { curr.x = pos; curr.z = prev.z; }
+                        else { curr.z = pos; curr.x = prev.x; }
+
+                        curr.y = curr.targetY + DROP_HEIGHT + arcYOffset;
+                        } else {
+                        const range = 180;
+                        const period = (range * 2) / p.speed;
+                        const phase = (p.movementTime % period) / period;
+                        let pos = phase < 0.5 ? -range + (phase * 2) * (range * 2) : range - ((phase - 0.5) * 2) *
+                            (range * 2); if (isX) { curr.x=pos + windSwayX; curr.z=prev.z + windSwayZ; } else {
+                            curr.z=pos + windSwayZ; curr.x=prev.x + windSwayX; } curr.y=curr.targetY; } } else if
+                            (curr.isDropping) { curr.vy -=1200 * dt; curr.y +=curr.vy * dt; if (isWind) { // En la
+                            caída, el viento la arrastra fuertemente de forma lateral curr.vx=(curr.vx || 0) + 800 * dt;
+                            curr.x +=curr.vx * dt; curr.vz=(curr.vz || 0) + 400 * dt; curr.z +=curr.vz * dt; } if
+                            (curr.y <=curr.targetY) { curr.y=curr.targetY; curr.isDropping=false; if
+                            (processPlacementRef.current) processPlacementRef.current(idx); } } if
+                            (gameRef.current.mode.includes('GRAVITY') && (curr.isMoving || curr.isDropping)) { const
+                            currOffset=getBlockVisualOffset(p.blocks.length - 1, curr); const
+                            prevOffset=getBlockVisualOffset(p.blocks.length - 2, prev); const pivotY=curr.targetY +
+                            DROP_HEIGHT + PENDULUM_L; const pivotX=isX ? prev.x + prevOffset.x : curr.x + currOffset.x;
+                            const pivotZ=isX ? curr.z + currOffset.z : prev.z + prevOffset.z; const pTop=toScreen(curr.x
+                            + currOffset.x, curr.y + curr.h, curr.z + currOffset.z, finalCx, finalCy, zoom); const
+                            pPivot=toScreen(pivotX, pivotY, pivotZ, finalCx, finalCy, zoom); ctx.beginPath();
+                            ctx.moveTo(pPivot.x, pPivot.y); ctx.lineTo(pTop.x, pTop.y); ctx.lineWidth=3 * zoom; const
+                            laserColor=(isWind || isSpeed) ? `hsla(0, 100%, 65%, 0.8)` : `hsla(${curr.color.h}, 100%,
+                            75%, 0.8)`; ctx.strokeStyle=laserColor; ctx.setLineDash([15 * zoom, 10 * zoom]);
+                            ctx.lineDashOffset=-globalTime * (isSpeed ? 160 : 80); ctx.stroke(); ctx.setLineDash([]);
+                            ctx.shadowColor=(isWind || isSpeed) ? `hsl(0, 100%, 50%)` : `hsl(${curr.color.h}, 100%,
+                            50%)`; ctx.shadowBlur=15 * zoom; ctx.stroke(); ctx.shadowBlur=0; } } for (let i=0; i <
+                            p.blocks.length; i++) { const block=p.blocks[i]; const isTopPerfect=(i===p.blocks.length - 2
+                            && p.showPerfect); const offset=getBlockVisualOffset(i, block); const renderBlock={
+                            ...block, x: block.x + offset.x, z: block.z + offset.z }; if ((block.isMoving ||
+                            block.isDropping) && block.y> block.targetY) {
+                            drawIsoShadow(ctx, renderBlock, block.targetY, finalCx, finalCy, zoom);
+                            }
+                            drawIsoBlock(ctx, renderBlock, finalCx, finalCy, zoom, globalTime, isTopPerfect);
+                            }
+
+                            for (let i = p.fallingBlocks.length - 1; i >= 0; i--) {
+                            const fb = p.fallingBlocks[i];
+                            fb.vy -= 900 * dt;
+                            fb.y += fb.vy * dt;
+                            if (fb.vx) fb.x += fb.vx * dt;
+                            if (fb.vz) fb.z += fb.vz * dt;
+
+                            fb.alpha -= dt * 0.5;
+                            if (fb.alpha <= 0 || fb.y < -1500) p.fallingBlocks.splice(i, 1); else drawIsoBlock(ctx, fb,
+                                finalCx, finalCy, zoom, globalTime, false, fb.alpha); } for (let i=p.particles.length -
+                                1; i>= 0; i--) {
+                                const pt = p.particles[i];
+                                pt.x += pt.vx; pt.y += pt.vy; pt.z += pt.vz;
+                                pt.vy -= 15 * dt;
+                                pt.life -= dt * (pt.type === 'wind' ? 1.0 : 1.5);
+
+                                if (pt.life <= 0) { p.particles.splice(i, 1); } else { if (pt.type==='wind' ) { const
+                                    screenPt=toScreen(pt.x, pt.y, pt.z, finalCx, finalCy, zoom); // Proyectamos el final
+                                    de la estela const nextPt=toScreen(pt.x + pt.vx*2.5, pt.y + pt.vy*2.5, pt.z +
+                                    pt.vz*2.5, finalCx, finalCy, zoom); ctx.globalAlpha=pt.life * 0.8;
+                                    ctx.strokeStyle=`hsla(195, 100%, 85%, ${pt.life})`; ctx.lineWidth=(Math.random() * 2
+                                    + 1) * zoom; ctx.lineCap='round' ; ctx.beginPath(); ctx.moveTo(screenPt.x,
+                                    screenPt.y); // Generamos una curva bezier para darle ese efecto de ráfaga de aire
+                                    estilizada const midX=(screenPt.x + nextPt.x) / 2; const midY=(screenPt.y +
+                                    nextPt.y) / 2 - (35 * zoom * Math.sin(globalTime * 12 + pt.wave));
+                                    ctx.quadraticCurveTo(midX, midY, nextPt.x, nextPt.y); ctx.stroke(); } else { const
+                                    screenPt=toScreen(pt.x, pt.y, pt.z, finalCx, finalCy, zoom);
+                                    ctx.globalAlpha=pt.life; ctx.fillStyle=`hsl(${pt.color.h}, 100%, 70%)`;
+                                    ctx.beginPath(); ctx.arc(screenPt.x, screenPt.y, 4 * zoom * pt.life, 0, Math.PI *
+                                    2); ctx.fill(); ctx.fillStyle='#fff' ; ctx.beginPath(); ctx.arc(screenPt.x,
+                                    screenPt.y, 1.5 * zoom * pt.life, 0, Math.PI * 2); ctx.fill(); } } }
+                                    ctx.globalAlpha=1; }); }; gameRef.current.animFrame=requestAnimationFrame(render);
+                                    return ()=> cancelAnimationFrame(gameRef.current.animFrame);
+                                    }, []);
+
+                                    const toScreen = (x, y, z, cx, cy, zoom) => {
+                                    const sx = (x - z) * COS_ISO;
+                                    const sy = (x + z) * SIN_ISO - y;
+                                    return { x: cx + sx * zoom, y: cy + sy * zoom };
+                                    };
+
+                                    const drawIsoShadow = (ctx, block, targetY, cx, cy, zoom) => {
+                                    const { x, z, w, d } = block;
+                                    const hw = w / 2; const hd = d / 2;
+                                    const s1 = toScreen(x - hw, targetY, z - hd, cx, cy, zoom);
+                                    const s2 = toScreen(x + hw, targetY, z - hd, cx, cy, zoom);
+                                    const s3 = toScreen(x + hw, targetY, z + hd, cx, cy, zoom);
+                                    const s4 = toScreen(x - hw, targetY, z + hd, cx, cy, zoom);
+
+                                    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                                    ctx.beginPath();
+                                    ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y); ctx.lineTo(s3.x, s3.y);
+                                    ctx.lineTo(s4.x, s4.y);
+                                    ctx.closePath();
+                                    ctx.fill();
+                                    };
+
+                                    const drawIsoBlock = (ctx, block, cx, cy, zoom, time, isGlow = false, alpha = 1) =>
+                                    {
+                                    const { x, y, z, w, h, d, color } = block;
+                                    const hw = w / 2; const hd = d / 2;
+
+                                    const c1 = toScreen(x - hw, y + h, z - hd, cx, cy, zoom);
+                                    const c2 = toScreen(x + hw, y + h, z - hd, cx, cy, zoom);
+                                    const c3 = toScreen(x + hw, y + h, z + hd, cx, cy, zoom);
+                                    const c4 = toScreen(x - hw, y + h, z + hd, cx, cy, zoom);
+                                    const b2 = toScreen(x + hw, y, z - hd, cx, cy, zoom);
+                                    const b3 = toScreen(x + hw, y, z + hd, cx, cy, zoom);
+                                    const b4 = toScreen(x - hw, y, z + hd, cx, cy, zoom);
+
+                                    ctx.globalAlpha = alpha;
+                                    ctx.lineJoin = 'round';
+
+                                    const hue = color.h;
+                                    const sat = Math.max(85, color.s);
+                                    const pulse = (Math.sin(time * 4) + 1) / 2;
+
+                                    const gradRight = ctx.createLinearGradient(c2.x, c2.y, b3.x, b3.y);
+                                    gradRight.addColorStop(0, `hsl(${hue}, ${sat}%, 45%)`);
+                                    gradRight.addColorStop(1, `hsl(${hue}, ${sat}%, 20%)`);
+                                    ctx.fillStyle = gradRight;
+                                    ctx.beginPath();
+                                    ctx.moveTo(c2.x, c2.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b3.x, b3.y);
+                                    ctx.lineTo(c3.x, c3.y);
+                                    ctx.closePath();
+                                    ctx.fill();
+
+                                    if (h > 20) {
+                                    const pMidY = y + h * 0.5;
+                                    const r1 = toScreen(x + hw, pMidY + 2, z - hd + 5, cx, cy, zoom);
+                                    const r2 = toScreen(x + hw, pMidY - 2, z - hd + 5, cx, cy, zoom);
+                                    const r3 = toScreen(x + hw, pMidY - 2, z + hd - 5, cx, cy, zoom);
+                                    const r4 = toScreen(x + hw, pMidY + 2, z + hd - 5, cx, cy, zoom);
+                                    ctx.fillStyle = `hsla(${hue}, 100%, ${60 + pulse * 20}%, 0.9)`;
+                                    ctx.beginPath(); ctx.moveTo(r1.x, r1.y); ctx.lineTo(r2.x, r2.y); ctx.lineTo(r3.x,
+                                    r3.y); ctx.lineTo(r4.x, r4.y); ctx.fill();
+                                    }
+
+                                    ctx.lineWidth = 0.5 * zoom;
+                                    ctx.strokeStyle = `hsla(${hue}, ${sat}%, 10%, 0.8)`;
+                                    ctx.stroke();
+
+                                    const gradLeft = ctx.createLinearGradient(c4.x, c4.y, b3.x, b3.y);
+                                    gradLeft.addColorStop(0, `hsl(${hue}, ${sat}%, 30%)`);
+                                    gradLeft.addColorStop(1, `hsl(${hue}, ${sat}%, 10%)`);
+                                    ctx.fillStyle = gradLeft;
+                                    ctx.beginPath();
+                                    ctx.moveTo(c4.x, c4.y); ctx.lineTo(b4.x, b4.y); ctx.lineTo(b3.x, b3.y);
+                                    ctx.lineTo(c3.x, c3.y);
+                                    ctx.closePath();
+                                    ctx.fill();
+                                    ctx.stroke();
+
+                                    const gradTop = ctx.createLinearGradient(c4.x, c4.y, c2.x, c2.y);
+                                    gradTop.addColorStop(0, `hsl(${hue}, ${sat}%, 70%)`);
+                                    gradTop.addColorStop(0.5, `hsl(${hue}, ${sat}%, 55%)`);
+                                    gradTop.addColorStop(1, `hsl(${hue}, ${sat}%, 65%)`);
+
+                                    if (isGlow) {
+                                    ctx.shadowColor = `hsl(${hue}, 100%, 75%)`;
+                                    ctx.shadowBlur = 40 * zoom;
+                                    }
+
+                                    ctx.fillStyle = gradTop;
+                                    ctx.beginPath();
+                                    ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y);
+                                    ctx.lineTo(c4.x, c4.y);
+                                    ctx.closePath();
+                                    ctx.fill();
+                                    ctx.shadowBlur = 0;
+
+                                    ctx.beginPath();
+                                    const insetOffset = Math.min(w, d) * 0.2;
+                                    const i1 = toScreen(x - hw + insetOffset, y + h, z - hd + insetOffset, cx, cy,
+                                    zoom);
+                                    const i2 = toScreen(x + hw - insetOffset, y + h, z - hd + insetOffset, cx, cy,
+                                    zoom);
+                                    const i3 = toScreen(x + hw - insetOffset, y + h, z + hd - insetOffset, cx, cy,
+                                    zoom);
+                                    const i4 = toScreen(x - hw + insetOffset, y + h, z + hd - insetOffset, cx, cy,
+                                    zoom);
+                                    ctx.moveTo(i1.x, i1.y); ctx.lineTo(i2.x, i2.y); ctx.lineTo(i3.x, i3.y);
+                                    ctx.lineTo(i4.x, i4.y);
+                                    ctx.closePath();
+                                    ctx.lineWidth = 1 * zoom;
+                                    ctx.strokeStyle = `hsla(${hue}, 100%, 85%, ${0.3 + pulse * 0.4})`;
+                                    ctx.stroke();
+
+                                    ctx.beginPath();
+                                    const mid1 = toScreen(x, y + h, z - hd, cx, cy, zoom);
+                                    const mid2 = toScreen(x, y + h, z + hd, cx, cy, zoom);
+                                    const mid3 = toScreen(x - hw, y + h, z, cx, cy, zoom);
+                                    const mid4 = toScreen(x + hw, y + h, z, cx, cy, zoom);
+                                    ctx.moveTo(mid1.x, mid1.y); ctx.lineTo(mid2.x, mid2.y);
+                                    ctx.moveTo(mid3.x, mid3.y); ctx.lineTo(mid4.x, mid4.y);
+                                    ctx.lineWidth = 0.5 * zoom;
+                                    ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
+                                    ctx.stroke();
+
+                                    ctx.beginPath();
+                                    ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y);
+                                    ctx.lineTo(c4.x, c4.y); ctx.closePath();
+                                    ctx.lineWidth = 1.5 * zoom;
+                                    ctx.strokeStyle = `hsla(${hue}, 100%, 90%, 0.8)`;
+                                    ctx.stroke();
+
+                                    ctx.beginPath();
+                                    ctx.moveTo(c1.x, c1.y + 1.5 * zoom);
+                                    ctx.lineTo(c2.x - 1.5 * zoom, c2.y + 0.5 * zoom);
+                                    ctx.lineTo(c3.x, c3.y - 1.5 * zoom);
+                                    ctx.lineTo(c4.x + 1.5 * zoom, c4.y - 0.5 * zoom);
+                                    ctx.closePath();
+                                    ctx.lineWidth = 0.8 * zoom;
+                                    ctx.strokeStyle = `rgba(255, 255, 255, 0.4)`;
+                                    ctx.stroke();
+
+                                    ctx.globalAlpha = 1;
+                                    };
+
+                                    // Componente Auxiliar para alertas de sabotaje
+                                    const SabotageAlert = ({ type }) => {
+                                    if (!type) return null;
+                                    const isWind = type === 'WIND';
+                                    const isSpeed = type === 'SPEED';
+
+                                    return (
+                                    <div
+                                        className="absolute inset-x-0 top-1/3 flex justify-center pointer-events-none z-50">
+                                        <div
+                                            className="bg-red-500/20 border-2 border-red-500/80 text-red-400 font-black px-6 py-2 rounded-full animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center gap-2 text-lg tracking-widest backdrop-blur-md">
+                                            {isWind ? '💨 ¡VIENTO EN CONTRA!' : isSpeed ? '⚡ ¡ACELERÓN!' : '🤏 ¡MINI
+                                            BLOQUE!'}
+                                        </div>
+                                    </div>
+                                    );
+                                    };
+
+                                    return (
+                                    <div className="relative w-full h-screen overflow-hidden bg-slate-950 text-slate-100 font-sans select-none touch-none"
+                                        onPointerDown={handleGlobalPointerDown}>
+                                        {/* ===================================================================== */}
+                                        {/* FONDO DINÁMICO MULTICAPA CSS + NEBULOSAS */}
+                                        {/* ===================================================================== */}
+                                        <style>
+                                            {
+                                                ` @keyframes float {
+
+                                                    0%,
+                                                    100% {
+                                                        transform: translate(0, 0);
+                                                    }
+
+                                                    50% {
+                                                        transform: translate(-30px, 30px);
+                                                    }
+                                                }
+
+                                                @keyframes float-reverse {
+
+                                                    0%,
+                                                    100% {
+                                                        transform: translate(0, 0);
+                                                    }
+
+                                                    50% {
+                                                        transform: translate(30px, -30px);
+                                                    }
+                                                }
+
+                                                `
+                                            }
+                                        </style>
+
+                                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                                            {/* Gradiente radial profundo base */}
+                                            <div
+                                                className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950/60 via-[#020617] to-black opacity-80" />
+
+                                            {/* Nebulosas desenfocadas (Glassmorphism blobs) */}
+                                            <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-indigo-600/20 blur-[130px] rounded-full mix-blend-screen"
+                                                style={{ animation: 'float 12s ease-in-out infinite' }} />
+                                            <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-rose-600/10 blur-[150px] rounded-full mix-blend-screen"
+                                                style={{ animation: 'float-reverse 15s ease-in-out infinite' }} />
+                                            <div className="absolute top-[30%] left-[30%] w-[40vw] h-[40vw] bg-cyan-600/10 blur-[120px] rounded-full mix-blend-screen"
+                                                style={{ animation: 'float 10s ease-in-out infinite 2s' }} />
+                                        </div>
+
+                                        <canvas ref={canvasRef}
+                                            className="absolute inset-0 block w-full h-full pointer-events-none" />
+
+                                        {/* Control Volumen */}
+                                        <button onClick={(e)=> { e.stopPropagation(); setIsMuted(!isMuted); audio.muted
+                                            = !isMuted; }}
+                                            className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/5
+                                            backdrop-blur-md border border-white/10 hover:bg-white/10 transition-colors"
+                                            >
+                                            {isMuted ?
+                                            <VolumeX className="w-6 h-6" /> :
+                                            <Volume2 className="w-6 h-6" />}
+                                        </button>
+
+                                        {/* UI: MENÚ */}
+                                        {appState === 'MENU' && (
+                                        <div
+                                            className="absolute inset-0 flex flex-col items-center justify-center bg-black/20 backdrop-blur-sm z-20">
+                                            <div className="text-center animate-bounce-slow">
+                                                <h1
+                                                    className="text-7xl md:text-9xl font-black tracking-tighter bg-gradient-to-br from-white to-slate-400 bg-clip-text text-transparent drop-shadow-2xl">
+                                                    STACK
+                                                </h1>
+                                                <p
+                                                    className="mt-4 text-xl text-slate-300 font-light tracking-wide drop-shadow-md">
+                                                    Equilibra la torre sin que caiga
+                                                </p>
+                                            </div>
+
+                                            <div className="mt-12 flex flex-col gap-4 w-full max-w-sm px-4">
+                                                <button onClick={(e)=> { e.stopPropagation(); startGame('SINGLE'); }}
+                                                    className="w-full py-4 rounded-full bg-white/90 backdrop-blur-md
+                                                    text-slate-900 font-bold text-xl hover:scale-105 active:scale-95
+                                                    transition-transform flex items-center justify-center gap-2
+                                                    shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                                                    >
+                                                    <Play className="fill-current w-6 h-6" /> NORMAL
+                                                </button>
+                                                <button onClick={(e)=> { e.stopPropagation(); startGame('GRAVITY'); }}
+                                                    className="w-full py-4 rounded-full bg-amber-500/90 backdrop-blur-md
+                                                    text-white font-bold text-xl hover:bg-amber-400 hover:scale-105
+                                                    active:scale-95 transition-transform flex items-center
+                                                    justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                                                    >
+                                                    <ArrowDown className="w-6 h-6" /> PÉNDULO
+                                                </button>
+                                                <button onClick={(e)=> { e.stopPropagation(); startGame('LOCAL_MULTI');
+                                                    }}
+                                                    className="w-full py-4 rounded-full bg-indigo-500/90
+                                                    backdrop-blur-md text-white font-bold text-xl hover:bg-indigo-400
+                                                    hover:scale-105 active:scale-95 transition-transform flex
+                                                    items-center justify-center gap-2
+                                                    shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+                                                    >
+                                                    <Users className="w-6 h-6" /> LOCAL 1 vs 1
+                                                </button>
+                                                <button onClick={(e)=> { e.stopPropagation();
+                                                    startGame('LOCAL_MULTI_GRAVITY'); }}
+                                                    className="w-full py-4 rounded-full bg-rose-500/90 backdrop-blur-md
+                                                    text-white font-bold text-xl hover:bg-rose-400 hover:scale-105
+                                                    active:scale-95 transition-transform flex items-center
+                                                    justify-center gap-2 shadow-[0_0_20px_rgba(244,63,94,0.3)]"
+                                                    >
+                                                    <Zap className="w-6 h-6" /> 1 vs 1 PÉNDULO + SABOTAJE
+                                                </button>
+                                            </div>
+
+                                            {leaderboard.length > 0 && (
+                                            <div
+                                                className="mt-10 p-6 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 w-80 shadow-2xl">
+                                                <div className="flex items-center gap-2 mb-4 text-slate-300">
+                                                    <Trophy className="w-5 h-5 text-yellow-400" />
+                                                    <h3 className="font-semibold tracking-wide text-sm uppercase">TOP
+                                                        MUNDIAL</h3>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {leaderboard.map((entry, idx) => (
+                                                    <div key={entry.id}
+                                                        className="flex justify-between items-center text-sm">
+                                                        <span className="text-slate-400 flex items-center gap-2">
+                                                            <span className="text-xs font-bold text-slate-500 w-4">{idx
+                                                                + 1}.</span>
+                                                            {entry.uid === user?.uid ? 'Tú' :
+                                                            `P${entry.uid.slice(0,4)}`}
+                                                        </span>
+                                                        <span
+                                                            className="font-bold text-white bg-white/10 px-2 py-1 rounded-md">{entry.score}</span>
+                                                    </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            )}
+                                        </div>
+                                        )}
+
+                                        {/* UI: JUGANDO HUD */}
+                                        {appState === 'PLAYING' && (
+                                        <div className="absolute inset-0 pointer-events-none z-10">
+                                            {!gameMode.includes('LOCAL_MULTI') ? (
+                                            <div className="w-full text-center pt-20">
+                                                <div className="text-8xl font-black text-white/90 drop-shadow-lg">
+                                                    {scores[0]}</div>
+                                                <div className={`mt-2 flex justify-center text-xl font-bold
+                                                    text-yellow-400 transition-all ${combos[0]>= 2 ? 'opacity-100
+                                                    scale-100' : 'opacity-0 scale-90'}`}>
+                                                    <Sparkles className="w-5 h-5 mr-2" /> {combos[0]}x PERFECTO (+2
+                                                    Puntos)
+                                                </div>
+                                                {gameMode.includes('GRAVITY') && (
+                                                <div
+                                                    className="mt-4 text-amber-400 font-bold tracking-widest text-sm animate-pulse bg-black/20 inline-block px-4 py-2 rounded-full backdrop-blur-md border border-white/5">
+                                                    PENDULO GRAVITATORIO ACTIVO
+                                                </div>
+                                                )}
+                                            </div>
+                                            ) : (
+                                            <div className="flex w-full h-full pt-10">
+                                                <div className="w-1/2 flex flex-col items-center relative">
+                                                    <p
+                                                        className="text-sm font-bold tracking-widest text-indigo-300 mb-2 bg-black/30 px-4 py-1.5 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+                                                        P1 (Izquierda / Tecla A)</p>
+                                                    <div
+                                                        className="text-7xl font-black text-white/90 drop-shadow-lg relative">
+                                                        {scores[0]}
+                                                        {playerStates[0] === 'dead' &&
+                                                        <Skull
+                                                            className="absolute -right-12 top-1/2 -translate-y-1/2 w-8 h-8 text-red-500 animate-pulse" />
+                                                        }
+                                                    </div>
+                                                    <div className={`mt-2 flex text-yellow-400 transition-all
+                                                        ${combos[0]>= 2 ? 'opacity-100' : 'opacity-0'}`}>
+                                                        <Sparkles className="w-4 h-4 mr-1" /> {combos[0]}x PERFECTO
+                                                    </div>
+
+                                                    <SabotageAlert type={activeSabotages[0]} />
+                                                </div>
+                                                <div className="w-1/2 flex flex-col items-center relative">
+                                                    <p
+                                                        className="text-sm font-bold tracking-widest text-rose-300 mb-2 bg-black/30 px-4 py-1.5 rounded-full border border-white/5 backdrop-blur-sm shadow-xl">
+                                                        P2 (Derecha / Tecla L)</p>
+                                                    <div
+                                                        className="text-7xl font-black text-white/90 drop-shadow-lg relative">
+                                                        {scores[1]}
+                                                        {playerStates[1] === 'dead' &&
+                                                        <Skull
+                                                            className="absolute -right-12 top-1/2 -translate-y-1/2 w-8 h-8 text-red-500 animate-pulse" />
+                                                        }
+                                                    </div>
+                                                    <div className={`mt-2 flex text-yellow-400 transition-all
+                                                        ${combos[1]>= 2 ? 'opacity-100' : 'opacity-0'}`}>
+                                                        <Sparkles className="w-4 h-4 mr-1" /> {combos[1]}x PERFECTO
+                                                    </div>
+
+                                                    <SabotageAlert type={activeSabotages[1]} />
+                                                </div>
+
+                                                <div
+                                                    className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+                                                    {gameMode.includes('GRAVITY') && (
+                                                    <div
+                                                        className="text-amber-400 font-bold tracking-widest text-sm animate-pulse bg-black/40 px-5 py-2.5 rounded-full backdrop-blur-md border border-white/10 shadow-lg">
+                                                        PÉNDULO
+                                                    </div>
+                                                    )}
+                                                    <div
+                                                        className="text-rose-400 font-bold tracking-widest text-[10px] bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-md border border-white/5 shadow-md">
+                                                        SABOTAJE AL HACER PERFECT
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            )}
+                                        </div>
+                                        )}
+
+                                        {/* UI: FIN DEL JUEGO */}
+                                        {appState === 'GAMEOVER' && (
+                                        <div
+                                            className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-xl z-30">
+                                            <div
+                                                className="bg-slate-900/80 border border-white/10 p-10 rounded-3xl shadow-2xl flex flex-col items-center max-w-md w-full mx-4 backdrop-blur-3xl">
+
+                                                {!gameMode.includes('LOCAL_MULTI') ? (
+                                                <>
+                                                    <h2
+                                                        className="text-3xl font-black mb-2 tracking-tight text-white drop-shadow-md">
+                                                        COLAPSO ESTRUCTURAL</h2>
+                                                    <div
+                                                        className="text-7xl font-black bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent my-6">
+                                                        {scores[0]}
+                                                    </div>
+                                                    {isNewRecord ? (
+                                                    <div
+                                                        className="mb-6 px-4 py-2 bg-yellow-400/20 border border-yellow-400/50 rounded-full text-yellow-400 font-bold animate-pulse flex gap-2 shadow-[0_0_20px_rgba(250,204,21,0.3)]">
+                                                        <Trophy className="w-5 h-5" /> ¡NUEVO RÉCORD!
+                                                    </div>
+                                                    ) : (
+                                                    <div
+                                                        className="mb-6 text-slate-400 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                                                        Mejor Puntuación: <span
+                                                            className="text-white font-bold">{highScore}</span>
+                                                    </div>
+                                                    )}
+                                                </>
+                                                ) : (
+                                                <div className="w-full text-center">
+                                                    {(() => {
+                                                    const isWinner = scores[0] > scores[1];
+                                                    const isTie = scores[0] === scores[1];
+                                                    return (
+                                                    <>
+                                                        {isTie ?
+                                                        <Users
+                                                            className="w-16 h-16 text-blue-400 mx-auto mb-4 drop-shadow-lg" />
+                                                        :
+                                                        <Crown
+                                                            className="w-16 h-16 text-yellow-400 mx-auto mb-4 drop-shadow-lg" />
+                                                        }
+                                                        <h2 className={`text-4xl font-black mb-6 ${isTie
+                                                            ? 'text-blue-400' : 'text-yellow-400' } drop-shadow-md`}>
+                                                            {isTie ? '¡EMPATE!' : (isWinner ? '¡GANA JUGADOR 1!' :
+                                                            '¡GANA JUGADOR 2!')}
+                                                        </h2>
+
+                                                        <div
+                                                            className="flex justify-between items-center bg-black/40 border border-white/5 rounded-2xl p-6 mb-8 w-full shadow-inner">
+                                                            <div className="text-center">
+                                                                <p className="text-sm text-indigo-300 font-bold mb-1">
+                                                                    JUGADOR 1</p>
+                                                                <p className={`text-4xl font-black ${isWinner || isTie
+                                                                    ? 'text-white' : 'text-slate-500' }`}>{scores[0]}
+                                                                </p>
+                                                            </div>
+                                                            <div className="text-2xl font-black text-slate-600 px-4">VS
+                                                            </div>
+                                                            <div className="text-center">
+                                                                <p className="text-sm text-rose-300 font-bold mb-1">
+                                                                    JUGADOR 2</p>
+                                                                <p className={`text-4xl font-black ${!isWinner || isTie
+                                                                    ? 'text-white' : 'text-slate-500' }`}>{scores[1]}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                    );
+                                                    })()}
+                                                </div>
+                                                )}
+
+                                                <div className="flex w-full gap-4">
+                                                    <button onClick={(e)=> { e.stopPropagation(); startGame(gameMode);
+                                                        }}
+                                                        className="flex-1 py-4 rounded-2xl bg-indigo-500
+                                                        hover:bg-indigo-400 text-white font-bold text-lg
+                                                        transition-colors flex items-center justify-center gap-2
+                                                        shadow-lg"
+                                                        >
+                                                        <RotateCcw className="w-5 h-5" /> REPETIR
+                                                    </button>
+                                                    <button onClick={(e)=> { e.stopPropagation(); setAppState('MENU');
+                                                        }}
+                                                        className="px-6 py-4 rounded-2xl bg-white/5 border
+                                                        border-white/10 hover:bg-white/10 text-white font-bold
+                                                        transition-colors"
+                                                        >
+                                                        MENÚ
+                                                    </button>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                        )}
+                                    </div>
+                                    );
+                                    }

@@ -612,23 +612,24 @@ function showScreen(id) {
       });
       
       // Depth Transition In
+      const isStack = id === 'stack';
       tl.fromTo(target, 
-        { opacity: 0, scale: 1.1, filter: "blur(10px)", y: -30 }, 
+        { opacity: 0, scale: isStack ? 1 : 1.1, filter: isStack ? "none" : "blur(10px)", y: isStack ? 0 : -30 }, 
         { 
           opacity: 1, 
           scale: 1, 
           filter: "blur(0px)",
           y: 0, 
-          duration: 0.8, 
-          ease: "expo.out",
+          duration: isStack ? 0.3 : 0.8, 
+          ease: isStack ? "power2.out" : "expo.out",
           onStart: () => {
             target.classList.add('active');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!isStack) window.scrollTo({ top: 0, behavior: 'smooth' });
           },
           onComplete: () => {
             if (typeof initJuicyUI === 'function') initJuicyUI();
             const h1 = target.querySelector('h1, h2');
-            if (h1) gsap.from(h1, { x: -30, opacity: 0, duration: 0.6, ease: "power2.out" });
+            if (h1 && !isStack) gsap.from(h1, { x: -30, opacity: 0, duration: 0.6, ease: "power2.out" });
           }
         }, 
         "-=0.2"
@@ -2694,6 +2695,78 @@ async function viewMasterGameFirestore(gameId) {
 /**
  * Sistema de partículas premium en canvas para el fondo.
  */
+function initAmbientBackground() {
+  const canvas = document.createElement('canvas');
+  canvas.id = 'ambient-bg';
+  canvas.style.cssText = "position:fixed; inset:0; z-index:-1; opacity:0.6; pointer-events:none;";
+  document.body.prepend(canvas);
+  
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+  
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  
+  window.addEventListener('resize', resize);
+  resize();
+  
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      this.x = Math.random() * w;
+      this.y = Math.random() * h;
+      this.vx = (Math.random() - 0.5) * 0.5;
+      this.vy = (Math.random() - 0.5) * 0.5;
+      this.size = Math.random() * 2 + 1;
+      this.alpha = Math.random() * 0.5 + 0.1;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
+    }
+    draw() {
+      ctx.fillStyle = `rgba(56, 189, 248, ${this.alpha})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  for (let i = 0; i < 60; i++) particles.push(new Particle());
+  
+  function animate() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => {
+      p.update();
+      p.draw();
+    });
+    
+    // Draw connections
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
 /**
  * Premium Interactive Background Mesh (Neon Grid)
  */
@@ -2825,7 +2898,84 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Cinematic Load-in
   if (typeof gsap !== 'undefined') {
+    gsap.from(".hub-header", { y: -50, opacity: 0, duration: 1, ease: "expo.out" });
     gsap.from(".hub-hero h1", { y: 50, opacity: 0, duration: 1.2, ease: "expo.out", delay: 0.5 });
     gsap.from(".hub-hero .hero-sub", { y: 30, opacity: 0, duration: 1, ease: "power2.out", delay: 0.8 });
   }
+
+  // Init Stack Game Engine (Global)
+  // Removed initStackGame() as it is now handled by the React MicroApp in the iframe
 });
+
+// ======================================================
+// CYBER STACK BRIDGE (POSTMESSAGE)
+// ======================================================
+window.addEventListener('message', (event) => {
+  // Simple origin check (optional, but good practice if origin is known)
+  // if (event.origin !== window.location.origin) return;
+
+  if (event.data && event.data.type === 'SAVE_SCORE') {
+    const score = event.data.score;
+    console.log(`[🕹️] Score received from Cyber Stack: ${score}`);
+    updateArcadeRecord('stack', score);
+  }
+});
+
+/**
+ * CYBER STACK INTEGRATION
+ */
+window.showStackScreen = function() {
+  showScreen('stack');
+  
+  const frame = document.getElementById('stack-frame');
+  if (frame) {
+    const appId = 'stack-game-default';
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig || {}));
+    // Cache bust using timestamp
+    const v = Date.now();
+    const src = `/cyberstack_game.html?v=${v}&appId=${appId}&config=${config}`;
+    
+    // Always update src to force reload and avoid cache
+    frame.src = src;
+  }
+};
+
+/**
+ * Global Record Updater for Arcade Games
+ */
+window.updateArcadeRecord = function(gameId, score) {
+  if (gameId === 'stack') {
+    const currentBest = parseInt(localStorage.getItem('tosito_stack_best') || '0');
+    if (score > currentBest) {
+      localStorage.setItem('tosito_stack_best', score);
+      safeSetText('prof-stack-best', `${score}m`);
+      toast(`🚀 ¡NUEVO RÉCORD EN STACK: ${score}m!`);
+      
+      if (currentUser && db) {
+        // Sync with Platform Profile
+        db.collection('users').doc(currentUser.uid).update({
+          stack_best: score
+        }).catch(err => console.log("Profile sync err:", err));
+
+        // Sync with EXACT game artifact (leaderboard/stats)
+        const appId = 'stack-game-default';
+        const gameRef = db.collection('artifacts').doc(appId);
+        
+        // Personal highscore
+        gameRef.collection('users').doc(currentUser.uid).collection('stats').doc('highscore').set({
+          score: score,
+          date: new Date().toISOString()
+        }).catch(err => console.error("Game stats err:", err));
+
+        // Public leaderboard
+        gameRef.collection('public').doc('data').collection('leaderboard').doc(currentUser.uid).set({
+          score: score,
+          uid: currentUser.uid,
+          date: new Date().toISOString()
+        }).catch(err => console.error("Leaderboard err:", err));
+      }
+      
+      updateLobbyUI();
+    }
+  }
+};

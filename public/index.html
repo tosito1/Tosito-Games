@@ -6,6 +6,26 @@
 <title>Tosito Games</title>
 <meta name="description" content="Tosito Games — Ajedrez, Tres en Raya y más. Juega contra IA, compite online, explora aperturas y resuelve puzzles tácticos.">
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
+<style>
+  /* FORCED FULLSCREEN FOR CYBER STACK */
+  #screen-stack {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    background: #020617 !important;
+    display: none;
+    overflow: hidden !important;
+    border: none !important;
+  }
+  #screen-stack.active {
+    display: block !important;
+  }
+</style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;900&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
 
 <style>
@@ -650,7 +670,105 @@ input:checked + .switch-slider:before { transform: translateX(20px); }
 }
 .btn-back-hub:hover { background: rgba(255,255,255,0.1); border-color: var(--sky); transform: translateX(-5px); }
 
-/* === TRES EN RAYA PREMIUM === */
+/* === CYBER STACK PREMIUM === */
+/* === CYBER STACK PREMIUM === */
+.stack-game-container {
+  position: relative; width: 100%; height: 100vh; overflow: hidden;
+  background: #020617;
+}
+.stack-nebula {
+  position: absolute; border-radius: 50%; mix-blend-mode: screen; pointer-events: none;
+}
+.nebula-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: rgba(79, 70, 229, 0.2); blur: 130px; filter: blur(130px); animation: stack-float 12s ease-in-out infinite; }
+.nebula-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: rgba(225, 29, 72, 0.1); blur: 150px; filter: blur(150px); animation: stack-float-rev 15s ease-in-out infinite; }
+.nebula-3 { top: 30%; left: 30%; width: 40vw; height: 40vw; background: rgba(8, 145, 178, 0.1); blur: 120px; filter: blur(120px); animation: stack-float 10s ease-in-out infinite 2s; }
+
+@keyframes stack-float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, 30px); }
+}
+@keyframes stack-float-rev {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(30px, -30px); }
+}
+#stack-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; z-index: 5; }
+
+.stack-ui-layer {
+  position: absolute; inset: 0; pointer-events: none; z-index: 20;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.stack-ui-layer > * { pointer-events: auto; }
+
+.stack-menu-panel {
+  background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 40px;
+  padding: 3rem; text-align: center; max-width: 450px; width: 90%;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.6);
+}
+.stack-title {
+  font-family: 'Orbitron', sans-serif; font-size: 5rem; font-weight: 900;
+  background: linear-gradient(to bottom, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem; letter-spacing: -2px;
+}
+.stack-btn {
+  width: 100%; padding: 16px; margin-bottom: 12px; border-radius: 99px;
+  font-weight: 800; font-size: 1.1rem; border: none; cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.stack-btn-normal { background: #fff; color: #020617; box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+.stack-btn-pendulum { background: #f59e0b; color: #fff; box-shadow: 0 0 25px rgba(245,158,11,0.3); }
+.stack-btn-multi { background: #6366f1; color: #fff; box-shadow: 0 0 25px rgba(99,102,241,0.3); }
+.stack-btn:hover { transform: scale(1.05) translateY(-3px); filter: brightness(1.1); }
+
+.stack-hud {
+  position: absolute; top: 0; left: 0; right: 0; padding: 40px;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  pointer-events: none;
+}
+.stack-score-wrap { text-align: center; }
+.stack-score-num { font-size: 6rem; font-weight: 900; color: #fff; line-height: 1; text-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.stack-score-label { font-size: 0.8rem; font-weight: 800; color: var(--sky); letter-spacing: 2px; }
+
+.sabotage-alert {
+  position: absolute; top: 30%; left: 50%; transform: translateX(-50%);
+  background: rgba(239, 68, 68, 0.2); border: 2px solid #ef4444; color: #f87171;
+  padding: 10px 24px; border-radius: 99px; font-weight: 900; font-size: 1.2rem;
+  animation: stack-pulse 1s infinite; backdrop-filter: blur(10px); display: none;
+}
+@keyframes stack-pulse { 0% { opacity: 1; transform: translateX(-50%) scale(1); } 50% { opacity: 0.7; transform: translateX(-50%) scale(1.05); } 100% { opacity: 1; transform: translateX(-50%) scale(1); } }
+
+/* Pixel Perfect Extensions */
+.stack-vol-btn {
+  position: absolute; top: 25px; right: 25px; z-index: 50;
+  width: 50px; height: 50px; border-radius: 50%;
+  background: rgba(255,255,255,0.05); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.3s;
+}
+.stack-vol-btn:hover { background: rgba(255,255,255,0.15); transform: scale(1.1); }
+
+.stack-leaderboard {
+  margin-top: 2rem; padding: 24px; border-radius: 24px;
+  background: rgba(255,255,255,0.05); backdrop-filter: blur(15px);
+  border: 1px solid rgba(255,255,255,0.05); width: 100%;
+}
+.stack-lb-list { display: flex; flex-direction: column; gap: 10px; }
+.stack-lb-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: 500; }
+.stack-lb-idx { color: rgba(255,255,255,0.3); font-size: 0.7rem; width: 18px; }
+.stack-lb-name { flex: 1; text-align: left; color: rgba(255,255,255,0.8); }
+.stack-lb-score { font-weight: 800; background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 6px; }
+
+.stack-gameover-panel {
+  background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(25px);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 40px;
+  padding: 3rem; text-align: center; max-width: 480px; width: 90%;
+  box-shadow: 0 50px 100px rgba(0,0,0,0.8);
+}
+.stack-go-big-score {
+  font-size: 8rem; font-weight: 900; line-height: 1; margin: 1.5rem 0;
+  background: linear-gradient(to bottom, #fff, #64748b); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
 .ttt-container {
   display: flex; flex-direction: column; align-items: center; gap: 2rem;
   width: 100%; max-width: 450px; margin: 0 auto;
@@ -1053,46 +1171,12 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   </div>
 
   <!-- ======================================================
-       CYBER STACK
+       CYBER STACK (REACT MICRO-APP IFRAME)
        ====================================================== -->
-  <div id="screen-stack" class="screen">
-    <div class="section-header">
-      <div>
-        <h2 class="section-title">Cyber Stack</h2>
-        <div class="section-sub">Gravedad Cero · Récord Mundial</div>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <button class="btn btn-glass" onclick="showScreen('hub')">🏠 Inicio</button>
-        <button class="btn btn-primary" style="background:#A855F7; color:white;" onclick="initStackGame()">🔄 Reiniciar</button>
-      </div>
-    </div>
-
-    <div class="checkers-master-layout">
-      <!-- Logic & Viewport -->
-      <div id="stack-viewport" onclick="handleStackClick()">
-        <div id="stack-world"></div>
-        <div class="stack-score-overlay">
-          <div class="stack-score-label" style="font-size:0.7rem; color:var(--muted); text-transform:uppercase;">Altura Actual</div>
-          <div id="stack-score" class="stack-score-val">0</div>
-        </div>
-      </div>
-
-      <!-- Sidebar / Leaderboard -->
-      <div class="game-sidebar">
-        <div class="glass-panel" style="margin-bottom:1rem;">
-          <h4 style="margin-bottom:1rem; font-size:0.8rem; color:var(--muted); text-transform:uppercase;">Récord Personal</h4>
-          <div id="stack-best" style="font-size:1.5rem; font-weight:800; color:#A855F7;">0m</div>
-        </div>
-        
-        <div class="stack-leaderboard">
-          <h4 style="margin-bottom:1rem; font-size:0.8rem; color:var(--muted); text-transform:uppercase;">🌍 Ranking Global</h4>
-          <div id="stack-ranking-list">
-            <div style="text-align:center; padding:10px; color:var(--muted); font-size:0.8rem;">Cargando ranking...</div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div id="screen-stack" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="stack-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
+
 
   <!-- ======================================================
        TRES EN RAYA
@@ -2591,326 +2675,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ============================================================
-  //  CYBER STACK — MEGA-ENGINE 3.0 (GSAP POWERED)
-  // ============================================================
-  let stackGameActive = false;
-  let stackScore = 0;
-  let stackCombo = 0;
-  let stackBest = localStorage.getItem('tosito_stack_best') || 0;
-  let stackWidth = 150;
-  let stackDepth = 150;
-  let stackX = 0;
-  let stackZ = 0;
-  let stackDir = 1;
-  let stackAxis = 'x';
-  let stackBlocks = [];
-  let stackSpeed = 2.5;
-  let stackAnimReq = null;
-
-  window.showStackScreen = function() {
-    currentGameType = 'stack';
-    if (typeof closeDrawer === 'function') closeDrawer();
-    showScreen('stack');
-    document.getElementById('stack-best').textContent = `${stackBest}m`;
-    
-    // Create Perfect msg if not exists
-    if (!document.querySelector('.stack-perfect-msg')) {
-      const msg = document.createElement('div');
-      msg.className = 'stack-perfect-msg';
-      msg.textContent = 'PERFECT!';
-      document.getElementById('stack-viewport').appendChild(msg);
-    }
-    
-    loadStackLeaderboard();
-    initStackGame();
-  };
-
-  window.initStackGame = function() {
-    stackGameActive = true;
-    stackScore = 0;
-    stackCombo = 0;
-    stackWidth = 150;
-    stackDepth = 150;
-    stackX = 0;
-    stackZ = 0;
-    stackAxis = 'x';
-    stackSpeed = 3.0;
-    stackBlocks = [];
-    document.getElementById('stack-score').textContent = '0';
-    document.getElementById('stack-world').innerHTML = '';
-    
-    gsap.set('#stack-world', { y: 0, x: 0, rotateY: -30, rotateX: 20 });
-    
-    // Initial Base
-    addStackBlock(0, 0, 150, 150, true);
-    startStackLoop();
-  };
-
-  function addStackBlock(x, z, w, d, isBase) {
-    const el = document.createElement('div');
-    el.className = 'stack-block';
-    el.style.width = `${w}px`;
-    el.style.height = `${d}px`;
-    // Center it
-    el.style.marginLeft = `-${w/2}px`;
-    el.style.transform = `translateX(${x}px) translateZ(${z}px) translateY(-${stackBlocks.length * 20}px)`;
-    
-    const hue = (stackBlocks.length * 15) % 360;
-    const color = `hsl(${hue}, 80%, 60%)`;
-    const darkColor = `hsl(${hue}, 80%, 30%)`;
-    
-    el.innerHTML = `
-      <div class="stack-face face-top" style="background:${color}; width:${w}px; height:${d}px;"></div>
-      <div class="stack-face face-front" style="background:${darkColor}; width:${w}px; filter:brightness(0.8);"></div>
-      <div class="stack-face face-back" style="background:${darkColor}; width:${w}px; filter:brightness(0.6);"></div>
-      <div class="stack-face face-left" style="background:${darkColor}; height:${d}px; filter:brightness(0.5);"></div>
-      <div class="stack-face face-right" style="background:${darkColor}; height:${d}px; filter:brightness(0.7);"></div>
-    `;
-    
-    document.getElementById('stack-world').appendChild(el);
-    const block = { el, x, z, w, d, color };
-    stackBlocks.push(block);
-    return block;
-  }
-
-  function startStackLoop() {
-    if (stackAnimReq) cancelAnimationFrame(stackAnimReq);
-    
-    const nextW = stackWidth;
-    const nextD = stackDepth;
-    const nextX = stackAxis === 'x' ? -300 : stackX;
-    const nextZ = stackAxis === 'z' ? -300 : stackZ;
-    
-    const movingBlock = addStackBlock(nextX, nextZ, nextW, nextD, false);
-    
-    function loop() {
-      if (!stackGameActive) return;
-      
-      if (stackAxis === 'x') {
-        stackX += stackSpeed * stackDir;
-        if (Math.abs(stackX) > 300) stackDir *= -1;
-      } else {
-        stackZ += stackSpeed * stackDir;
-        if (Math.abs(stackZ) > 300) stackDir *= -1;
-      }
-      
-      movingBlock.el.style.transform = `translateX(${stackX}px) translateZ(${stackZ}px) translateY(-${(stackBlocks.length-1) * 20}px)`;
-      stackAnimReq = requestAnimationFrame(loop);
-    }
-    loop();
-  }
-
-  window.handleStackClick = function() {
-    if (!stackGameActive) return;
-    cancelAnimationFrame(stackAnimReq);
-    
-    const current = stackBlocks[stackBlocks.length - 1];
-    const prev = stackBlocks[stackBlocks.length - 2];
-    
-    let diff = 0;
-    let isPerfect = false;
-    
-    if (stackAxis === 'x') {
-      diff = current.x - prev.x;
-      if (Math.abs(diff) < 6) { diff = 0; isPerfect = true; current.x = prev.x; }
-      
-      const overlap = stackWidth - Math.abs(diff);
-      if (overlap <= 0) return gameOverStack();
-      
-      const slicedWidth = Math.abs(diff);
-      const remainingWidth = overlap;
-      
-      // Impact Visuals
-      spawnStackParticles(current.x + (diff > 0 ? remainingWidth/2 : -remainingWidth/2), current.z, current.color);
-      shakeStackCamera(isPerfect);
-      
-      if (!isPerfect) {
-        stackCombo = 0;
-        const sliceX = diff > 0 ? (current.x + remainingWidth/2 + slicedWidth/2) : (current.x - remainingWidth/2 - slicedWidth/2);
-        createFallingPiece(sliceX, current.z, slicedWidth, current.d, (stackBlocks.length-1)*20, current.color);
-      } else {
-        stackCombo++;
-        showPerfectMsg();
-      }
-      
-      stackWidth = remainingWidth;
-      stackX = current.x;
-      
-      // Update visual
-      current.w = stackWidth;
-      current.el.style.width = `${stackWidth}px`;
-      current.el.style.marginLeft = `-${stackWidth/2}px`;
-      current.el.style.transform = `translateX(${current.x}px) translateZ(${current.z}px) translateY(-${(stackBlocks.length-1) * 20}px)`;
-      current.el.querySelectorAll('.face-top, .face-front, .face-back').forEach(f => f.style.width = `${stackWidth}px`);
-    } else {
-      diff = current.z - prev.z;
-      if (Math.abs(diff) < 6) { diff = 0; isPerfect = true; current.z = prev.z; }
-      
-      const overlap = stackDepth - Math.abs(diff);
-      if (overlap <= 0) return gameOverStack();
-      
-      const slicedDepth = Math.abs(diff);
-      const remainingDepth = overlap;
-
-      spawnStackParticles(current.x, current.z + (diff > 0 ? remainingDepth/2 : -remainingDepth/2), current.color);
-      shakeStackCamera(isPerfect);
-
-      if (!isPerfect) {
-        stackCombo = 0;
-        const sliceZ = diff > 0 ? (current.z + remainingDepth/2 + slicedDepth/2) : (current.z - remainingDepth/2 - slicedDepth/2);
-        createFallingPiece(current.x, sliceZ, current.w, slicedDepth, (stackBlocks.length-1)*20, current.color);
-      } else {
-        stackCombo++;
-        showPerfectMsg();
-      }
-      
-      stackDepth = remainingDepth;
-      stackZ = current.z;
-      
-      current.d = stackDepth;
-      current.el.style.height = `${stackDepth}px`;
-      current.el.style.transform = `translateX(${current.x}px) translateZ(${current.z}px) translateY(-${(stackBlocks.length-1) * 20}px)`;
-      current.el.querySelectorAll('.face-top, .face-left, .face-right').forEach(f => f.style.height = `${stackDepth}px`);
-    }
-
-    stackScore++;
-    document.getElementById('stack-score').textContent = stackScore;
-    
-    // Difficulty curve
-    stackSpeed = Math.min(8.0, 3.0 + (stackScore * 0.08));
-    
-    // Move Camera Cinematographically
-    gsap.to('#stack-world', { 
-      y: stackScore * 20, 
-      duration: 0.8, 
-      ease: "expo.out" 
-    });
-    
-    stackAxis = stackAxis === 'x' ? 'z' : 'x';
-    stackDir = Math.random() > 0.5 ? 1 : -1;
-    startStackLoop();
-  };
-
-  function spawnStackParticles(x, z, color) {
-    for (let i = 0; i < 12; i++) {
-      const p = document.createElement('div');
-      p.className = 'stack-particle';
-      p.style.background = color;
-      p.style.boxShadow = `0 0 10px ${color}`;
-      p.style.left = `calc(50% + ${x}px)`;
-      p.style.bottom = `${stackScore * 20 + 10}px`;
-      p.style.transform = `translateZ(${z}px)`;
-      document.getElementById('stack-world').appendChild(p);
-      
-      const rx = (Math.random() - 0.5) * 200;
-      const ry = Math.random() * 200;
-      const rz = (Math.random() - 0.5) * 200;
-      
-      gsap.to(p, {
-        x: rx, y: -ry, z: rz,
-        opacity: 0,
-        duration: 0.8,
-        ease: "power2.out",
-        onComplete: () => p.remove()
-      });
-    }
-  }
-
-  function shakeStackCamera(perfect) {
-    const intensity = perfect ? 4 : 10;
-    gsap.to('#stack-viewport', { 
-      x: (Math.random()-0.5)*intensity, 
-      y: (Math.random()-0.5)*intensity, 
-      duration: 0.05, 
-      repeat: 3, 
-      yoyo: true, 
-      onComplete: () => gsap.set('#stack-viewport', { x: 0, y: 0 }) 
-    });
-  }
-
-  function showPerfectMsg() {
-    const el = document.querySelector('.stack-perfect-msg');
-    if (!el) return;
-    gsap.fromTo(el, 
-      { opacity: 1, scale: 0.5, y: 0 }, 
-      { opacity: 0, scale: 2, y: -100, duration: 1, ease: "power2.out" }
-    );
-  }
-
-  function createFallingPiece(x, z, w, d, y, color) {
-    const el = document.createElement('div');
-    el.className = 'stack-block';
-    el.style.width = `${w}px`;
-    el.style.height = `${d}px`;
-    el.style.marginLeft = `-${w/2}px`;
-    el.style.transform = `translateX(${x}px) translateZ(${z}px) translateY(-${y}px)`;
-    
-    el.innerHTML = `<div class="stack-face face-top" style="background:${color}; width:${w}px; height:${d}px;"></div>`;
-    document.getElementById('stack-world').appendChild(el);
-    
-    gsap.to(el, {
-      y: -y + 1000,
-      rotateX: Math.random()*360,
-      rotateZ: Math.random()*360,
-      opacity: 0,
-      duration: 2.5,
-      ease: "power1.in",
-      onComplete: () => el.remove()
-    });
-  }
-
-  function gameOverStack() {
-    stackGameActive = false;
-    toast(`GAME OVER! Altura: ${stackScore}m`);
-    if (stackScore > stackBest) {
-      stackBest = stackScore;
-      localStorage.setItem('tosito_stack_best', stackBest);
-      document.getElementById('stack-best').textContent = `${stackBest}m`;
-    }
-    saveStackScore(stackScore);
-    showWinnerModal('¡TORRE CAÍDA!', `Has alcanzado una altura de ${stackScore} metros.`);
-  }
-
-  async function saveStackScore(score) {
-    if (!currentUser || score <= 0) return;
-    try {
-      await db.collection('stack_ranking').add({
-        uid: currentUser.uid,
-        username: userProfile.username || currentUser.displayName || 'Anónimo',
-        score: score,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      loadStackLeaderboard();
-    } catch(e) { console.error(e); }
-  }
-
-  async function loadStackLeaderboard() {
-    try {
-      const snap = await db.collection('stack_ranking')
-        .orderBy('score', 'desc')
-        .limit(10)
-        .get();
-      
-      const list = document.getElementById('stack-ranking-list');
-      if (!list) return;
-      list.innerHTML = '';
-      
-      if (snap.empty) {
-        list.innerHTML = '<div style="text-align:center; padding:10px; color:var(--muted); font-size:0.8rem;">Sé el primero en el ranking</div>';
-        return;
-      }
-      
-      snap.forEach((doc, i) => {
-        const d = doc.data();
-        list.innerHTML += `
-          <div class="stack-rank-item">
-            <span>${i+1}. <strong>${d.username}</strong></span>
-            <span style="color:#A855F7; font-weight:800;">${d.score}m</span>
-          </div>`;
-      });
-    } catch(e) { console.error(e); }
-  }
 
   // RULES MODAL LOGIC
   window.showRules = function(game) {
@@ -2975,6 +2739,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <button class="btn btn-glass" onclick="closeRules()">Entendido</button>
   </div>
 </div>
+
 
 </body>
 </html>
