@@ -6,7 +6,7 @@
 <title>Tosito Games</title>
 <meta name="description" content="Tosito Games — Ajedrez, Tres en Raya y más. Juega contra IA, compite online, explora aperturas y resuelve puzzles tácticos.">
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;900&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
 
 <style>
 /* ============================================================
@@ -298,30 +298,34 @@ body.nav-open #app-container {
 /* ============================================================
    GAMES HUB SCREEN
    ============================================================ */
+/* ============================================================
+   GAMES HUB - PREMIUM OVERHAUL
+   ============================================================ */
 .hub-hero {
-  position: relative; padding: 4rem 0 3rem; text-align: center;
-  overflow: visible;
+  position: relative; padding: 6rem 1rem 4rem; text-align: center;
+  overflow: visible; z-index: 10;
+  background: url('tosito_games_hero_background_1775740953334.png') no-repeat center center;
+  background-size: cover; border-radius: 40px; margin: 2rem;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.8), inset 0 0 100px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
 }
-.hub-hero::before {
-  content: ''; position: absolute; top: -50%; left: 50%; transform: translateX(-50%);
-  width: 800px; height: 800px;
-  background: radial-gradient(circle, rgba(56,189,248,.1) 0%, transparent 70%);
-  pointer-events: none;
+.hub-hero::after {
+  content: ''; position: absolute; inset: 0; 
+  background: linear-gradient(to bottom, transparent 40%, var(--bg) 95%);
+  border-radius: inherit; pointer-events: none;
 }
 .hub-hero h1 {
-  font-family: 'Outfit',sans-serif;
-  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  font-family: 'Orbitron',sans-serif;
+  font-size: clamp(3rem, 10vw, 5.5rem);
   font-weight: 900;
   color: white;
-  margin-bottom: .8rem; letter-spacing: -2px;
-  background: linear-gradient(to right, #fff 20%, var(--sky) 40%, var(--indigo) 60%, #fff 80%);
-  background-size: 200% auto;
+  margin-bottom: 1rem; letter-spacing: -2px;
+  background: linear-gradient(to bottom, #fff, var(--sky));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shine 4s linear infinite;
-}
-@keyframes shine {
-  to { background-position: 200% center; }
+  text-shadow: 0 0 30px rgba(56,189,248,0.4);
+  filter: drop-shadow(0 10px 10px rgba(0,0,0,0.5));
+  position: relative; z-index: 2;
 }
 .hub-hero .hero-sub { 
   color: var(--muted); font-size: 1.1rem; max-width: 600px; margin: 0 auto 2.5rem; line-height: 1.6; 
@@ -361,22 +365,24 @@ body.nav-open #app-container {
 @media (min-width: 960px) { .hub-games-grid { grid-template-columns: repeat(3,1fr); } }
 
 .hub-card {
-  position: relative; border-radius: 30px; padding: 2.5rem;
-  cursor: pointer;
-  overflow: hidden; display: flex; flex-direction: column; gap: 1.2rem;
-  border: 1px solid rgba(255,255,255,.08); text-align: left;
-  background: rgba(255,255,255,0.03);
-  backdrop-filter: blur(10px);
+  position: relative; border-radius: 34px; padding: 2.8rem;
+  cursor: pointer; overflow: visible; 
+  display: flex; flex-direction: column; gap: 1.4rem;
+  border: 1px solid rgba(255,255,255,.05); text-align: left;
+  background: rgba(15,23,42,0.4);
+  backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
   transform-style: preserve-3d;
-  perspective: 1000px;
-  transition: border-color 0.3s ease;
+  perspective: 1200px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+  transition: border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.hub-card:hover { border-color: rgba(255,255,255,0.2); }
+.hub-card:hover { border-color: var(--sky); }
 
-/* Card Content Floating */
-.hub-card .card-emoji, .hub-card .card-name, .hub-card .card-desc, .hub-card .card-action {
-  transform: translateZ(30px);
-}
+/* Internal Parallax elements */
+.hub-card .card-emoji { transform: translateZ(80px); transition: transform 0.2s ease-out; }
+.hub-card .card-name { transform: translateZ(50px); transition: transform 0.2s ease-out; }
+.hub-card .card-desc { transform: translateZ(30px); transition: transform 0.2s ease-out; opacity: 0.8; }
+.hub-card .card-action { transform: translateZ(60px); transition: transform 0.2s ease-out; }
 
 .hub-card.card-chess {
   background: linear-gradient(135deg, rgba(56,189,248,.08) 0%, rgba(129,140,248,0.02) 100%);
@@ -838,6 +844,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 </head>
 <!-- Ambient Background -->
 <canvas id="bg-canvas"></canvas>
+<canvas id="mesh-canvas" style="position:fixed; inset:0; pointer-events:none; z-index:-1; opacity:0.3;"></canvas>
 
 <!-- ============================================================
      APP LOADER

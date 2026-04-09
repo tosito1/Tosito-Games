@@ -2681,84 +2681,108 @@ async function viewMasterGameFirestore(gameId) {
 /**
  * Sistema de partículas premium en canvas para el fondo.
  */
-function initAmbientBackground() {
-  const canvas = document.getElementById('bg-canvas');
-  if (!canvas || typeof gsap === 'undefined') return;
+/**
+ * Premium Interactive Background Mesh (Neon Grid)
+ */
+function initInteractiveMesh() {
+  const canvas = document.getElementById('mesh-canvas');
+  if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  let w, h, particles = [];
+  let w, h, points = [];
+  const spacing = 40;
+  let mouse = { x: -1000, y: -1000 };
 
   function resize() {
     w = canvas.width = window.innerWidth;
     h = canvas.height = window.innerHeight;
+    initPoints();
   }
 
-  class Particle {
-    constructor() {
-      this.reset();
+  function initPoints() {
+    points = [];
+    for (let x = 0; x < w + spacing; x += spacing) {
+      for (let y = 0; y < h + spacing; y += spacing) {
+        points.push({ x, y, originX: x, originY: y });
+      }
     }
-    reset() {
-      this.x = Math.random() * w;
-      this.y = Math.random() * h;
-      this.size = Math.random() * 2 + 0.5;
-      this.speedX = (Math.random() - 0.5) * 0.5;
-      this.speedY = (Math.random() - 0.5) * 0.5;
-      this.opacity = Math.random() * 0.5 + 0.1;
-      this.pulse = Math.random() * 0.02;
-    }
-    update() {
-      this.x += this.speedX;
-      this.y += this.speedY;
-      this.opacity += this.pulse;
-      if (this.opacity > 0.6 || this.opacity < 0.1) this.pulse *= -1;
-      if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
-    }
-    draw() {
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(56, 189, 248, ${this.opacity})`; // UI Sky Blue
-      ctx.fill();
-    }
-  }
-
-  function init() {
-    resize();
-    particles = Array.from({ length: 40 }, () => new Particle());
   }
 
   function animate() {
     ctx.clearRect(0, 0, w, h);
-    particles.forEach(p => { p.update(); p.draw(); });
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.lineWidth = 0.5;
+
+    points.forEach(p => {
+      const dx = mouse.x - p.originX;
+      const dy = mouse.y - p.originY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const force = Math.max(0, (150 - dist) / 150);
+      
+      p.x = p.originX - dx * force * 0.5;
+      p.y = p.originY - dy * force * 0.5;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = force > 0 ? `rgba(56, 189, 248, ${0.1 + force * 0.4})` : 'rgba(56, 189, 248, 0.1)';
+      ctx.fill();
+    });
+
     requestAnimationFrame(animate);
   }
 
+  window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
   window.addEventListener('resize', resize);
-  init();
+  resize();
   animate();
 }
 
 /**
- * Aplica efectos magnéticos y de brillo a todos los botones.
+ * Advanced 3D Tilt Engine & Juicy UI
  */
 window.initJuicyUI = function() {
   if (typeof gsap === 'undefined') return;
 
-  const buttons = document.querySelectorAll('.btn, .nav-btn, .hub-card, .item-card');
+  const cards = document.querySelectorAll('.hub-card');
+  cards.forEach(card => {
+    if (card._tiltBound) return;
+    card._tiltBound = true;
+
+    card.addEventListener('mousemove', e => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      const rotateX = ((y - centerY) / centerY) * -10;
+      const rotateY = ((x - centerX) / centerX) * 10;
+
+      gsap.to(card, {
+        rotateX: rotateX,
+        rotateY: rotateY,
+        duration: 0.5,
+        ease: "power2.out",
+        overwrite: true
+      });
+      
+      // Update glow position
+      card.style.setProperty('--glow-x', `${x - 75}px`);
+      card.style.setProperty('--glow-y', `${y - 75}px`);
+    });
+
+    card.addEventListener('mouseleave', () => {
+      gsap.to(card, { rotateX: 0, rotateY: 0, duration: 1, ease: "elastic.out(1, 0.3)" });
+    });
+  });
+
+  const buttons = document.querySelectorAll('.btn, .nav-btn, .item-card:not(.hub-card)');
   buttons.forEach(btn => {
     if (btn._juicyBound) return;
     btn._juicyBound = true;
-
-    btn.addEventListener('mouseenter', () => {
-      gsap.to(btn, { scale: 1.05, duration: 0.3, ease: "back.out(2)" });
-    });
-    btn.addEventListener('mouseleave', () => {
-      gsap.to(btn, { scale: 1, duration: 0.3, ease: "power2.out" });
-    });
-    btn.addEventListener('mousedown', () => {
-      gsap.to(btn, { scale: 0.95, duration: 0.1 });
-    });
-    btn.addEventListener('mouseup', () => {
-      gsap.to(btn, { scale: 1.05, duration: 0.2 });
-    });
+    btn.addEventListener('mouseenter', () => gsap.to(btn, { scale: 1.05, duration: 0.3, ease: "back.out(2)" }));
+    btn.addEventListener('mouseleave', () => gsap.to(btn, { scale: 1, duration: 0.3, ease: "power2.out" }));
+    btn.addEventListener('mousedown', () => gsap.to(btn, { scale: 0.95, duration: 0.1 }));
+    btn.addEventListener('mouseup', () => gsap.to(btn, { scale: 1.05, duration: 0.2 }));
   });
 };
 
@@ -2769,25 +2793,26 @@ window.triggerCelebration = function() {
   if (typeof gsap === 'undefined') return;
   toast("✨ ¡VICTORIA EXCEPCIONAL! ✨");
   
-  // Flash effect
   const overlay = document.createElement('div');
   overlay.style.cssText = "position:fixed; inset:0; background:white; z-index:9999; pointer-events:none; opacity:0;";
   document.body.appendChild(overlay);
   
   gsap.to(overlay, { 
-    opacity: 0.3, 
-    duration: 0.1, 
-    repeat: 3, 
-    yoyo: true, 
+    opacity: 0.3, duration: 0.1, repeat: 3, yoyo: true, 
     onComplete: () => overlay.remove() 
   });
-
-  // Simple screen shake
   gsap.to("#app-container", { x: 10, duration: 0.05, repeat: 10, yoyo: true, ease: "none" });
 };
 
 // Global Init on Load
 document.addEventListener('DOMContentLoaded', () => {
   initAmbientBackground();
+  initInteractiveMesh();
   initJuicyUI();
+  
+  // Cinematic Load-in
+  if (typeof gsap !== 'undefined') {
+    gsap.from(".hub-hero h1", { y: 50, opacity: 0, duration: 1.2, ease: "expo.out", delay: 0.5 });
+    gsap.from(".hub-hero .hero-sub", { y: 30, opacity: 0, duration: 1, ease: "power2.out", delay: 0.8 });
+  }
 });
