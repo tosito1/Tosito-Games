@@ -38,7 +38,7 @@ pip-delete-this-directory.txt
 *.egg
 
 # DATA & MODELS (VERY LARGE - EXCLUDED)
-Partidas/
+Partidas/pgnmentor/
 *.pth
 *.pth.tar
 *.h5
