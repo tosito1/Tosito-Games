@@ -882,6 +882,9 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
      target="_blank" class="nav-btn" id="nav-download">
     <span class="icon">📱</span>APP MÓVIL
   </a>
+  <button class="nav-btn" onclick="signOut()" style="color:var(--red); border-top: 1px solid var(--border); margin-top: 10px; padding-top: 15px;">
+    <span class="icon">🚪</span>SALIR
+  </button>
 </nav>
 
 <!-- ============================================================
@@ -896,7 +899,10 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
     <div class="hub-hero">
       <h1>Tosito Games</h1>
       <p class="hero-sub">Tu plataforma de juegos de mesa. Desafía a la IA, compite con amigos y domina cada tablero.</p>
-      <div class="hero-user" onclick="showScreen('profile')" style="cursor:pointer">👤 <span id="hub-username">Cargando...</span></div>
+      <div style="display:flex; justify-content:center; align-items:center; gap:15px; margin-top:1rem;">
+        <div class="hero-user" onclick="showScreen('profile')" style="cursor:pointer; margin:0;">👤 <span id="hub-username">Cargando...</span></div>
+        <button class="btn btn-glass" onclick="signOut()" style="width:auto; padding:6px 14px; font-size:0.75rem; border-color:var(--red); color:var(--red); background:rgba(239,68,68,0.05);">🚪 Cerrar Sesión</button>
+      </div>
     </div>
 
     <div class="hub-games-grid">
