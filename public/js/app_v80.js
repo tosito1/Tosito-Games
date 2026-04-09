@@ -2920,6 +2920,16 @@ window.addEventListener('message', (event) => {
     console.log(`[🕹️] Score received from Cyber Stack: ${score}`);
     updateArcadeRecord('stack', score);
   }
+  if (event.data === 'exit_game') {
+    showScreen('hub');
+    // Clear frame to stop game logic/audio
+    const frame = document.getElementById('hexa-falls-frame');
+    if (frame) frame.src = 'about:blank';
+    
+    // HUB UI RESET: Hub should not have side nav or bottom nav
+    getEl('bottom-nav')?.classList.add('hidden');
+    syncNavOpen(false);
+  }
 });
 
 /**
@@ -2937,6 +2947,32 @@ window.showStackScreen = function() {
     const src = `/cyberstack_game.html?v=${v}&appId=${appId}&config=${config}`;
     
     // Always update src to force reload and avoid cache
+    frame.src = src;
+  }
+};
+
+/**
+ * HEXA FALLS INTEGRATION
+ */
+window.showHexaFallsScreen = function() {
+  showScreen('hexa-falls');
+  
+  const frame = document.getElementById('hexa-falls-frame');
+  if (frame) {
+    const gameAppId = 'hexa-falls-v1';
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig || {}));
+    // Extremely robust name resolution
+    const authUser = firebase.auth().currentUser;
+    const playerName = (userProfile.username && userProfile.username.trim()) || 
+                       (userProfile.displayName && userProfile.displayName.trim()) || 
+                       (authUser && authUser.displayName && authUser.displayName.trim()) || 
+                       (authUser && authUser.email && authUser.email.trim()) || 
+                       'Frijolito';
+    
+    console.log(`[🕹️] Launching Hexa Falls as: ${playerName}`);
+    const v = Date.now();
+    const src = `/hexa-falls.html?v=${v}&appId=${gameAppId}&config=${config}&playerName=${encodeURIComponent(playerName)}`;
+    
     frame.src = src;
   }
 };

@@ -35,6 +35,7 @@
         import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
         import ReactDOM from 'react-dom';
         import { motion, AnimatePresence } from 'framer-motion';
+        import gsap from 'gsap';
         import { 
           Trophy, Gamepad2, Settings, History, Hash, Layout, Zap, 
           Brain, Type, ChevronLeft, RotateCcw, Lightbulb, Play, CheckCircle2, 
@@ -556,7 +557,6 @@
           );
         };
 
-        import gsap from 'gsap';
 
         const Game2048 = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
           const SIZE = 4;
@@ -777,6 +777,7 @@
           const [currentRow, setCurrentRow] = useState(0);
           const [currentGuess, setCurrentGuess] = useState('');
           const [status, setStatus] = useState('playing');
+          const containerRef = useRef(null);
 
           const init = useCallback(() => {
             const w = wordList[Math.floor(Math.random() * wordList.length)].toUpperCase();
@@ -789,12 +790,38 @@
 
           useEffect(() => init(), [init]);
 
+          // Animation: Pop on character entry
+          useLayoutEffect(() => {
+            if (!containerRef.current || currentGuess.length === 0) return;
+            const tile = containerRef.current.querySelector(`[data-row="${currentRow}"][data-col="${currentGuess.length - 1}"]`);
+            if (tile) {
+              gsap.fromTo(tile, { scale: 0.9 }, { scale: 1, duration: 0.1, ease: "back.out(2)" });
+            }
+          }, [currentGuess]);
+
+          // Animation: Flip on row submit
+          useLayoutEffect(() => {
+            if (!containerRef.current || currentRow === 0) return;
+            const tiles = containerRef.current.querySelectorAll(`[data-row="${currentRow - 1}"]`);
+            if (tiles.length > 0) {
+              gsap.to(tiles, { 
+                rotateX: 360, 
+                stagger: 0.1, 
+                duration: 0.6, 
+                ease: "power2.inOut",
+                onComplete: () => gsap.set(tiles, { rotateX: 0 }) 
+              });
+            }
+          }, [currentRow]);
+
           const submitGuess = () => {
             if (currentGuess.length !== target.length) return;
             const newGuesses = [...guesses];
             newGuesses[currentRow] = currentGuess;
             setGuesses(newGuesses);
-            if (currentGuess === target) {
+            const isWin = currentGuess === target;
+            
+            if (isWin) {
               setStatus('won');
               onScoreUpdate(500);
               setTimeout(onLevelUp, 1500);
@@ -823,17 +850,32 @@
           return (
             <div className="flex flex-col items-center gap-6">
               <LevelBadge level={currentLevel} />
-              <div className="grid gap-2">
+              
+              <div 
+                ref={containerRef}
+                className="grid gap-2 bg-black/40 p-5 rounded-[2.5rem] border border-white/5 shadow-2xl backdrop-blur-md w-[300px] md:w-[400px]"
+              >
                 {guesses.map((g, i) => (
-                  <div key={i} className="flex gap-2">
-                    {Array.from({ length: target.length }).map((_, j) => {
+                  <div 
+                    key={i} 
+                    className="grid gap-2" 
+                    style={{ gridTemplateColumns: `repeat(${target.length || 5}, minmax(0, 1fr))` }}
+                  >
+                    {Array.from({ length: target.length || 5 }).map((_, j) => {
                       const isCurrent = i === currentRow;
                       const char = isCurrent ? currentGuess[j] : g[j];
                       const style = g ? (target[j] === g[j] ? 'bg-green-500 border-green-400' : target.includes(g[j]) ? 'bg-yellow-500 border-yellow-400' : 'bg-gray-700 border-gray-600 opacity-50') : (isCurrent && j < currentGuess.length ? 'border-indigo-500 bg-indigo-500/10' : 'bg-white/5 border-white/10');
+                      
                       return (
-                        <motion.div key={j} animate={g ? { rotateX: 360 } : {}} className={`w-10 h-10 md:w-12 md:h-12 border-2 rounded-xl flex items-center justify-center text-xl font-black ${style}`}>
+                        <div 
+                          key={j} 
+                          data-row={i} 
+                          data-col={j}
+                          className={`w-10 h-10 md:w-14 md:h-14 border-2 rounded-xl flex items-center justify-center text-xl md:text-2xl font-black transition-colors duration-500 ${style}`}
+                          style={{ transformStyle: 'preserve-3d' }}
+                        >
                           {char}
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -854,11 +896,38 @@
           const [grid, setGrid] = useState(Array(81).fill(0));
           const [initial, setInitial] = useState(Array(81).fill(false));
           const [selected, setSelected] = useState(null);
-          const holes = Math.min(35 + currentLevel * 5, 65);
+          const holes = Math.max(30, Math.min(30 + currentLevel * 5, 60));
+          const containerRef = useRef(null);
 
           const generate = useCallback(() => {
-            const base = [5,3,4,6,7,8,9,1,2,6,7,2,1,9,5,3,4,8,1,9,8,3,4,2,5,6,7,8,5,9,7,6,1,4,2,3,4,2,6,8,5,3,7,9,1,7,1,3,9,2,4,8,5,6,9,6,1,5,3,7,2,8,4,2,8,7,4,1,9,6,3,5,3,4,5,2,8,6,1,7,9];
-            const n = [...base];
+            // Base valid grid
+            let board = [
+              5,3,4, 6,7,8, 9,1,2,
+              6,7,2, 1,9,5, 3,4,8,
+              1,9,8, 3,4,2, 5,6,7,
+              8,5,9, 7,6,1, 4,2,3,
+              4,2,6, 8,5,3, 7,9,1,
+              7,1,3, 9,2,4, 8,5,6,
+              9,6,1, 5,3,7, 2,8,4,
+              2,8,7, 4,1,9, 6,3,5,
+              3,4,5, 2,8,6, 1,7,9
+            ];
+
+            // 1. Remap digits
+            const digits = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+            board = board.map(v => digits[v - 1]);
+
+            // 2. Shuffle rows/cols within blocks
+            for (let i = 0; i < 3; i++) {
+              // Swap rows (within 3s)
+              const r1 = i * 3 + Math.floor(Math.random() * 3);
+              const r2 = i * 3 + Math.floor(Math.random() * 3);
+              const tempR = board.slice(r1 * 9, r1 * 9 + 9);
+              board.splice(r1 * 9, 9, ...board.slice(r2 * 9, r2 * 9 + 9));
+              board.splice(r2 * 9, 9, ...tempR);
+            }
+
+            const n = [...board];
             const isI = Array(81).fill(true);
             let h = 0;
             while (h < holes) {
@@ -867,39 +936,124 @@
             }
             setGrid(n);
             setInitial(isI);
+            setSelected(null);
           }, [holes]);
 
           useEffect(() => generate(), [generate]);
+
+          const isInvalid = (idx, val) => {
+            if (val === 0) return false;
+            const r = Math.floor(idx / 9), c = idx % 9;
+            // Row & Col
+            for (let i = 0; i < 9; i++) {
+              if (i !== c && grid[r * 9 + i] === val) return true;
+              if (i !== r && grid[i * 9 + c] === val) return true;
+            }
+            // Block
+            const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+            for (let i = 0; i < 3; i++) {
+              for (let j = 0; j < 3; j++) {
+                const curIdx = (br + i) * 9 + (bc + j);
+                if (curIdx !== idx && grid[curIdx] === val) return true;
+              }
+            }
+            return false;
+          };
+
+          const checkWin = (currentGrid) => {
+            if (currentGrid.includes(0)) return false;
+            for (let i = 0; i < 81; i++) {
+              const r = Math.floor(i / 9), c = i % 9;
+              const v = currentGrid[i];
+              // Re-check logic for win
+              for (let j = 0; j < 9; j++) {
+                if (j !== c && currentGrid[r * 9 + j] === v) return false;
+                if (j !== r && currentGrid[j * 9 + c] === v) return false;
+              }
+              const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+              for (let k = 0; k < 3; k++) {
+                for (let l = 0; l < 3; l++) {
+                  const cIdx = (br + k) * 9 + (bc + l);
+                  if (cIdx !== i && currentGrid[cIdx] === v) return false;
+                }
+              }
+            }
+            return true;
+          };
 
           const onNumInput = (num) => {
             if (selected === null || initial[selected]) return;
             const n = [...grid];
             n[selected] = num;
             setGrid(n);
-            onScoreUpdate(10);
-            if (!n.includes(0)) { onScoreUpdate(2000); onLevelUp(); }
+            
+            if (containerRef.current) {
+              const cell = containerRef.current.querySelector(`[data-idx="${selected}"]`);
+              if (cell && window.gsap) {
+                window.gsap.fromTo(cell, { scale: 0.8, backgroundColor: '#4f46e5' }, { scale: 1, backgroundColor: 'transparent', duration: 0.3 });
+              }
+            }
+
+            if (!n.includes(0) && checkWin(n)) {
+              onScoreUpdate(2000);
+              onLevelUp();
+            }
           };
 
+          // Keyboard support
+          useEffect(() => {
+            const handleKey = (e) => {
+              if (e.key >= '1' && e.key <= '9') onNumInput(parseInt(e.key));
+              if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') onNumInput(0);
+            };
+            window.addEventListener('keydown', handleKey);
+            return () => window.removeEventListener('keydown', handleKey);
+          }, [selected, grid, initial]);
+
           return (
-            <div className="flex flex-col items-center gap-6">
+            <div className="flex flex-col items-center gap-6 select-none">
               <LevelBadge level={currentLevel} />
-              <div className="grid grid-cols-9 bg-gray-900 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl">
+              
+              <div 
+                ref={containerRef}
+                className="grid grid-cols-9 bg-gray-900/80 border-2 border-white/20 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl p-1"
+              >
                 {grid.map((v, i) => {
                   const r = Math.floor(i / 9), c = i % 9;
-                  const bR = (r + 1) % 3 === 0 && r < 8 ? 'border-b-2 border-white/40' : 'border-b border-white/5';
-                  const bC = (c + 1) % 3 === 0 && c < 8 ? 'border-r-2 border-white/40' : 'border-r border-white/5';
+                  const isSel = selected === i;
+                  const isRelated = selected !== null && (Math.floor(selected / 9) === r || selected % 9 === c);
+                  const invalid = isInvalid(i, v);
+                  
+                  const borderR = (c + 1) % 3 === 0 && c < 8 ? 'border-r-2 border-white/40' : 'border-r border-white/5';
+                  const borderB = (r + 1) % 3 === 0 && r < 8 ? 'border-b-2 border-white/40' : 'border-b border-white/5';
+                  
                   return (
-                    <div key={i} onClick={() => setSelected(i)} className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-xs md:text-sm font-bold cursor-pointer ${bR} ${bC} ${selected === i ? 'bg-indigo-600' : initial[i] ? 'bg-white/5 text-gray-400' : 'bg-transparent text-indigo-400'}`}>
+                    <div 
+                      key={i} 
+                      data-idx={i}
+                      onClick={() => setSelected(i)}
+                      className={`
+                        w-8 h-8 md:w-11 md:h-11 flex items-center justify-center text-sm md:text-lg font-black cursor-pointer transition-all duration-200
+                        ${borderR} ${borderB}
+                        ${isSel ? 'bg-indigo-600 text-white scale-105 z-10 shadow-lg' : isRelated ? 'bg-white/5' : 'bg-transparent'}
+                        ${initial[i] ? 'text-gray-400' : invalid ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'text-indigo-400'}
+                      `}
+                    >
                       {v !== 0 ? v : ''}
                     </div>
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-1 justify-center max-w-[320px]">
+
+              <div className="flex flex-wrap gap-1.5 justify-center max-w-[340px]">
                 {[1,2,3,4,5,6,7,8,9,0].map(n => (
-                  <Button key={n} onClick={() => onNumInput(n)} variant="secondary" className="w-9 h-9 md:w-10 md:h-10 p-0 text-xs">
-                    {n === 0 ? 'X' : n}
-                  </Button>
+                  <button 
+                    key={n} 
+                    onClick={() => onNumInput(n)}
+                    className="w-10 h-10 md:w-11 md:h-11 flex items-center justify-center bg-white/10 hover:bg-indigo-600 hover:scale-110 rounded-xl text-lg font-black text-white transition-all active:scale-90 border border-white/5 shadow-lg"
+                  >
+                    {n === 0 ? <RotateCcw size={18} /> : n}
+                  </button>
                 ))}
               </div>
             </div>

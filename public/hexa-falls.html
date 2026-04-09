@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hexa Falls | Tosito Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #0f0f1b; font-family: 'Inter', sans-serif; }
+        canvas { display: block; touch-action: none; }
+        ::-webkit-scrollbar { display: none; }
+        * { -webkit-tap-highlight-color: transparent; outline: none !important; }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import ReactDOM from 'react-dom';
+        import { initializeApp } from 'firebase/app';
+        import { 
+          getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, 
+          deleteDoc, query, getDocs, serverTimestamp, runTransaction 
+        } from 'firebase/firestore';
+        import { 
+          getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+        } from 'firebase/auth';
+        import { 
+          Trophy, Users, Play, ArrowLeft, Gamepad2, User, LogOut, 
+          RefreshCw, Zap, ArrowUp, Ghost, Gift, RotateCcw
+        } from 'lucide-react';
+
+        // --- URL PARAMS & CONFIG ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const configRaw = urlParams.get('config');
+        const firebaseConfig = configRaw ? JSON.parse(decodeURIComponent(configRaw)) : {};
+        const PLATFORM_PLAYER_NAME = urlParams.get('playerName') || `Frijol ${Math.floor(Math.random() * 999)}`;
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = urlParams.get('appId') || 'fall-guys-clone-v2';
+
+        // --- CONSTANTES DEL MUNDO ---
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 700; 
+        const GRID_COLS = 35; 
+        const GRID_ROWS = 10; 
+        const TILE_SIZE = 64; 
+        const FLOOR_GAP = 130; 
+        const MAP_MARGIN_X = 200; 
+        const MAP_MARGIN_Y = 150;
+        const MAP_WIDTH = GRID_COLS * TILE_SIZE;
+        const MAP_HEIGHT = GRID_ROWS * FLOOR_GAP;
+
+        const PLAYER_SIZE = 16;
+        const GRAVITY = 0.55; 
+        const JUMP_FORCE = -9.2; 
+        const MOVE_SPEED = 6;
+        const COLORS = ['#FF4D4D', '#33FF57', '#3357FF', '#F333FF', '#FF33A8', '#33FFF3', '#FFB733'];
+        const EMOTES = ['😂', '😡', '💀', '👑'];
+
+        const FLOOR_COLORS = [
+          { top: '#34d399', side: '#059669' }, 
+          { top: '#60a5fa', side: '#2563eb' }, 
+          { top: '#c084fc', side: '#9333ea' }, 
+          { top: '#facc15', side: '#ca8a04' }, 
+          { top: '#fb923c', side: '#ea580c' }, 
+          { top: '#f87171', side: '#dc2626' }  
+        ];
+
+        const generateRoomId = () => Math.random().toString(36).substring(2, 7).toUpperCase();
+
+        // --- MOTOR DE SONIDO (8-bit synth) ---
+        let audioCtx = null;
+        const initAudio = () => {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+        };
+
+        const playTone = (freq, type, duration, vol=0.1) => {
+          if (!audioCtx) return;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        };
+
+        const SoundEngine = {
+          jump: () => {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+          },
+          dive: () => playTone(150, 'triangle', 0.2, 0.1),
+          hit: () => playTone(100, 'square', 0.15, 0.15),
+          powerup: () => {
+            playTone(400, 'sine', 0.1, 0.1);
+            setTimeout(() => playTone(600, 'sine', 0.1, 0.1), 100);
+            setTimeout(() => playTone(800, 'sine', 0.2, 0.1), 200);
+          },
+          death: () => {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.5);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+          },
+          win: () => {
+            [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+              setTimeout(() => playTone(freq, 'square', 0.2, 0.1), i * 150);
+            });
+          },
+          step: () => playTone(400, 'sine', 0.05, 0.01)
+        };
+
+        // --- CLASES ---
+        class Particle {
+          constructor(x, y, color, speedScale = 1) {
+            this.x = x; this.y = y;
+            this.vx = (Math.random() - 0.5) * 6 * speedScale;
+            this.vy = (Math.random() - 0.5) * 6 * speedScale - (speedScale > 1 ? 5 : 1);
+            this.life = 1.0;
+            this.decay = Math.random() * 0.03 + 0.01;
+            this.color = color;
+            this.size = Math.random() * 5 + 2;
+          }
+          update() {
+            this.x += this.vx; this.y += this.vy;
+            this.vy += 0.1; this.life -= this.decay;
+          }
+          draw(ctx) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, this.life);
+            ctx.fillStyle = this.color;
+            ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        class Hammer {
+          constructor(x, y, length = 80) {
+            this.x = x; this.y = y; this.length = length;
+            this.angle = Math.random() * Math.PI * 2;
+            this.speed = 0.05 + Math.random() * 0.03;
+          }
+          update() { this.angle += this.speed; }
+          draw(ctx) {
+            const endX = this.x + Math.cos(this.angle) * this.length;
+            const endY = this.y + Math.sin(this.angle) * this.length;
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(endX, endY); ctx.stroke();
+            ctx.fillStyle = '#ef4444'; ctx.save(); ctx.translate(endX, endY); ctx.rotate(this.angle);
+            ctx.beginPath(); ctx.roundRect(-15, -25, 30, 50, 5); ctx.fill(); ctx.restore();
+          }
+        }
+
+        class Pendulum {
+          constructor(x, y, length = 150) {
+            this.x = x; this.y = y; this.length = length;
+            this.angle = 0; this.speed = 0.03 + Math.random() * 0.02;
+            this.time = Math.random() * 100;
+          }
+          update() {
+            this.time += this.speed;
+            this.angle = Math.sin(this.time) * (Math.PI / 2.5);
+          }
+          draw(ctx) {
+            const endX = this.x + Math.sin(this.angle) * this.length;
+            const endY = this.y + Math.cos(this.angle) * this.length;
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(endX, endY); ctx.stroke();
+            ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(endX, endY, 25, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+
+        function App() {
+          const [user, setUser] = useState(null);
+          const [screen, setScreen] = useState('home');
+          const [roomId, setRoomId] = useState('');
+          const [roomData, setRoomData] = useState(null);
+          const [players, setPlayers] = useState({});
+          const [winner, setWinner] = useState(null);
+          const [playerName, setPlayerName] = useState(PLATFORM_PLAYER_NAME);
+          
+          const canvasRef = useRef(null);
+          const particlesRef = useRef([]); 
+          const hammersRef = useRef([]);
+          const pendulumsRef = useRef([]);
+          const tileTimersRef = useRef({}); 
+          const spectatorIndexRef = useRef(0);
+          const cameraRef = useRef({ x: MAP_MARGIN_X, y: 0, targetX: MAP_MARGIN_X, targetY: 0, shake: 0 });
+          const sludgeLevelRef = useRef(0);
+          const windEffectRef = useRef({ force: 0, timer: 0 });
+
+          const roomDataRef = useRef(null);
+          const playersRefState = useRef({});
+
+          const gameStateRef = useRef({
+            x: MAP_MARGIN_X + MAP_WIDTH / 2, 
+            y: 20, vx: 0, vy: 0,
+            isGrounded: false,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            lastUpdate: 0, isDead: false,
+            emote: null, emoteTime: 0,
+            isDiving: false, facingRight: true, lastDive: 0,
+            friction: 0.8,
+            powerUp: null, powerUpTime: 0
+          });
+
+          const keys = useRef({});
+
+          useEffect(() => { roomDataRef.current = roomData; }, [roomData]);
+          useEffect(() => { playersRefState.current = players; }, [players]);
+
+          useEffect(() => {
+            const unsub = onAuthStateChanged(auth, u => {
+              if (u) setUser(u);
+              else signInAnonymously(auth).catch(console.error);
+            });
+            return () => unsub();
+          }, []);
+
+          useEffect(() => {
+            if (!user || !roomId || screen === 'home') return;
+            const roomRef = doc(db, 'rooms', roomId);
+            const playersRef = collection(db, 'rooms', roomId, 'players');
+
+            const unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
+              if (snapshot.exists()) {
+                const data = snapshot.data();
+                setRoomData(data);
+                if (data.status === 'playing' && screen === 'lobby') {
+                  gameStateRef.current.x = MAP_MARGIN_X + (MAP_WIDTH / 2) + (Math.random() * 800 - 400);
+                  gameStateRef.current.y = MAP_MARGIN_Y - 250;
+                  gameStateRef.current.vx = 0; gameStateRef.current.vy = 0; gameStateRef.current.isDead = false;
+                  sludgeLevelRef.current = -200; 
+                  
+                  const h = []; const p = [];
+                  for(let i = 1; i < GRID_ROWS - 1; i++) {
+                    for(let j = 0; j < 2; j++) h.push(new Hammer(MAP_MARGIN_X + (MAP_WIDTH * (j + 1) / 3), MAP_MARGIN_Y + (i * FLOOR_GAP) + 30));
+                    p.push(new Pendulum(MAP_MARGIN_X + (MAP_WIDTH * Math.random()), MAP_MARGIN_Y + (i * FLOOR_GAP) - 20));
+                  }
+                  hammersRef.current = h; pendulumsRef.current = p;
+                  setScreen('game');
+                }
+                if (data.status === 'finished') { setWinner(data.winner); setScreen('results'); }
+              }
+            });
+
+            const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
+              const next = {};
+              snapshot.forEach(doc => { next[doc.id] = doc.data(); });
+              setPlayers(next);
+            });
+
+            return () => { unsubscribeRoom(); unsubscribePlayers(); };
+          }, [user, roomId, screen]);
+
+          useEffect(() => {
+            if (screen !== 'game' || !user || !roomId) return;
+            const interval = setInterval(async () => {
+              const myRef = doc(db, 'rooms', roomId, 'players', user.uid);
+              try {
+                const s = gameStateRef.current;
+                await setDoc(myRef, {
+                  x: s.x, y: s.y, vx: s.vx, vy: s.vy,
+                  isDead: s.isDead, facingRight: s.facingRight, isDiving: s.isDiving,
+                  emote: s.emote, emoteTime: s.emoteTime,
+                  powerUp: s.powerUp, powerUpTime: s.powerUpTime,
+                  lastSeen: serverTimestamp()
+                }, { merge: true });
+              } catch (e) {}
+            }, 100);
+            return () => clearInterval(interval);
+          }, [screen, user, roomId]);
+
+          const createRoom = async () => {
+            initAudio();
+            const id = generateRoomId();
+            const grid = [];
+            for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
+              let type = 0;
+              if (Math.random() > 0.94) type = 1; 
+              else if (Math.random() > 0.88) type = 2; 
+              grid.push({ id: i, state: 'normal', type, hasBox: Math.random() > 0.95 });
+            }
+            const roomRef = doc(db, 'rooms', id);
+            await setDoc(roomRef, { id, status: 'lobby', grid, host: user.uid, createdAt: serverTimestamp() });
+            await joinRoom(id);
+          };
+
+          const joinRoom = async (id) => {
+            initAudio();
+            const target = id.toUpperCase();
+            const pRef = doc(db, 'rooms', target, 'players', user.uid);
+            await setDoc(pRef, { id: user.uid, name: playerName, color: gameStateRef.current.color, x: MAP_MARGIN_X + MAP_WIDTH / 2, y: 100, isDead: false });
+            setRoomId(target); setScreen('lobby');
+          };
+
+          const startGame = async () => {
+            if (!roomId) return;
+            await updateDoc(doc(db, 'rooms', roomId), { status: 'playing' });
+          };
+
+          const handleTileStepped = async (idx) => {
+            if (tileTimersRef.current[idx]) return;
+            tileTimersRef.current[idx] = Date.now();
+            try {
+              await runTransaction(db, async (t) => {
+                const snap = await t.get(doc(db, 'rooms', roomId));
+                const grid = snap.data().grid;
+                if (grid[idx].state === 'normal') { grid[idx].state = 'stepping'; t.update(snap.ref, { grid }); }
+              });
+            } catch (e) {}
+            setTimeout(async () => {
+              try {
+                await runTransaction(db, async (t) => {
+                  const snap = await t.get(doc(db, 'rooms', roomId));
+                  const grid = snap.data().grid;
+                  if (grid[idx].state !== 'broken') { grid[idx].state = 'broken'; t.update(snap.ref, { grid }); }
+                });
+              } catch (e) {}
+            }, 1200);
+          };
+
+          const checkGameEnd = async () => {
+            if (roomDataRef.current?.status !== 'playing') return;
+            const alive = Object.values(playersRefState.current).filter(p => !p.isDead && p.id !== user.uid);
+            if (alive.length === 0) {
+              await updateDoc(doc(db, 'rooms', roomId), { 
+                status: 'finished', 
+                winner: { name: playerName, color: gameStateRef.current.color } 
+              });
+            }
+          };
+
+          const updatePhysics = () => {
+            const state = gameStateRef.current;
+            if (state.isDead) return;
+
+            windEffectRef.current.timer++;
+            if (windEffectRef.current.timer > 800) {
+               windEffectRef.current.force = Math.sin(Date.now() / 500) * 1.8;
+               if (windEffectRef.current.timer > 1100) { windEffectRef.current.timer = 0; windEffectRef.current.force = 0; }
+            }
+            state.vx += windEffectRef.current.force;
+
+            Object.values(playersRefState.current).forEach(p => {
+              if (p.id === user.uid || p.isDead) return;
+              const dx = state.x - p.x; const dy = state.y - p.y;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              if (dist < PLAYER_SIZE * 2) { state.vx += (dx / dist) * 0.3; }
+            });
+
+            const isGhost = state.powerUp === 'ghost' && (Date.now() - state.powerUpTime < 5000);
+            if (!isGhost) {
+              [...hammersRef.current, ...pendulumsRef.current].forEach(obs => {
+                let ox = obs.x + Math.cos(obs.angle) * obs.length; 
+                let oy = obs.y + Math.sin(obs.angle) * (obs instanceof Hammer ? obs.length : Math.cos(obs.angle) * obs.length);
+                const dist = Math.sqrt((state.x - ox)**2 + (state.y - oy)**2);
+                if (dist < PLAYER_SIZE + 20) {
+                  state.vx = (state.x - ox) * 0.9; state.vy = -7;
+                  cameraRef.current.shake = 15; state.isDiving = false;
+                  SoundEngine.hit();
+                  for(let i=0; i<5; i++) particlesRef.current.push(new Particle(state.x, state.y, '#ef4444', 2));
+                }
+              });
+            }
+
+            let moveX = 0;
+            if (keys.current['KeyA'] || keys.current['ArrowLeft']) moveX -= 1;
+            if (keys.current['KeyD'] || keys.current['ArrowRight']) moveX += 1;
+
+            const currentSpeed = (state.powerUp === 'speed' && Date.now() - state.powerUpTime < 5000) ? MOVE_SPEED * 1.7 : MOVE_SPEED;
+            if (moveX !== 0) { state.vx += moveX * 0.85; state.facingRight = moveX > 0; }
+            state.vx *= state.isGrounded ? state.friction : 0.98;
+            if (Math.abs(state.vx) > currentSpeed && !state.isDiving) state.vx *= 0.85;
+
+            const jumpForce = (state.powerUp === 'jump' && Date.now() - state.powerUpTime < 5000) ? JUMP_FORCE * 1.6 : JUMP_FORCE;
+            if (keys.current['Space'] && state.isGrounded) { state.vy = jumpForce; state.isGrounded = false; SoundEngine.jump(); }
+            if (keys.current['ShiftLeft'] && !state.isDiving && !state.isGrounded && Date.now() - state.lastDive > 1000) {
+              state.isDiving = true; state.lastDive = Date.now();
+              state.vy = -3.5; state.vx = (state.facingRight ? 1 : -1) * 11;
+              SoundEngine.dive();
+            }
+
+            state.vy += GRAVITY; if (state.vy > 22) state.vy = 22;
+            state.x += state.vx; state.y += state.vy;
+
+            if (roomDataRef.current?.status === 'playing') sludgeLevelRef.current += 0.22;
+            const sludgeY = MAP_MARGIN_Y + MAP_HEIGHT + 50 - sludgeLevelRef.current;
+            if (state.y + PLAYER_SIZE > sludgeY) { 
+              if (!state.isDead) SoundEngine.death();
+              state.isDead = true; checkGameEnd(); 
+            }
+
+            const wasGrounded = state.isGrounded;
+            state.isGrounded = false; state.friction = 0.84;
+            const grid = roomDataRef.current?.grid;
+            if (grid) {
+              grid.forEach((tile, index) => {
+                const timer = tileTimersRef.current[index];
+                if (tile.state === 'broken' || (timer && Date.now() - timer > 1200)) return;
+                const tx = MAP_MARGIN_X + (index % GRID_COLS) * TILE_SIZE;
+                let ty = MAP_MARGIN_Y + Math.floor(index / GRID_COLS) * FLOOR_GAP;
+                if (timer) { const el = Date.now() - timer; if (el > 800) ty += (el - 800) / 20; }
+
+                if (state.x + PLAYER_SIZE > tx + 4 && state.x - PLAYER_SIZE < tx + TILE_SIZE - 4 &&
+                    state.y + PLAYER_SIZE > ty && state.y + PLAYER_SIZE < ty + 30 && state.vy >= 0) {
+                  if (!wasGrounded) { if (state.vy > 12) SoundEngine.hit(); else SoundEngine.step(); }
+                  state.y = ty - PLAYER_SIZE; state.vy = 0; state.isGrounded = true;
+                  if (state.isDiving) state.isDiving = false;
+                  if (tile.type === 1) { state.vy = -17; state.isGrounded = false; SoundEngine.jump(); }
+                  if (tile.type === 2) state.friction = 0.988;
+                  if (tile.state === 'normal') handleTileStepped(index);
+                  if (tile.hasBox) {
+                    const types = ['speed', 'jump', 'ghost'];
+                    state.powerUp = types[Math.floor(Math.random() * types.length)];
+                    state.powerUpTime = Date.now(); tile.hasBox = false;
+                    SoundEngine.powerup();
+                  }
+                }
+              });
+            }
+            if (state.x < MAP_MARGIN_X) state.x = MAP_MARGIN_X;
+            if (state.x > MAP_MARGIN_X + MAP_WIDTH) state.x = MAP_MARGIN_X + MAP_WIDTH;
+          };
+
+          useEffect(() => {
+            if (screen !== 'game') return;
+            const canvas = canvasRef.current; const ctx = canvas.getContext('2d');
+            let frame;
+
+            const drawBean = (ctx, x, y, color, isMe, state) => {
+              ctx.save(); ctx.translate(x, y);
+              const alpha = (state?.powerUp === 'ghost' && Date.now() - state.powerUpTime < 5000) ? 0.3 : 1;
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(0, PLAYER_SIZE, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+              if (state?.isDiving) ctx.rotate((state.facingRight ? 1 : -1) * Math.PI / 2.2);
+              if (state?.powerUp && Date.now() - state.powerUpTime < 5000) {
+                 ctx.strokeStyle = state.powerUp === 'speed' ? '#fbbf24' : state.powerUp === 'jump' ? '#ec4899' : '#ffffff';
+                 ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, PLAYER_SIZE + 10, 0, Math.PI * 2); ctx.stroke();
+              }
+              ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(-14, -20, 28, 38, 14); ctx.fill();
+              ctx.fillStyle = 'white'; ctx.beginPath(); const v = (state?.vy || 0) > 4 ? -2 : (state?.vy || 0) < -4 ? 2 : 0;
+              ctx.roundRect(-10, -4 + v, 20, 10, 5); ctx.fill();
+              ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(-4, v, 2, 0, Math.PI * 2); ctx.arc(4, v, 2, 0, Math.PI * 2); ctx.fill();
+              ctx.restore();
+              if (isMe) { ctx.fillStyle = 'white'; ctx.font = 'bold 12px Inter'; ctx.textAlign = 'center'; ctx.fillText("TÚ", x, y - 35); }
+            };
+
+            const render = () => {
+              updatePhysics();
+              const s = gameStateRef.current; const cam = cameraRef.current; const time = Date.now() / 1000;
+              let tX = s.x, tY = s.y;
+              if (s.isDead) {
+                const alive = Object.values(playersRefState.current).filter(p => !p.isDead);
+                if (alive.length > 0) { const p = alive[Math.abs(spectatorIndexRef.current) % alive.length]; tX = p.x; tY = p.y; }
+              }
+              cam.targetX = tX - CANVAS_WIDTH / 2; cam.targetY = tY - CANVAS_HEIGHT / 2 + 100;
+              cam.x += (cam.targetX - cam.x) * 0.12; cam.y += (cam.targetY - cam.y) * 0.12; cam.shake *= 0.9;
+
+              ctx.fillStyle = '#1e1b4b'; ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+              ctx.save(); ctx.translate(-cam.x + (Math.random()-0.5)*cam.shake, -cam.y + (Math.random()-0.5)*cam.shake);
+
+              const slY = MAP_MARGIN_Y + MAP_HEIGHT + 50 - sludgeLevelRef.current;
+              ctx.fillStyle = 'rgba(236, 72, 153, 0.9)'; const w = Math.sin(time * 2) * 15;
+              ctx.beginPath(); ctx.rect(cam.x - 200, slY + w, CANVAS_WIDTH + 400, 1000); ctx.fill();
+
+              const grid = roomDataRef.current?.grid;
+              if (grid) {
+                grid.forEach((tile, index) => {
+                  const timer = tileTimersRef.current[index];
+                  if (tile.state === 'broken' || (timer && Date.now() - timer > 1200)) return;
+                  let tx = MAP_MARGIN_X + (index % GRID_COLS) * TILE_SIZE, ty = MAP_MARGIN_Y + Math.floor(index / GRID_COLS) * FLOOR_GAP;
+                  if (tx+TILE_SIZE < cam.x-100 || tx > cam.x+CANVAS_WIDTH+100 || ty+150 < cam.y-100 || ty > cam.y+CANVAS_HEIGHT+100) return;
+                  if (timer) { const el = Date.now() - timer; tx += Math.sin(el/20)*(el/300); if (el>800) ty+=(el-800)/20; }
+                  const col = FLOOR_COLORS[Math.min(Math.floor(index/GRID_COLS), 5)];
+                  ctx.fillStyle = col.side; ctx.beginPath(); ctx.roundRect(tx+4, ty+14, TILE_SIZE-8, TILE_SIZE-8, 12); ctx.fill();
+                  ctx.fillStyle = (tile.state === 'stepping') ? '#fbbf24' : (tile.type === 1 ? '#facc15' : (tile.type === 2 ? '#22d3ee' : col.top));
+                  ctx.beginPath(); ctx.roundRect(tx+4, ty+4, TILE_SIZE-8, TILE_SIZE-8, 12); ctx.fill();
+                  if (tile.hasBox) { ctx.fillStyle = 'white'; ctx.font = '24px Arial'; ctx.textAlign = 'center'; ctx.fillText('?', tx+TILE_SIZE/2, ty+TILE_SIZE/2+8); }
+                });
+              }
+
+              hammersRef.current.forEach(h => { h.update(); h.draw(ctx); });
+              pendulumsRef.current.forEach(p => { p.update(); p.draw(ctx); });
+              particlesRef.current.forEach(p => { p.update(); p.draw(ctx); });
+              particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+
+              Object.entries(playersRefState.current).forEach(([pid, p]) => { if (pid !== user.uid && !p.isDead) drawBean(ctx, p.x, p.y, p.color, false, p); });
+              if (!s.isDead) drawBean(ctx, s.x, s.y, s.color, true, s);
+              ctx.restore();
+              if (windEffectRef.current.force !== 0) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = 'bold 24px Inter'; ctx.textAlign = 'center'; ctx.fillText("🌪️ VIENTO FUERTE", CANVAS_WIDTH/2, 100); }
+              frame = requestAnimationFrame(render);
+            };
+            render(); return () => cancelAnimationFrame(frame);
+          }, [screen, user]);
+
+          useEffect(() => {
+            const down = e => { 
+                keys.current[e.code] = true;
+                if (e.code.startsWith('Digit') && !gameStateRef.current.isDead) { gameStateRef.current.emote = EMOTES[parseInt(e.code.slice(-1))-1]; gameStateRef.current.emoteTime = Date.now(); }
+                if (gameStateRef.current.isDead) { if (e.code === 'ArrowRight' || e.code === 'KeyD') spectatorIndexRef.current++; if (e.code === 'ArrowLeft' || e.code === 'KeyA') spectatorIndexRef.current--; }
+            };
+            const up = e => keys.current[e.code] = false;
+            window.addEventListener('keydown', down); window.addEventListener('keyup', up);
+            return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+          }, []);
+
+          if (!user) return <div className="h-screen flex flex-col items-center justify-center bg-indigo-950 text-white"><RefreshCw className="animate-spin mb-4" size={48}/> <p className="text-xl font-bold">Conectando con la Arena...</p></div>;
+
+          return (
+            <div className="min-h-screen bg-[#0f0f1b] text-slate-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
+              <button onClick={() => window.parent.postMessage('exit_game', '*')} className="fixed top-4 right-4 z-[100] bg-white/10 hover:bg-red-500/20 p-3 rounded-2xl border border-white/10 transition-all">
+                <ArrowLeft size={24} />
+              </button>
+
+              {screen === 'home' && (
+                <div className="flex flex-col items-center justify-center min-h-screen p-6">
+                  <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
+                     <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-[120px] animate-pulse"></div>
+                     <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500 rounded-full blur-[120px] animate-pulse" style={{animationDelay: '1s'}}></div>
+                  </div>
+                  <h1 className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-400 to-pink-400 mb-2 drop-shadow-2xl italic">HEXA FALLS</h1>
+                  <p className="text-slate-400 mb-12 text-lg tracking-widest font-bold">ARCADE MULTIJUGADOR · V0.1</p>
+                  <div className="w-full max-w-sm space-y-4 backdrop-blur-xl bg-white/5 p-8 rounded-[40px] border border-white/10 shadow-2xl">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-indigo-400 ml-2 uppercase tracking-widest">Identidad en la Arena</label>
+                        <input 
+                          type="text" 
+                          value={playerName} 
+                          onChange={e => setPlayerName(e.target.value)} 
+                          className="w-full bg-slate-800/50 p-4 rounded-2xl outline-none border border-white/5 focus:border-indigo-500 transition-all font-bold text-lg"
+                        />
+                    </div>
+                    <button onClick={createRoom} className="w-full bg-indigo-600 hover:bg-indigo-500 py-5 rounded-2xl font-black text-xl shadow-[0_0_20px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.02] active:scale-95">CREAR ARENA</button>
+                    <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-[#1a1a2e] px-2 text-slate-500 font-bold">o únete a una</span></div></div>
+                    <div className="flex gap-2">
+                      <input type="text" placeholder="CÓDIGO" className="flex-1 bg-slate-800/50 p-4 rounded-2xl outline-none border border-white/5 focus:border-indigo-500 transition-all font-bold" onChange={e => setRoomId(e.target.value.toUpperCase())} />
+                      <button onClick={() => joinRoom(roomId)} className="bg-slate-700 hover:bg-slate-600 px-6 rounded-2xl font-black transition-all active:scale-95">UNIRSE</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {screen === 'lobby' && (
+                <div className="flex flex-col items-center justify-center min-h-screen p-6">
+                  <div className="bg-slate-800/40 backdrop-blur-3xl p-10 rounded-[50px] w-full max-w-md border border-white/10 shadow-2xl">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h2 className="text-3xl font-black text-indigo-400">SALA {roomId}</h2>
+                            <p className="text-slate-400 text-sm font-bold">Esperando jugadores...</p>
+                        </div>
+                        <Gamepad2 size={32} className="text-indigo-400 animate-bounce" />
+                    </div>
+                    <div className="space-y-3 mb-10 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                      {Object.values(players).map(p => (
+                        <div key={p.id} className="bg-white/5 p-4 rounded-3xl flex items-center justify-between border border-white/5 animate-in fade-in slide-in-from-right-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundColor: p.color }}>
+                                <span className="text-xs">🏃</span>
+                            </div>
+                            <span className="font-bold">{p.name}</span>
+                          </div>
+                          {p.id === user.uid && <span className="text-[10px] bg-indigo-500 px-2 py-1 rounded-lg font-black uppercase">Tú</span>}
+                        </div>
+                      ))}
+                    </div>
+                    {roomData?.host === user.uid ? (
+                      <button onClick={startGame} className="w-full bg-green-500 hover:bg-green-400 py-5 rounded-3xl font-black text-xl shadow-[0_0_25px_rgba(34,197,94,0.3)] transition-all hover:scale-[1.02] active:scale-95">¡SOLTAR FRIJOLES!</button>
+                    ) : <div className="flex items-center justify-center gap-3 text-slate-400 font-bold bg-white/5 py-5 rounded-3xl border border-dashed border-white/10 animate-pulse">Espera al anfitrión...</div>}
+                  </div>
+                </div>
+              )}
+
+              {screen === 'game' && (
+                <div className="relative w-full h-screen bg-black flex items-center justify-center">
+                  <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="w-full h-full object-contain" />
+                  <div className="absolute top-8 left-8 flex gap-4 pointer-events-none z-50">
+                     <div className="bg-slate-900/90 backdrop-blur-xl px-6 py-4 rounded-[28px] border border-white/10 flex items-center gap-4 shadow-2xl">
+                        <Users size={24} className="text-pink-400" />
+                        <p className="text-2xl font-black tracking-tighter">{Object.values(players).filter(p => !p.isDead).length} <span className="text-slate-500 text-sm">RESTANTES</span></p>
+                     </div>
+                  </div>
+                  {gameStateRef.current.isDead && (
+                    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-8 py-4 rounded-full border border-white/10 text-slate-300 font-bold text-sm">
+                        💀 ESTÁS ELIMINADO · Espectando Arena · <span className="text-indigo-400">A/D para cambiar</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {screen === 'results' && (
+                <div className="flex flex-col items-center justify-center min-h-screen p-6 relative">
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden">
+                    {[...Array(20)].map((_, i) => (
+                        <div key={i} className="absolute text-2xl animate-float" style={{left: `${Math.random()*100}%`, top: `${Math.random()*100}%`, animationDelay: `${Math.random()*2}s`}}>✨</div>
+                    ))}
+                  </div>
+                  <div className="bg-slate-800/40 backdrop-blur-3xl p-16 rounded-[60px] text-center w-full max-w-md shadow-2xl relative border border-white/10">
+                    <div className="w-24 h-24 bg-yellow-400 rounded-[30px] flex items-center justify-center mx-auto mb-8 shadow-[0_0_40px_rgba(250,204,21,0.5)] rotate-12">
+                        <Trophy size={48} className="text-yellow-900" />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-400 uppercase tracking-widest mb-2">¡Partida Finalizada!</h2>
+                    <h1 className="text-5xl font-black text-white mb-12 drop-shadow-lg">{winner?.name} <span className="text-indigo-400 underline decoration-pink-500">TRIUNFA</span></h1>
+                    <button onClick={() => window.location.reload()} className="w-full bg-indigo-600 hover:bg-indigo-500 py-6 rounded-3xl font-black text-2xl shadow-2xl transition-all hover:scale-[1.05] active:scale-95 flex items-center justify-center gap-3">
+                        <RotateCcw size={24} /> OTRA ARENA
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Handle Messages from parent
+        window.addEventListener('message', e => {
+            if (e.data === 'reset') window.location.reload();
+        });
+    </script>
+</body>
+</html>

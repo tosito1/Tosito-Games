@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
   /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
-  #screen-stack, #screen-slither, #screen-logicmaster {
+  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -22,7 +22,7 @@
     overflow: auto !important;
     border: none !important;
   }
-  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active {
+  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active {
     display: block !important;
   }
 </style>
@@ -1175,6 +1175,15 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
           <p class="card-desc">Evolución multijugador. Consume energía, domina la arena global y conviértete en el depredador alfa del vacío.</p>
           <button class="card-action" style="background:var(--indigo); color:white;">Entrar al Vacío →</button>
         </div>
+
+        <!-- Hexa Falls -->
+        <div class="hub-card btn-juicy card-hexafalls" onclick="showHexaFallsScreen()" id="hub-card-hexafalls">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #f472b6, transparent 70%);"></div>
+          <span class="card-emoji">🏃‍♂️</span>
+          <h3 class="card-name">Hexa Falls</h3>
+          <p class="card-desc">Acción multijugador frenética. Esquiva obstáculos, sobrevive a la lava y sé el último frijol en pie.</p>
+          <button class="card-action" style="background:#f472b6; color:white;">¡Correr! →</button>
+        </div>
       </div>
     </div>
 
@@ -1832,6 +1841,11 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       <button class="btn btn-glass" style="flex:1;" onclick="exitGame()">Ir al Lobby</button>
     </div>
   </div>
+</div>
+
+<!-- HEXA FALLS SCREEN -->
+<div id="screen-hexa-falls" class="screen">
+  <iframe id="hexa-falls-frame" style="width:100%; height:100%; border:none;"></iframe>
 </div>
 
 <!-- ============================================================
