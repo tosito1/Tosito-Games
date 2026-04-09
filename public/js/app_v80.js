@@ -624,7 +624,7 @@ function showScreen(id) {
     if (current) current.classList.remove('active');
     target.classList.add('active');
   }
-}
+
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   if (nav) {
