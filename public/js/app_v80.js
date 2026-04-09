@@ -2999,3 +2999,33 @@ window.showSlitherScreen = function() {
     frame.src = src;
   }
 };
+
+/**
+ * LOGIC MASTER INTEGRATION
+ */
+window.showLogicGame = function(gameId = null) {
+  // Hide main sidebar/nav
+  syncNavOpen(false);
+  const nav = document.getElementById('bottom-nav');
+  if (nav) nav.classList.add('hidden');
+
+  showScreen('logicmaster');
+  
+  const frame = document.getElementById('logicmaster-frame');
+  if (frame) {
+    const v = Date.now();
+    const name = encodeURIComponent(userProfile.displayName || userProfile.username || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Jugador');
+    let src = `/logic_puzzles.html?v=${v}&playerName=${name}`;
+    if (gameId) src += `&game=${gameId}`;
+    
+    // Always update src to force reload
+    frame.src = src;
+  }
+};
+
+window.exitLogicMaster = function() {
+  showScreen('hub');
+  // Clear src to save memory/resources
+  const frame = document.getElementById('logicmaster-frame');
+  if (frame) frame.src = 'about:blank';
+};

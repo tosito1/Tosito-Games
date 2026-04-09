@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
   /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
-  #screen-stack, #screen-slither {
+  #screen-stack, #screen-slither, #screen-logicmaster {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -19,10 +19,10 @@
     z-index: 9999 !important;
     background: #020617 !important;
     display: none;
-    overflow: hidden !important;
+    overflow: auto !important;
     border: none !important;
   }
-  #screen-stack.active, #screen-slither.active {
+  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active {
     display: block !important;
   }
 </style>
@@ -1177,6 +1177,66 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
         </div>
       </div>
     </div>
+
+    <!-- SECCIÓN: PUZZLES Y LÓGICA -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span style="color:var(--purple)">03</span> Puzzles y Lógica</h4>
+      <div class="hub-games-grid">
+        <!-- Gem Match Pro -->
+        <div class="hub-card btn-juicy card-puzzle-match" onclick="showLogicGame('match3')" id="hub-card-match3">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #ec4899, transparent 70%);"></div>
+          <span class="card-emoji">💎</span>
+          <h3 class="card-name">Gem Match Pro</h3>
+          <p class="card-desc">Explosiones de neón y cascadas infinitas. Consigue la puntuación objetivo para subir de nivel.</p>
+          <button class="card-action" style="background:#ec4899; color:white;">Combinar →</button>
+        </div>
+
+        <!-- Logic Flow -->
+        <div class="hub-card btn-juicy card-puzzle-pipes" onclick="showLogicGame('pipes')" id="hub-card-pipes">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #06b6d4, transparent 70%);"></div>
+          <span class="card-emoji">🔌</span>
+          <h3 class="card-name">Logic Flow</h3>
+          <p class="card-desc">Conecta los circuitos rotando las piezas. Laberintos de energía con dificultad escalable.</p>
+          <button class="card-action" style="background:#06b6d4; color:white;">Conectar →</button>
+        </div>
+
+        <!-- Mind Flip -->
+        <div class="hub-card btn-juicy card-puzzle-memory" onclick="showLogicGame('memory')" id="hub-card-memory">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #6366f1, transparent 70%);"></div>
+          <span class="card-emoji">🧠</span>
+          <h3 class="card-name">Mind Flip</h3>
+          <p class="card-desc">Entrena tu memoria con parejas de neón en un entorno 3D de alta fidelidad.</p>
+          <button class="card-action" style="background:#6366f1; color:white;">Memorizar →</button>
+        </div>
+
+        <!-- 2048 Ultra -->
+        <div class="hub-card btn-juicy card-puzzle-2048" onclick="showLogicGame('2048')" id="hub-card-2048">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #f97316, transparent 70%);"></div>
+          <span class="card-emoji">🔢</span>
+          <h3 class="card-name">2048 Ultra</h3>
+          <p class="card-desc">Desliza y combina baldosas de neón hasta alcanzar la meta. Dificultad escalable por nivel.</p>
+          <button class="card-action" style="background:#f97316; color:white;">Combinar →</button>
+        </div>
+
+        <!-- Word Quest (Wordle) -->
+        <div class="hub-card btn-juicy card-puzzle-wordle" onclick="showLogicGame('wordle')" id="hub-card-wordle">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #f59e0b, transparent 70%);"></div>
+          <span class="card-emoji">📝</span>
+          <h3 class="card-name">Word Quest</h3>
+          <p class="card-desc">Adivina la palabra oculta en 6 intentos. Desafío léxico con palabras de longitud variable.</p>
+          <button class="card-action" style="background:#f59e0b; color:white;">Adivinar →</button>
+        </div>
+
+        <!-- Zen Sudoku -->
+        <div class="hub-card btn-juicy card-puzzle-sudoku" onclick="showLogicGame('sudoku')" id="hub-card-sudoku">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #3b82f6, transparent 70%);"></div>
+          <span class="card-emoji">🧩</span>
+          <h3 class="card-name">Zen Sudoku</h3>
+          <p class="card-desc">Relaja tu mente con desafíos de lógica pura. Menos pistas iniciales a medida que avanzas.</p>
+          <button class="card-action" style="background:#3b82f6; color:white;">Resolver →</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ======================================================
@@ -1191,6 +1251,13 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
        ====================================================== -->
   <div id="screen-slither" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
     <iframe id="slither-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- ======================================================
+       LOGIC MASTER (PUZZLE SUITE)
+       ====================================================== -->
+  <div id="screen-logicmaster" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020202 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="logicmaster-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
 

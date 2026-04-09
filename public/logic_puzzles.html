@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Logic Master | Tosito Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow-y: auto; background: #020202; font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { display: none; }
+        * { -webkit-tap-highlight-color: transparent; outline: none !important; }
+        .perspective-1000 { perspective: 1000px; }
+        .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin-slow 12s linear infinite; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0",
+        "framer-motion": "https://esm.sh/framer-motion@10.12.16?deps=react@18.2.0",
+        "gsap": "https://esm.sh/gsap@3.12.2"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+        import ReactDOM from 'react-dom';
+        import { motion, AnimatePresence } from 'framer-motion';
+        import { 
+          Trophy, Gamepad2, Settings, History, Hash, Layout, Zap, 
+          Brain, Type, ChevronLeft, RotateCcw, Lightbulb, Play, CheckCircle2, 
+          XCircle, Star, Flame, Medal, Dices, RefreshCw, TrendingUp, Target, 
+          Sparkles, Delete, Share2, Award, ZapOff, ArrowRight, FastForward,
+          Moon, Sun, Ghost, Heart, User, Users, Bell, Camera, Image, Music, Map, Pin, Mail, 
+          Phone, Lock, Unlock, Eye, Trash, Edit, Plus, Minus, Check, X, Info, 
+          HelpCircle, ChevronUp, ChevronDown, ChevronRight, Download, Upload, Share, 
+          Layers, Grid, List, Search, Terminal, Code, Cpu, Database
+        } from 'lucide-react';
+
+        const STORAGE_KEY = 'puzzle_master_infinity_v11';
+        const urlParams = new URLSearchParams(window.location.search);
+        const PLATFORM_PLAYER_NAME = urlParams.get('playerName') || 'Jugador';
+        const INITIAL_GAME = urlParams.get('game');
+
+        const GAMES = [
+          { id: 'match3', name: 'Gem Match Pro', icon: <Zap />, color: 'from-purple-500 to-pink-600', difficulty: 'Bajo', desc: 'Sube de nivel alcanzando objetivos de puntuación.' },
+          { id: '2048', name: '2048 Ultra', icon: <Hash />, color: 'from-orange-500 to-red-600', difficulty: 'Medio', desc: 'Fichas objetivo más altas en cada nuevo nivel.' },
+          { id: 'wordle', name: 'Word Quest', icon: <Type />, color: 'from-yellow-500 to-orange-600', difficulty: 'Medio', desc: 'Racha de palabras infinita con dificultad creciente.' },
+          { id: 'sudoku', name: 'Zen Sudoku', icon: <Layout />, color: 'from-blue-500 to-indigo-600', difficulty: 'Alto', desc: 'Menos pistas iniciales a medida que progresas.' },
+          { id: 'memory', name: 'Mind Flip', icon: <Layout />, color: 'from-green-500 to-teal-600', difficulty: 'Bajo', desc: 'Tableros más grandes y más parejas que memorizar.' },
+          { id: 'pipes', name: 'Logic Flow', icon: <Brain />, color: 'from-cyan-500 to-blue-600', difficulty: 'Alto', desc: 'Laberintos de energía que crecen en tamaño.' },
+        ];
+
+        // --- CARGADOR DE GSAP ---
+        const useGSAPLoader = () => {
+          const [loaded, setLoaded] = useState(false);
+          useEffect(() => {
+            if (window.gsap) { setLoaded(true); return; }
+            const script = document.createElement('script');
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js";
+            script.async = true;
+            script.onload = () => setLoaded(true);
+            document.head.appendChild(script);
+          }, []);
+          return loaded;
+        };
+
+        // --- SISTEMA DE PARTÍCULAS GSAP ---
+        const createParticles = (x, y, color) => {
+          if (!window.gsap) return;
+          const container = document.getElementById('particle-container');
+          if (!container) return;
+
+          for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.className = 'fixed w-2 h-2 rounded-full pointer-events-none z-[100] shadow-lg';
+            p.style.backgroundColor = color;
+            p.style.left = `${x}px`;
+            p.style.top = `${y}px`;
+            p.style.boxShadow = `0 0 15px ${color}`;
+            container.appendChild(p);
+
+            window.gsap.to(p, {
+              x: (Math.random() - 0.5) * 400,
+              y: (Math.random() - 0.5) * 400,
+              opacity: 0,
+              scale: 0,
+              duration: 1.2 + Math.random(),
+              ease: "power4.out",
+              onComplete: () => p.remove()
+            });
+          }
+        };
+
+        // --- UI COMPONENTS ---
+
+        const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
+          const variants = {
+            primary: 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-90',
+            secondary: 'bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 active:scale-95',
+            danger: 'bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/20 active:scale-90',
+            success: 'bg-green-600 hover:bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.4)]'
+          };
+          return (
+            <motion.button
+              whileHover={!disabled ? { y: -3, scale: 1.02 } : {}}
+              onClick={(e) => { if (onClick && !disabled) { e.stopPropagation(); onClick(e); } }}
+              disabled={disabled}
+              className={`px-6 py-3 rounded-2xl font-black transition-all flex items-center justify-center gap-2 ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+            >
+              {children}
+            </motion.button>
+          );
+        };
+
+        const LevelBadge = ({ level }) => (
+          <div className="flex items-center gap-2 bg-indigo-500/20 px-4 py-1.5 rounded-full border border-indigo-500/30">
+            <TrendingUp size={14} className="text-indigo-400" />
+            <span className="text-xs font-black uppercase tracking-widest text-indigo-300">Nivel {level}</span>
+          </div>
+        );
+
+        // --- JUEGOS ---
+
+        const GamePipes = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const size = Math.min(3 + Math.floor(currentLevel / 2), 7);
+          const [grid, setGrid] = useState([]);
+          const [powered, setPowered] = useState(new Set([0]));
+
+          const getConnections = (pipe) => {
+            let base = [];
+            if (pipe.type === 'I') base = [0, 2];
+            else if (pipe.type === 'L') base = [0, 1];
+            else if (pipe.type === 'START') return [0, 1, 2, 3]; 
+            else if (pipe.type === 'END') return [0, 1, 2, 3];   
+            const shift = (pipe.rotation / 90) % 4;
+            return base.map(d => (d + shift) % 4);
+          };
+
+          // 1. Inicialización (solo al cambiar nivel)
+          useEffect(() => {
+            const newGrid = Array(size * size).fill(0).map((_, i) => ({
+              id: i,
+              type: Math.random() > 0.4 ? 'L' : 'I',
+              rotation: Math.floor(Math.random() * 4) * 90,
+            }));
+            newGrid[0].type = 'START';
+            newGrid[size * size - 1].type = 'END';
+            setGrid(newGrid);
+            setPowered(new Set([0]));
+          }, [currentLevel, size]);
+
+          // 2. Cálculo de Flujo (cada vez que el grid cambia)
+          useEffect(() => {
+            if (grid.length === 0) return;
+            const newPowered = new Set([0]);
+            const queue = [0];
+            const processed = new Set();
+
+            while (queue.length > 0) {
+              const curr = queue.shift();
+              if (processed.has(curr)) continue;
+              processed.add(curr);
+              const currConnections = getConnections(grid[curr]);
+              
+              currConnections.forEach(dir => {
+                let nextIdx = -1;
+                let oppositeDir = (dir + 2) % 4;
+                if (dir === 0 && curr >= size) nextIdx = curr - size;
+                else if (dir === 1 && (curr % size) < size - 1) nextIdx = curr + 1;
+                else if (dir === 2 && curr < size * (size - 1)) nextIdx = curr + size;
+                else if (dir === 3 && (curr % size) > 0) nextIdx = curr - 1;
+
+                if (nextIdx !== -1 && !newPowered.has(nextIdx)) {
+                  const nextConnections = getConnections(grid[nextIdx]);
+                  if (nextConnections.includes(oppositeDir)) {
+                    newPowered.add(nextIdx);
+                    queue.push(nextIdx);
+                  }
+                }
+              });
+            }
+            
+            // Solo actualizar si el set de energía ha cambiado realmente
+            setPowered(prev => {
+              if (prev.size === newPowered.size && [...newPowered].every(x => prev.has(x))) return prev;
+              return newPowered;
+            });
+
+            if (newPowered.has(size * size - 1)) {
+              const timer = setTimeout(onLevelUp, 1000);
+              return () => clearTimeout(timer);
+            }
+          }, [grid, size, onLevelUp]);
+
+          const rotate = (idx) => {
+            if (grid[idx].type === 'START' || grid[idx].type === 'END') return;
+            const newGrid = grid.map((pipe, i) => 
+              i === idx ? { ...pipe, rotation: (pipe.rotation + 90) % 360 } : pipe
+            );
+            setGrid(newGrid);
+            onScoreUpdate(10);
+          };
+
+          return (
+            <div className="flex flex-col items-center gap-8">
+              <LevelBadge level={currentLevel} />
+              <div 
+                className="grid gap-3 p-6 bg-gray-900/80 rounded-[2.5rem] border border-white/10 shadow-2xl backdrop-blur-3xl"
+                style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
+              >
+                {grid.map((pipe, i) => {
+                  const isPowered = powered.has(i);
+                  const isEndPowered = i === size * size - 1 && isPowered;
+                  return (
+                    <div key={i} onClick={() => rotate(i)} className="relative w-12 h-12 md:w-16 md:h-16 flex items-center justify-center cursor-pointer rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+                      <motion.div 
+                        animate={{ rotate: pipe.rotation }}
+                        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                        className="w-full h-full flex items-center justify-center"
+                      >
+                        {pipe.type === 'START' && <Zap size={24} className={isPowered ? "text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_white]" : "text-gray-600"} />}
+                        {pipe.type === 'END' && <Target size={24} className={isPowered ? "text-cyan-400 animate-pulse drop-shadow-[0_0_12px_#22d3ee]" : "text-gray-600"} />}
+                        {pipe.type === 'I' && (
+                          <motion.div animate={{ backgroundColor: isPowered ? '#22d3ee' : '#334155', boxShadow: isPowered ? '0 0 15px #22d3ee' : '0 0 0px #000' }} className="w-2 h-full rounded-full transition-shadow duration-500" />
+                        )}
+                        {pipe.type === 'L' && (
+                           <div className="relative w-full h-full flex items-center justify-center">
+                              <motion.div animate={{ backgroundColor: isPowered ? '#22d3ee' : '#334155', boxShadow: isPowered ? '0 0 15px #22d3ee' : '0 0 0px #000' }} className="absolute w-2 h-1/2 bottom-1/2 rounded-full" />
+                              <motion.div animate={{ backgroundColor: isPowered ? '#22d3ee' : '#334155', boxShadow: isPowered ? '0 0 15px #22d3ee' : '0 0 0px #000' }} className="absolute h-2 w-1/2 left-1/2 rounded-full" />
+                           </div>
+                        )}
+                      </motion.div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        };
+
+        const GameMatch3 = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+          const SIZE = 8;
+          const targetScore = currentLevel * 1000;
+          const [grid, setGrid] = useState([]);
+          const [score, setScore] = useState(0);
+          const [selected, setSelected] = useState(null);
+          const [processing, setProcessing] = useState(false);
+
+          const init = useCallback(() => {
+            setGrid(Array(SIZE * SIZE).fill(null).map(() => Math.floor(Math.random() * COLORS.length)));
+            setScore(0);
+          }, []);
+
+          useEffect(() => init(), [init]);
+
+          const findMatches = (g) => {
+            let matches = new Set();
+            for (let r = 0; r < SIZE; r++) {
+              for (let c = 0; c < SIZE - 2; c++) {
+                let i = r * SIZE + c;
+                if (g[i] !== -1 && g[i] === g[i+1] && g[i] === g[i+2]) { matches.add(i); matches.add(i+1); matches.add(i+2); }
+              }
+            }
+            for (let c = 0; c < SIZE; c++) {
+              for (let r = 0; r < SIZE - 2; r++) {
+                let i = r * SIZE + c;
+                if (g[i] !== -1 && g[i] === g[i+SIZE] && g[i] === g[i+SIZE*2]) { matches.add(i); matches.add(i+SIZE); matches.add(i+SIZE*2); }
+              }
+            }
+            return Array.from(matches);
+          };
+
+          const handleCascade = async (curr, mult) => {
+            setProcessing(true);
+            let matches = findMatches(curr);
+            if (matches.length === 0) { 
+              setProcessing(false); 
+              if (score >= targetScore) { onLevelUp(); setScore(0); }
+              return; 
+            }
+            
+            const points = matches.length * 20 * mult;
+            setScore(s => s + points);
+            onScoreUpdate(points);
+            
+            matches.forEach(idx => {
+               const el = document.querySelector(`.gem-${idx}`);
+               if (el) {
+                 const rect = el.getBoundingClientRect();
+                 createParticles(rect.left + rect.width/2, rect.top + rect.height/2, COLORS[curr[idx]]);
+               }
+               if (window.gsap) window.gsap.to(`.gem-${idx}`, { scale: 0, opacity: 0, duration: 0.3 });
+            });
+
+            await new Promise(r => setTimeout(r, 300));
+            let temp = [...curr]; matches.forEach(i => temp[i] = -1);
+            for (let c = 0; c < SIZE; c++) {
+              let s = []; for (let r = SIZE - 1; r >= 0; r--) if (temp[r * SIZE + c] !== -1) s.push(temp[r * SIZE + c]);
+              while (s.length < SIZE) s.push(Math.floor(Math.random() * COLORS.length));
+              for (let r = SIZE - 1; r >= 0; r--) temp[r * SIZE + c] = s[SIZE - 1 - r];
+            }
+            setGrid([...temp]);
+            if (window.gsap) window.gsap.from(".gem-item", { y: -20, stagger: 0.02, duration: 0.4, ease: "bounce.out" });
+            await new Promise(r => setTimeout(r, 400));
+            handleCascade(temp, mult + 1);
+          };
+
+          const onGemClick = async (i) => {
+            if (processing) return;
+            if (selected === null) { setSelected(i); if (window.gsap) window.gsap.to(`.gem-${i}`, { scale: 1.2, duration: 0.2 }); }
+            else {
+              const r1 = Math.floor(selected / SIZE), c1 = selected % SIZE, r2 = Math.floor(i / SIZE), c2 = i % SIZE;
+              if (Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1) {
+                let n = [...grid]; [n[selected], n[i]] = [n[i], n[selected]];
+                setGrid(n); setSelected(null);
+                if (findMatches(n).length > 0) handleCascade(n, 1);
+                else {
+                  if (window.gsap) window.gsap.to(".grid-m3", { x: 10, duration: 0.1, repeat: 3, yoyo: true });
+                  await new Promise(r => setTimeout(r, 300)); [n[selected], n[i]] = [n[i], n[selected]]; setGrid([...n]);
+                }
+              } else {
+                if (window.gsap) window.gsap.to(`.gem-${selected}`, { scale: 1, duration: 0.2 });
+                setSelected(i); if (window.gsap) window.gsap.to(`.gem-${i}`, { scale: 1.2, duration: 0.2 });
+              }
+            }
+          };
+
+          return (
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex justify-between w-full max-w-[440px] items-center">
+                <LevelBadge level={currentLevel} />
+                <div className="text-right">
+                   <p className="text-[10px] font-black uppercase text-gray-500">Objetivo</p>
+                   <p className="text-lg font-black text-pink-400">{score} / {targetScore}</p>
+                </div>
+              </div>
+              <div className="grid-m3 grid grid-cols-8 gap-1.5 p-3 bg-gray-900/80 rounded-[2.5rem] border border-white/10 backdrop-blur-3xl shadow-2xl relative overflow-hidden">
+                {grid.map((cIdx, i) => (
+                  <motion.div key={i} layout onClick={() => onGemClick(i)} className={`gem-item gem-${i} w-10 h-10 md:w-12 md:h-12 rounded-xl cursor-pointer relative flex items-center justify-center shadow-xl ${selected === i ? 'ring-4 ring-white z-20 scale-110' : 'hover:brightness-125'}`} style={{ backgroundColor: COLORS[cIdx] || 'transparent', boxShadow: cIdx !== -1 ? `inset 0 -6px 0 rgba(0,0,0,0.3), 0 10px 15px -5px ${COLORS[cIdx]}66` : 'none' }}>
+                    {cIdx !== -1 && <div className="absolute top-1.5 left-1.5 w-4 h-4 bg-white/30 rounded-full blur-[2px] opacity-60" />}
+                  </motion.div>
+                ))}
+              </div>
+              <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden max-w-[440px]">
+                  <motion.div className="h-full bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]" animate={{ width: `${Math.min((score / targetScore) * 100, 100)}%` }} />
+              </div>
+            </div>
+          );
+        };
+
+        const GameMemory = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const ICONS = [
+            Zap, Flame, Star, Trophy, Moon, Sun, Ghost, Heart, Brain, Gamepad2, Dices, Target,
+            User, Bell, Camera, Image, Music, Map, Pin, Mail, 
+            Phone, Lock, Unlock, Eye, Trash, Edit, Plus, Minus, Check, X, Info, 
+            HelpCircle, ChevronUp, ChevronDown, ChevronRight, Download, Upload, Share, 
+            Layers, Grid, List, Search, Terminal, Code, Cpu, Database
+          ];
+
+          const [gameState, setGameState] = useState('setup'); // 'setup', 'playing', 'win'
+          const [playMode, setPlayMode] = useState('solo'); // 'solo' or 'duel'
+          const [gridSize, setGridSize] = useState({ r: 4, c: 4 });
+          const [cards, setCards] = useState([]);
+          const [flipped, setFlipped] = useState([]);
+          const [solved, setSolved] = useState([]);
+          const [scores, setScores] = useState({ p1: 0, p2: 0 });
+          const [activePlayer, setActivePlayer] = useState(1);
+          const [winner, setWinner] = useState(null);
+
+          const startGame = (r, c) => {
+            const pairCount = (r * c) / 2;
+            const selectedIcons = [...ICONS].sort(() => Math.random() - 0.5).slice(0, pairCount);
+            const deck = [...Array(pairCount).keys(), ...Array(pairCount).keys()]
+              .sort(() => Math.random() - 0.5)
+              .map((iconIdx, id) => ({ id, iconIdx, Icon: selectedIcons[iconIdx] }));
+            
+            setGridSize({ r, c });
+            setCards(deck);
+            setFlipped([]);
+            setSolved([]);
+            setScores({ p1: 0, p2: 0 });
+            setActivePlayer(1);
+            setGameState('playing');
+          };
+
+          const handleFlip = (idx) => {
+            if (flipped.length === 2 || flipped.includes(idx) || solved.includes(cards[idx].id)) return;
+            const next = [...flipped, idx];
+            setFlipped(next);
+
+            if (next.length === 2) {
+              if (cards[next[0]].iconIdx === cards[next[1]].iconIdx) {
+                // MATCH!
+                const newSolved = [...solved, cards[next[0]].id, cards[next[1]].id];
+                setSolved(newSolved);
+                setFlipped([]);
+                
+                const newScores = { ...scores };
+                if (activePlayer === 1) newScores.p1++; else newScores.p2++;
+                setScores(newScores);
+                onScoreUpdate(200);
+
+                if (newSolved.length === cards.length) {
+                  setTimeout(() => {
+                    if (playMode === 'duel') {
+                      setWinner(newScores.p1 > newScores.p2 ? 'Jugador 1' : newScores.p1 < newScores.p2 ? 'Jugador 2' : 'Empate');
+                    } else {
+                      setWinner('¡Completado!');
+                      setTimeout(onLevelUp, 1500);
+                    }
+                    setGameState('win');
+                  }, 800);
+                }
+              } else {
+                // NO MATCH
+                setTimeout(() => {
+                  setFlipped([]);
+                  if (playMode === 'duel') {
+                    setActivePlayer(activePlayer === 1 ? 2 : 1);
+                  }
+                }, 1000);
+              }
+            }
+          };
+
+          if (gameState === 'setup') {
+            return (
+              <div className="flex flex-col items-center gap-8 py-6">
+                <div className="text-center space-y-2">
+                  <h2 className="text-3xl font-black text-white italic tracking-tighter">MIND FLIP</h2>
+                  <p className="text-indigo-400 text-xs font-bold uppercase tracking-widest">Configura tu partida</p>
+                </div>
+                
+                {/* Mode Selector */}
+                <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 w-full max-w-[320px]">
+                  <button onClick={() => setPlayMode('solo')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all font-bold ${playMode === 'solo' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'}`}>
+                    <User size={18} /> Solitario
+                  </button>
+                  <button onClick={() => setPlayMode('duel')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl transition-all font-bold ${playMode === 'duel' ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30' : 'text-gray-400 hover:text-white'}`}>
+                    <Users size={18} /> 1 vs 1
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  {[
+                    { r: 4, c: 4, label: 'Básico', sub: '16 Cartas' },
+                    { r: 6, c: 4, label: 'Normal', sub: '24 Cartas' },
+                    { r: 6, c: 6, label: 'Avanzado', sub: '36 Cartas' },
+                    { r: 8, c: 8, label: 'Experto', sub: '64 Cartas' },
+                    { r: 10, c: 8, label: 'Maestro', sub: '80 Cartas' },
+                    { r: 10, c: 10, label: 'GIGANTE', sub: '100 Cartas' },
+                  ].map(opt => (
+                    <button key={`${opt.r}x${opt.c}`} onClick={() => startGame(opt.r, opt.c)}
+                      className="group p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-indigo-500/20 hover:border-indigo-500/50 transition-all text-left"
+                    >
+                      <p className="text-white font-black text-lg">{opt.label}</p>
+                      <p className="text-indigo-400 text-[10px] font-bold">{opt.r}x{opt.c} - {opt.sub}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
+          if (gameState === 'win') {
+            return (
+              <div className="flex flex-col items-center gap-8 py-20 text-center">
+                <div className="relative">
+                   <Trophy size={80} className="text-yellow-400 animate-bounce" />
+                   <div className="absolute inset-0 blur-2xl bg-yellow-400/20" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-5xl font-black text-white italic">
+                    {playMode === 'duel' ? (winner === 'Empate' ? '¡E M P A T E!' : `¡GANÓ EL ${winner === 'Jugador 1' ? 'P1' : 'P2'}!`) : '¡EXCELENTE!'}
+                  </h2>
+                  <p className="text-indigo-400 font-bold uppercase tracking-widest">
+                    {playMode === 'duel' ? `Marcador Final: ${scores.p1} - ${scores.p2}` : `Has encontrado las ${cards.length/2} parejas`}
+                  </p>
+                </div>
+                <div className="flex gap-4">
+                  <Button onClick={() => setGameState('setup')} variant="primary">Volver a Selección</Button>
+                  <Button onClick={() => startGame(gridSize.r, gridSize.c)} variant="secondary">Revancha</Button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex flex-col items-center gap-6 w-full max-w-[95vw]">
+              {/* Dynamic HUD */}
+              {playMode === 'duel' ? (
+                <div className="flex items-center gap-12 mb-4">
+                  <div className={`p-4 rounded-3xl border transition-all ${activePlayer === 1 ? 'bg-indigo-600/20 border-indigo-400 shadow-[0_0_20px_rgba(129,140,248,0.4)] scale-110' : 'bg-white/5 border-white/10 opacity-50'}`}>
+                     <p className="text-[10px] font-black uppercase text-indigo-300">Player 1</p>
+                     <p className="text-3xl font-black text-white italic">{scores.p1}</p>
+                  </div>
+                  <div className="text-white/20 font-black text-2xl italic">VS</div>
+                  <div className={`p-4 rounded-3xl border transition-all ${activePlayer === 2 ? 'bg-pink-600/20 border-pink-400 shadow-[0_0_20px_rgba(244,114,182,0.4)] scale-110' : 'bg-white/5 border-white/10 opacity-50'}`}>
+                     <p className="text-[10px] font-black uppercase text-pink-300">Player 2</p>
+                     <p className="text-3xl font-black text-white italic text-right">{scores.p2}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-6 mb-4 p-4 bg-white/5 border border-white/10 rounded-3xl">
+                   <div className="text-center px-6">
+                      <p className="text-[10px] font-black uppercase text-indigo-400">Parejas</p>
+                      <p className="text-2xl font-black text-white italic">{solved.length / 2} / {cards.length / 2}</p>
+                   </div>
+                   <div className="w-[1px] h-8 bg-white/10" />
+                   <div className="text-center px-6">
+                      <p className="text-[10px] font-black uppercase text-pink-400">Puntuación</p>
+                      <p className="text-2xl font-black text-white italic">{scores.p1 * 200}</p>
+                   </div>
+                </div>
+              )}
+
+              <div 
+                className="grid gap-2 p-4 bg-gray-900/80 rounded-[2.5rem] border border-white/10 shadow-2xl backdrop-blur-3xl overflow-auto max-h-[65vh]"
+                style={{ gridTemplateColumns: `repeat(${gridSize.c}, minmax(0, 1fr))` }}
+              >
+                {cards.map((card, i) => {
+                  const isFlipped = flipped.includes(i) || solved.includes(card.id);
+                  const Icon = card.Icon;
+                  const cardScale = gridSize.c > 8 ? 'w-10 h-12 md:w-12 md:h-16' : gridSize.c > 6 ? 'w-12 h-16 md:w-16 md:h-20' : 'w-16 h-20 md:w-20 md:h-24';
+                  const iconSize = gridSize.c > 8 ? 16 : 24;
+
+                  return (
+                    <div key={i} onClick={() => handleFlip(i)} className={`${cardScale} cursor-pointer perspective-1000`}>
+                      <motion.div animate={{ rotateY: isFlipped ? 180 : 0 }} className="w-full h-full relative" style={{ transformStyle: 'preserve-3d' }}>
+                        <div className="absolute inset-0 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center backface-hidden shadow-inner" />
+                        <div className={`absolute inset-0 rounded-xl flex items-center justify-center text-white backface-hidden ${solved.includes(card.id) ? 'bg-indigo-500/20 opacity-40' : 'bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.5)]'}`} style={{ transform: 'rotateY(180deg)' }}>
+                          <Icon size={iconSize} />
+                        </div>
+                      </motion.div>
+                    </div>
+                  );
+                })}
+              </div>
+              {playMode === 'duel' && (
+                <p className="text-indigo-400 font-bold uppercase text-[10px] tracking-widest animate-pulse">
+                  Turno del {activePlayer === 1 ? 'Jugador 1' : 'Jugador 2'}
+                </p>
+              )}
+            </div>
+          );
+        };
+
+        import gsap from 'gsap';
+
+        const Game2048 = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const SIZE = 4;
+          const targetTile = Math.pow(2, 7 + currentLevel);
+          const [tiles, setTiles] = useState([]);
+          const [nextId, setNextId] = useState(0);
+          const containerRef = useRef(null);
+          const [isMoving, setIsMoving] = useState(false);
+
+          const getTileAt = (g, x, y) => g.find(t => t.x === x && t.y === y && !t.mergedTo);
+
+          const addRandom = (currentTiles) => {
+            const occupied = new Set(currentTiles.filter(t => !t.mergedTo).map(t => `${t.x},${t.y}`));
+            const empty = [];
+            for (let x = 0; x < SIZE; x++) {
+              for (let y = 0; y < SIZE; y++) {
+                if (!occupied.has(`${x},${y}`)) empty.push({ x, y });
+              }
+            }
+            if (empty.length === 0) return currentTiles;
+            const spot = empty[Math.floor(Math.random() * empty.length)];
+            const newTile = {
+              id: Date.now() + Math.random(),
+              val: Math.random() > 0.9 ? 4 : 2,
+              x: spot.x,
+              y: spot.y,
+              isNew: true
+            };
+            return [...currentTiles, newTile];
+          };
+
+          const init = useCallback(() => {
+            let initial = addRandom(addRandom([]));
+            setTiles(initial);
+          }, []);
+
+          useEffect(() => init(), [init]);
+
+          const move = (direction) => {
+            if (isMoving) return;
+            let moved = false;
+            let currentTiles = tiles.filter(t => !t.mergedTo).map(t => ({ ...t, isNew: false, isMerged: false }));
+            let addedScore = 0;
+
+            const vectors = {
+              up: { x: 0, y: -1 },
+              down: { x: 0, y: 1 },
+              left: { x: -1, y: 0 },
+              right: { x: 1, y: 0 }
+            };
+            const v = vectors[direction];
+
+            // Order for scanning
+            const traverseX = direction === 'right' ? [3, 2, 1, 0] : [0, 1, 2, 3];
+            const traverseY = direction === 'down' ? [3, 2, 1, 0] : [0, 1, 2, 3];
+
+            traverseX.forEach(x => {
+              traverseY.forEach(y => {
+                const tile = getTileAt(currentTiles, x, y);
+                if (tile) {
+                  let next = { x: tile.x + v.x, y: tile.y + v.y };
+                  let lastValid = { x: tile.x, y: tile.y };
+
+                  while (next.x >= 0 && next.x < SIZE && next.y >= 0 && next.y < SIZE) {
+                    const target = getTileAt(currentTiles, next.x, next.y);
+                    if (target) {
+                      if (target.val === tile.val && !target.isMerged) {
+                        // MERGE
+                        target.val *= 2;
+                        target.isMerged = true;
+                        tile.x = next.x;
+                        tile.y = next.y;
+                        tile.mergedTo = target.id;
+                        addedScore += target.val;
+                        moved = true;
+                      }
+                      break;
+                    }
+                    lastValid = { ...next };
+                    next.x += v.x;
+                    next.y += v.y;
+                  }
+
+                  if (!tile.mergedTo && (lastValid.x !== tile.x || lastValid.y !== tile.y)) {
+                    tile.x = lastValid.x;
+                    tile.y = lastValid.y;
+                    moved = true;
+                  }
+                }
+              });
+            });
+
+            if (moved) {
+              setIsMoving(true);
+              const nextTiles = addRandom(currentTiles);
+              setTiles(nextTiles);
+              if (addedScore > 0) onScoreUpdate(addedScore);
+              
+              const hasWon = nextTiles.some(t => t.val >= targetTile && !t.mergedTo);
+              if (hasWon) setTimeout(onLevelUp, 1000);
+
+              setTimeout(() => {
+                setTiles(prev => prev.filter(t => !t.mergedTo).map(t => ({ ...t, isMerged: false })));
+                setIsMoving(false);
+              }, 200);
+            }
+          };
+
+          useLayoutEffect(() => {
+            if (!containerRef.current) return;
+            const tileElements = containerRef.current.querySelectorAll('.tile-obj');
+            
+            tileElements.forEach(el => {
+              const id = el.dataset.id;
+              const tile = tiles.find(t => t.id.toString() === id);
+              if (!tile) return;
+
+              // Position
+              gsap.to(el, {
+                x: tile.x * 100 + '%',
+                y: tile.y * 100 + '%',
+                duration: 0.15,
+                ease: "power2.out"
+              });
+
+              // Special animations
+              if (tile.isNew) {
+                gsap.fromTo(el, { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.2, ease: "back.out(1.7)" });
+              }
+              if (tile.isMerged) {
+                gsap.fromTo(el, { scale: 1.2 }, { scale: 1, duration: 0.15, ease: "power2.inOut" });
+                gsap.to(el, { backgroundColor: '#ffffff', duration: 0.05, yoyo: true, repeat: 1 });
+              }
+            });
+          }, [tiles]);
+
+          useEffect(() => {
+            const handleKey = (e) => {
+              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                e.preventDefault();
+                move(e.key.replace('Arrow', '').toLowerCase());
+              }
+            };
+            window.addEventListener('keydown', handleKey);
+            return () => window.removeEventListener('keydown', handleKey);
+          }, [tiles, isMoving]);
+
+          const COLORS = {
+            2: '#3b82f6', 4: '#6366f1', 8: '#8b5cf6', 16: '#ec4899', 32: '#f43f5e',
+            64: '#f97316', 128: '#eab308', 256: '#f59e0b', 512: '#10b981', 1024: '#14b8a6', 2048: '#06b6d4', 4096: '#0891b2'
+          };
+
+          return (
+            <div className="flex flex-col items-center gap-6 select-none touch-none">
+              <LevelBadge level={currentLevel} />
+              <div className="text-center mb-2">
+                <p className="text-[10px] font-black uppercase text-gray-400">Objetivo</p>
+                <p className="text-2xl font-black text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.4)]">{targetTile}</p>
+              </div>
+
+              <div className="relative p-2 bg-gray-900/60 rounded-[2rem] border border-white/5 backdrop-blur-xl shadow-2xl">
+                {/* Background Grid */}
+                <div className="grid grid-cols-4 gap-2">
+                  {Array(16).fill(0).map((_, i) => (
+                    <div key={i} className="w-14 h-14 md:w-20 md:h-20 bg-white/5 rounded-2xl" />
+                  ))}
+                </div>
+
+                {/* Tiles Container */}
+                <div ref={containerRef} className="absolute inset-2 overflow-hidden pointer-events-none">
+                  {tiles.map(tile => (
+                    <div
+                      key={tile.id}
+                      data-id={tile.id}
+                      className="tile-obj absolute w-1/4 h-1/4 p-1 transition-colors duration-200"
+                      style={{ 
+                        left: 0, 
+                        top: 0,
+                        zIndex: tile.mergedTo ? 10 : 20,
+                      }}
+                    >
+                      <div 
+                        className="w-full h-full rounded-2xl flex items-center justify-center text-xl md:text-3xl font-black text-white shadow-lg border-b-4 border-black/20"
+                        style={{ 
+                          backgroundColor: COLORS[tile.val] || '#7c3aed',
+                          boxShadow: `0 0 20px ${COLORS[tile.val]}44`
+                        }}
+                      >
+                        {tile.val}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mobile Controls */}
+              <div className="flex flex-col items-center gap-2 md:hidden pt-4">
+                 <Button onClick={() => move('up')} className="w-14 h-14 p-0 bg-white/5 border-white/10 rounded-2xl">↑</Button>
+                 <div className="flex gap-2">
+                    <Button onClick={() => move('left')} className="w-14 h-14 p-0 bg-white/5 border-white/10 rounded-2xl">←</Button>
+                    <Button onClick={() => move('down')} className="w-14 h-14 p-0 bg-white/5 border-white/10 rounded-2xl">↓</Button>
+                    <Button onClick={() => move('right')} className="w-14 h-14 p-0 bg-white/5 border-white/10 rounded-2xl">→</Button>
+                 </div>
+              </div>
+            </div>
+          );
+        };
+
+        const GameWordle = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const WORDS_BY_LEVEL = [
+            ['CASA', 'LUNA', 'MAR', 'SOL', 'BOLA', 'PALA', 'MESA'],
+            ['GATO', 'PERRO', 'PIANO', 'RADIO', 'TIGRE', 'VERDE'],
+            ['ESTRELLA', 'MONTAÑA', 'OCEANO', 'TECLADO', 'COHETE']
+          ];
+          const wordList = WORDS_BY_LEVEL[Math.min(currentLevel - 1, 2)];
+          const [target, setTarget] = useState('');
+          const [guesses, setGuesses] = useState(Array(6).fill(''));
+          const [currentRow, setCurrentRow] = useState(0);
+          const [currentGuess, setCurrentGuess] = useState('');
+          const [status, setStatus] = useState('playing');
+
+          const init = useCallback(() => {
+            const w = wordList[Math.floor(Math.random() * wordList.length)].toUpperCase();
+            setTarget(w);
+            setGuesses(Array(6).fill(''));
+            setCurrentRow(0);
+            setCurrentGuess('');
+            setStatus('playing');
+          }, [wordList]);
+
+          useEffect(() => init(), [init]);
+
+          const submitGuess = () => {
+            if (currentGuess.length !== target.length) return;
+            const newGuesses = [...guesses];
+            newGuesses[currentRow] = currentGuess;
+            setGuesses(newGuesses);
+            if (currentGuess === target) {
+              setStatus('won');
+              onScoreUpdate(500);
+              setTimeout(onLevelUp, 1500);
+            } else if (currentRow === 5) {
+              setStatus('lost');
+              setTimeout(init, 2000);
+            } else {
+              setCurrentRow(r => r + 1);
+              setCurrentGuess('');
+            }
+          };
+
+          const onKey = (key) => {
+            if (status !== 'playing') return;
+            if (key === 'Enter' || key === 'ENTER') submitGuess();
+            else if (key === 'Backspace' || key === 'DEL') setCurrentGuess(s => s.slice(0, -1));
+            else if (currentGuess.length < target.length && /^[a-zA-ZáéíóúÁÉÍÓÚñÑ]$/.test(key)) setCurrentGuess(s => (s + key).toUpperCase());
+          };
+
+          useEffect(() => {
+            const handleKey = (e) => onKey(e.key);
+            window.addEventListener('keydown', handleKey);
+            return () => window.removeEventListener('keydown', handleKey);
+          }, [currentGuess, status, target]);
+
+          return (
+            <div className="flex flex-col items-center gap-6">
+              <LevelBadge level={currentLevel} />
+              <div className="grid gap-2">
+                {guesses.map((g, i) => (
+                  <div key={i} className="flex gap-2">
+                    {Array.from({ length: target.length }).map((_, j) => {
+                      const isCurrent = i === currentRow;
+                      const char = isCurrent ? currentGuess[j] : g[j];
+                      const style = g ? (target[j] === g[j] ? 'bg-green-500 border-green-400' : target.includes(g[j]) ? 'bg-yellow-500 border-yellow-400' : 'bg-gray-700 border-gray-600 opacity-50') : (isCurrent && j < currentGuess.length ? 'border-indigo-500 bg-indigo-500/10' : 'bg-white/5 border-white/10');
+                      return (
+                        <motion.div key={j} animate={g ? { rotateX: 360 } : {}} className={`w-10 h-10 md:w-12 md:h-12 border-2 rounded-xl flex items-center justify-center text-xl font-black ${style}`}>
+                          {char}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1 justify-center max-w-[320px] mt-4">
+                {['Q','W','E','R','T','Y','U','I','O','P','A','S','D','F','G','H','J','K','L','Ñ','Z','X','C','V','B','N','M','DEL','ENTER'].map(k => (
+                  <button key={k} onClick={() => onKey(k)} className="h-8 md:h-9 px-1 md:px-1.5 min-w-[24px] md:min-w-[28px] bg-white/10 rounded-lg text-[10px] font-bold hover:bg-white/20 active:scale-95 leading-none">
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        };
+
+        const GameSudoku = ({ onScoreUpdate, currentLevel, onLevelUp }) => {
+          const [grid, setGrid] = useState(Array(81).fill(0));
+          const [initial, setInitial] = useState(Array(81).fill(false));
+          const [selected, setSelected] = useState(null);
+          const holes = Math.min(35 + currentLevel * 5, 65);
+
+          const generate = useCallback(() => {
+            const base = [5,3,4,6,7,8,9,1,2,6,7,2,1,9,5,3,4,8,1,9,8,3,4,2,5,6,7,8,5,9,7,6,1,4,2,3,4,2,6,8,5,3,7,9,1,7,1,3,9,2,4,8,5,6,9,6,1,5,3,7,2,8,4,2,8,7,4,1,9,6,3,5,3,4,5,2,8,6,1,7,9];
+            const n = [...base];
+            const isI = Array(81).fill(true);
+            let h = 0;
+            while (h < holes) {
+              const idx = Math.floor(Math.random() * 81);
+              if (isI[idx]) { n[idx] = 0; isI[idx] = false; h++; }
+            }
+            setGrid(n);
+            setInitial(isI);
+          }, [holes]);
+
+          useEffect(() => generate(), [generate]);
+
+          const onNumInput = (num) => {
+            if (selected === null || initial[selected]) return;
+            const n = [...grid];
+            n[selected] = num;
+            setGrid(n);
+            onScoreUpdate(10);
+            if (!n.includes(0)) { onScoreUpdate(2000); onLevelUp(); }
+          };
+
+          return (
+            <div className="flex flex-col items-center gap-6">
+              <LevelBadge level={currentLevel} />
+              <div className="grid grid-cols-9 bg-gray-900 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl">
+                {grid.map((v, i) => {
+                  const r = Math.floor(i / 9), c = i % 9;
+                  const bR = (r + 1) % 3 === 0 && r < 8 ? 'border-b-2 border-white/40' : 'border-b border-white/5';
+                  const bC = (c + 1) % 3 === 0 && c < 8 ? 'border-r-2 border-white/40' : 'border-r border-white/5';
+                  return (
+                    <div key={i} onClick={() => setSelected(i)} className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-xs md:text-sm font-bold cursor-pointer ${bR} ${bC} ${selected === i ? 'bg-indigo-600' : initial[i] ? 'bg-white/5 text-gray-400' : 'bg-transparent text-indigo-400'}`}>
+                      {v !== 0 ? v : ''}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-1 justify-center max-w-[320px]">
+                {[1,2,3,4,5,6,7,8,9,0].map(n => (
+                  <Button key={n} onClick={() => onNumInput(n)} variant="secondary" className="w-9 h-9 md:w-10 md:h-10 p-0 text-xs">
+                    {n === 0 ? 'X' : n}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          );
+        };
+
+        // --- APP PRINCIPAL ---
+
+        function App() {
+          const [view, setView] = useState('hub');
+          const [activeGame, setActiveGame] = useState(null);
+          const [stats, setStats] = useState({ 
+            totalScore: 0, 
+            level: 1,
+            gameLevels: { match3: 1, '2048': 1, wordle: 1, sudoku: 1, memory: 1, pipes: 1 }
+          });
+          const gsapLoaded = useGSAPLoader();
+
+          useEffect(() => {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) setStats(JSON.parse(saved));
+            
+            // Deep Linking
+            if (INITIAL_GAME) {
+              const game = GAMES.find(g => g.id === INITIAL_GAME);
+              if (game) {
+                 setActiveGame(game);
+                 setView('game');
+              }
+            }
+          }, []);
+
+          const updateScore = (add) => setStats(p => {
+            const newScore = p.totalScore + add;
+            const nextLevel = Math.floor(newScore / 5000) + 1;
+            const n = { ...p, totalScore: newScore, level: nextLevel };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(n));
+            return n;
+          });
+
+          const levelUpGame = () => {
+            if (!activeGame) return;
+            setStats(p => {
+              const currentLevel = p.gameLevels[activeGame.id] || 1;
+              const n = { ...p, gameLevels: { ...p.gameLevels, [activeGame.id]: currentLevel + 1 } };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(n));
+              return n;
+            });
+            if (window.gsap) {
+              window.gsap.fromTo(".level-up-overlay", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.7)", onComplete: () => {
+                setTimeout(() => window.gsap.to(".level-up-overlay", { opacity: 0, scale: 2, duration: 0.5 }), 1000);
+              }});
+            }
+          };
+
+          const enterGame = (game) => { setActiveGame(game); setView('game'); };
+
+          return (
+            <div className="min-h-screen bg-[#020202] text-white font-sans selection:bg-indigo-500/30 overflow-x-hidden pb-40">
+              <div id="particle-container" className="fixed inset-0 pointer-events-none z-[100]" />
+              <div className="fixed inset-0 pointer-events-none opacity-40">
+                <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-fuchsia-600/10 blur-[150px] rounded-full" />
+              </div>
+
+              <header className="sticky top-0 z-50 px-8 py-5 flex items-center justify-between backdrop-blur-3xl border-b border-white/5 bg-black/40">
+                <div className="flex items-center gap-4 cursor-pointer group" onClick={() => setView('hub')}>
+                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.5)] group-hover:scale-110 transition-transform">
+                    <Gamepad2 className="text-white" size={28} />
+                  </div>
+                  <h1 className="text-3xl font-black tracking-tighter uppercase italic leading-none">Puzzle<span className="text-indigo-400">Master</span></h1>
+                </div>
+                
+                <div className="flex items-center gap-6">
+                  <div className="hidden sm:flex flex-col items-end">
+                     <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{PLATFORM_PLAYER_NAME} Lvl {stats.level}</span>
+                     <div className="w-40 h-2 bg-white/5 rounded-full mt-1 overflow-hidden border border-white/5">
+                        <div className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500" style={{ width: `${(stats.totalScore % 5000) / 50}%` }} />
+                     </div>
+                  </div>
+                  <div className="flex items-center gap-4 bg-white/5 px-6 py-2.5 rounded-2xl border border-white/10 shadow-inner group">
+                     <Trophy size={20} className="text-yellow-400 group-hover:rotate-12 transition-transform" />
+                     <span className="font-black text-xl tracking-tighter">{stats.totalScore.toLocaleString()}</span>
+                  </div>
+                </div>
+              </header>
+
+              <main className="relative z-10 container mx-auto px-6 py-12">
+                <AnimatePresence mode="wait">
+                  {view === 'hub' ? (
+                    <motion.div key="hub" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="space-y-16">
+                      <section className="text-center space-y-6 max-w-4xl mx-auto">
+                        <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-white/5 border border-white/10 text-indigo-400 text-xs font-black uppercase tracking-widest shadow-2xl">
+                          <Star size={16} fill="currentColor" /> Progresión Infinita Activada
+                        </div>
+                        <h2 className="text-7xl md:text-9xl font-black tracking-tighter leading-none">Desafío <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-500 to-fuchsia-500">Sin Límites.</span></h2>
+                      </section>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                        {GAMES.map((g, idx) => (
+                          <motion.div key={g.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 }} onClick={() => enterGame(g)} className="game-card group relative bg-gray-900/40 border border-white/5 rounded-[3rem] p-8 backdrop-blur-2xl cursor-pointer hover:border-indigo-500/50 hover:bg-gray-900/60 transition-all shadow-2xl overflow-hidden">
+                            <div className={`absolute -top-16 -right-16 w-48 h-48 bg-gradient-to-br ${g.color} opacity-0 group-hover:opacity-20 blur-[60px] transition-opacity duration-700`} />
+                            <div className={`w-20 h-20 rounded-[2rem] bg-gradient-to-br ${g.color} flex items-center justify-center text-white shadow-2xl mb-10 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>{React.cloneElement(g.icon, { size: 40 })}</div>
+                            <div className="flex justify-between items-start mb-4">
+                              <h3 className="text-4xl font-black tracking-tighter">{g.name}</h3>
+                              <div className="bg-white/5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10">Lvl {stats.gameLevels[g.id] || 1}</div>
+                            </div>
+                            <p className="text-gray-400 font-medium text-lg mb-10 leading-relaxed">{g.desc}</p>
+                            <div className="flex items-center justify-between pt-8 border-t border-white/10">
+                              <span className="text-xs font-black text-white bg-white/5 px-4 py-1.5 rounded-full">{g.difficulty}</span>
+                              <Button className="w-14 h-14 rounded-2xl p-0 shadow-2xl"><Play size={24} className="ml-1" /></Button>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  ) : view === 'game' ? (
+                    <motion.div key="game" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="max-w-5xl mx-auto relative">
+                      <div className="level-up-overlay fixed inset-0 pointer-events-none z-[200] flex items-center justify-center opacity-0 scale-0">
+                         <div className="bg-indigo-600 px-12 py-6 rounded-[3rem] shadow-[0_0_100px_rgba(79,70,229,0.8)] border-4 border-white/20">
+                            <h4 className="text-6xl font-black italic tracking-tighter text-white">¡NIVEL COMPLETADO!</h4>
+                         </div>
+                      </div>
+                      <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-8">
+                        <Button onClick={() => window.parent.exitLogicMaster ? window.parent.exitLogicMaster() : setView('hub')} variant="secondary" className="px-10 h-16 rounded-2xl"><ChevronLeft size={24}/> Salir</Button>
+                        <div className="text-center"><h2 className="text-5xl font-black uppercase tracking-tighter leading-none mb-3">{activeGame?.name}</h2><div className={`h-2 w-48 mx-auto bg-gradient-to-r ${activeGame?.color} rounded-full`} /></div>
+                        <div className="flex gap-4">
+                          <Button variant="secondary" className="w-16 h-16 p-0 rounded-2xl" onClick={() => window.location.reload()}><RotateCcw size={24}/></Button>
+                        </div>
+                      </div>
+                      <div className="flex justify-center items-center min-h-[650px] p-8 bg-gray-950/40 rounded-[4rem] border border-white/5 shadow-[inset_0_0_100px_rgba(0,0,0,0.5)] backdrop-blur-md">
+                        {(() => {
+                           const gameId = activeGame?.id;
+                           return (
+                             <>
+                               {gameId === 'match3' && <GameMatch3 onScoreUpdate={updateScore} currentLevel={stats.gameLevels.match3} onLevelUp={levelUpGame} />}
+                               {gameId === 'memory' && <GameMemory onScoreUpdate={updateScore} currentLevel={stats.gameLevels.memory} onLevelUp={levelUpGame} />}
+                               {gameId === 'pipes' && <GamePipes onScoreUpdate={updateScore} currentLevel={stats.gameLevels.pipes} onLevelUp={levelUpGame} />}
+                               {gameId === '2048' && <Game2048 onScoreUpdate={updateScore} currentLevel={stats.gameLevels['2048']} onLevelUp={levelUpGame} />}
+                               {gameId === 'wordle' && <GameWordle onScoreUpdate={updateScore} currentLevel={stats.gameLevels.wordle} onLevelUp={levelUpGame} />}
+                               {gameId === 'sudoku' && <GameSudoku onScoreUpdate={updateScore} currentLevel={stats.gameLevels.sudoku} onLevelUp={levelUpGame} />}
+                             </>
+                           );
+                        })()}
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </main>
+              <footer className="py-20 border-t border-white/5 mt-32 bg-black/40 text-center">
+                <Target size={24} className="text-indigo-500 mx-auto mb-4" />
+                <span className="font-black text-lg uppercase tracking-tighter">Infinity Progression Engine v11.0</span>
+                <p className="text-gray-600 text-[10px] font-bold uppercase tracking-widest mt-2">Dificultad adaptativa por cada nivel superado</p>
+              </footer>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
