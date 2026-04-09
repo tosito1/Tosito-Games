@@ -1,0 +1,6 @@
+pygame
+requests
+pyperclip
+python-chess
+numpy
+torch

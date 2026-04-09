@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "tosito-chest"
+  },
+  "targets": {
+    "tosito-chest": {
+      "hosting": {
+        "games-site": [
+          "tosito-games"
+        ],
+        "chess-site": [
+          "tosito-chest"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

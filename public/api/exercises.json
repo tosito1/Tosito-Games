@@ -1,0 +1,130 @@
+[
+  {
+    "id": "ex1",
+    "title": "Mate en 1 — Torre",
+    "description": "Blancas juegan y dan mate en 1 movimiento.",
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+    "solution": [["f3", "g5"]],
+    "difficulty": "Principiante"
+  },
+  {
+    "id": "ex2",
+    "title": "Horquilla de Caballo",
+    "description": "Encuentra la jugada de caballo que ataca dos piezas a la vez.",
+    "fen": "r1bqk2r/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+    "solution": [["f3", "d4"]],
+    "difficulty": "Principiante"
+  },
+  {
+    "id": "ex3",
+    "title": "Clavada Absoluta",
+    "description": "Usa la clavada para ganar material.",
+    "fen": "rnbqk2r/pppp1ppp/5n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 4 4",
+    "solution": [["c4", "f7"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex4",
+    "title": "Mate Pastor (evitar)",
+    "description": "El rival intenta el mate pastor. Encuentra la defensa correcta.",
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3",
+    "solution": [["g7", "g6"]],
+    "difficulty": "Principiante"
+  },
+  {
+    "id": "ex5",
+    "title": "Táctica de Alfil — Descubierta",
+    "description": "Ataque descubierto con el alfil.",
+    "fen": "r1bq1rk1/pp3ppp/2pb1n2/3pp3/3PP3/2NB1N2/PPP2PPP/R1BQR1K1 w - - 0 10",
+    "solution": [["d3", "a6"]],
+    "difficulty": "Avanzado"
+  },
+  {
+    "id": "ex6",
+    "title": "Sacrificio de Dama",
+    "description": "Sacrifica la dama para obtener un mate forzado.",
+    "fen": "r1b1kb1r/ppppqppp/2n2n2/4p3/2B1P3/2N2Q2/PPPP1PPP/R1B1K2R w KQkq - 4 5",
+    "solution": [["f3", "f7"]],
+    "difficulty": "Avanzado"
+  },
+  {
+    "id": "ex7",
+    "title": "Mate de Pasillo",
+    "description": "Aprovecha la debilidad de la octava fila para dar mate.",
+    "fen": "6k1/5ppp/8/8/8/8/8/4R1K1 w - - 0 1",
+    "solution": [["e1", "e8"]],
+    "difficulty": "Principiante"
+  },
+  {
+    "id": "ex8",
+    "title": "Ataque a la Descubierta",
+    "description": "Mueve tu caballo para descubrir un ataque mortal de tu torre.",
+    "fen": "r1bqk2r/pp3ppp/2n1pn2/8/1b1P4/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 2 8",
+    "solution": [["c3", "e4"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex9",
+    "title": "Desviación Táctica",
+    "description": "Desvía a la pieza defensora para ganar material.",
+    "fen": "r1bqkb1r/pp3ppp/2n1pn2/8/2BP4/5N2/PP3PPP/RNBQK2R w KQkq - 0 8",
+    "solution": [["c4", "f7"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex10",
+    "title": "Mate de la Coz",
+    "description": "El rey está atrapado por sus propias piezas. ¡Mate con el caballo!",
+    "fen": "6rk/5Npp/8/8/8/8/8/7K b - - 0 1",
+    "solution": [["f7", "h6"]],
+    "difficulty": "Avanzado"
+  },
+  {
+    "id": "ex11",
+    "title": "Atracción Fatal",
+    "description": "Atrae al rey a una casilla donde recibirá mate.",
+    "fen": "k7/1p6/8/8/8/8/Q7/7K w - - 0 1",
+    "solution": [["a2", "a8"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex12",
+    "title": "Mate en 1 — Pasillo (Negras)",
+    "description": "Las negras aprovechan el descuido de las blancas.",
+    "fen": "4r1k1/8/8/8/8/8/5PPP/6K1 b - - 0 1",
+    "solution": [["e8", "e1"]],
+    "difficulty": "Principiante"
+  },
+  {
+    "id": "ex13",
+    "title": "Sacrificio de Atracción",
+    "description": "Sacrifica una pieza para atraer al rey y dar mate.",
+    "fen": "r1bqk2r/ppp2ppp/2n5/2b1p3/2B1P1n1/5N2/PPPP2PP/RNBQK2R w KQkq - 4 8",
+    "solution": [["c4", "f7"]],
+    "difficulty": "Avanzado"
+  },
+  {
+    "id": "ex14",
+    "title": "Doble Ataque de Dama",
+    "description": "Encuentra la casilla desde la cual la dama ataca al rey y a la torre.",
+    "fen": "rnbqk2r/ppp2ppp/5n2/3pp3/1b1P4/2N2N2/PPP1PPPP/R1BQKB1R w KQkq - 2 5",
+    "solution": [["d1", "d3"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex15",
+    "title": "Mate en 2 — Combinación",
+    "description": "Juegan blancas y ganan en 2 movimientos.",
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+    "solution": [["h5", "f7"]],
+    "difficulty": "Intermedio"
+  },
+  {
+    "id": "ex16",
+    "title": "Defensa Activa",
+    "description": "Las negras deben encontrar la mejor casilla para el rey.",
+    "fen": "4k3/1Q6/8/8/8/8/8/7K b - - 0 1",
+    "solution": [["e8", "f8"]],
+    "difficulty": "Principiante"
+  }
+]

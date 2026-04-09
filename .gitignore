@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+dist/
+build/
+.next/
+out/
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pylintrc
+.slurm
+
+# Firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+pubsub-debug.log*
+ui-debug.log*
+
+# Python & Environments (AGGRESSIVE)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*env*/
+venv/
+venv_ajedrez/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+.pytest_cache/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# DATA & MODELS (VERY LARGE - EXCLUDED)
+Partidas/
+*.pth
+*.pth.tar
+*.h5
+*.weights
+*.onnx
+*.pb
+
+# Secrets & Local Config
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store

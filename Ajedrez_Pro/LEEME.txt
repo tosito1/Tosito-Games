@@ -1,0 +1,21 @@
+=========================================
+       TOSITO CHESS - ONLINE
+=========================================
+
+Este es un juego de ajedrez con multijugador online.
+
+INSTRUCCIONES PARA JUGAR:
+-------------------------
+1. Asegurate de tener Python instalado (puedes bajarlo de python.org).
+2. Haz doble click en el archivo "JUGAR.bat".
+3. Se abrira una ventana negra que preparara el juego (solo la primera vez).
+4. ¡A jugar!
+
+PARA JUGAR ONLINE CON UN AMIGO:
+-------------------------------
+1. Elige "Host Online Game".
+2. Ponle un nombre a la sala (ej: "sala_pro") y dale a Confirmar.
+3. Dile ese mismo nombre a tu amigo.
+4. Tu amigo debe entrar en "Join Online Game", escribir ese nombre y confirmar.
+
+¡Que gane el mejor!

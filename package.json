@@ -1,0 +1,16 @@
+{
+  "name": "tosito-chess",
+  "version": "1.0.0",
+  "description": "Chess application with AI and multiplayer",
+  "main": "public/index.html",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "firebase-admin": "^11.0.0"
+  }
+}

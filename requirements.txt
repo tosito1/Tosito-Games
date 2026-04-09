@@ -1,0 +1,11 @@
+torch
+numpy
+python-chess
+pygame
+requests
+flask
+flask-cors
+firebase-admin
+argparse
+beautifulsoup4
+matplotlib

@@ -1,0 +1,998 @@
+[
+  {
+    "id": "abdusattorov",
+    "name": "Abdusattorov"
+  },
+  {
+    "id": "adams",
+    "name": "Adams"
+  },
+  {
+    "id": "akobian",
+    "name": "Akobian"
+  },
+  {
+    "id": "akopian",
+    "name": "Akopian"
+  },
+  {
+    "id": "alburt",
+    "name": "Alburt"
+  },
+  {
+    "id": "alekhine",
+    "name": "Alekhine"
+  },
+  {
+    "id": "alekseev",
+    "name": "Alekseev"
+  },
+  {
+    "id": "almasi",
+    "name": "Almasi"
+  },
+  {
+    "id": "anand",
+    "name": "Anand"
+  },
+  {
+    "id": "anderssen",
+    "name": "Anderssen"
+  },
+  {
+    "id": "andersson",
+    "name": "Andersson"
+  },
+  {
+    "id": "andreikin",
+    "name": "Andreikin"
+  },
+  {
+    "id": "aronian",
+    "name": "Aronian"
+  },
+  {
+    "id": "ashley",
+    "name": "Ashley"
+  },
+  {
+    "id": "averbakh",
+    "name": "Averbakh"
+  },
+  {
+    "id": "azmaiparashvili",
+    "name": "Azmaiparashvili"
+  },
+  {
+    "id": "bacrot",
+    "name": "Bacrot"
+  },
+  {
+    "id": "bareev",
+    "name": "Bareev"
+  },
+  {
+    "id": "becerrarivero",
+    "name": "Becerrarivero"
+  },
+  {
+    "id": "beliavsky",
+    "name": "Beliavsky"
+  },
+  {
+    "id": "benjamin",
+    "name": "Benjamin"
+  },
+  {
+    "id": "benko",
+    "name": "Benko"
+  },
+  {
+    "id": "berliner",
+    "name": "Berliner"
+  },
+  {
+    "id": "bernstein",
+    "name": "Bernstein"
+  },
+  {
+    "id": "bisguier",
+    "name": "Bisguier"
+  },
+  {
+    "id": "blackburne",
+    "name": "Blackburne"
+  },
+  {
+    "id": "blatny",
+    "name": "Blatny"
+  },
+  {
+    "id": "bogoljubow",
+    "name": "Bogoljubow"
+  },
+  {
+    "id": "boleslavsky",
+    "name": "Boleslavsky"
+  },
+  {
+    "id": "bologan",
+    "name": "Bologan"
+  },
+  {
+    "id": "botvinnik",
+    "name": "Botvinnik"
+  },
+  {
+    "id": "breyer",
+    "name": "Breyer"
+  },
+  {
+    "id": "bronstein",
+    "name": "Bronstein"
+  },
+  {
+    "id": "browne",
+    "name": "Browne"
+  },
+  {
+    "id": "bruzon",
+    "name": "Bruzon"
+  },
+  {
+    "id": "bu",
+    "name": "Bu"
+  },
+  {
+    "id": "byrne",
+    "name": "Byrne"
+  },
+  {
+    "id": "capablanca",
+    "name": "Capablanca"
+  },
+  {
+    "id": "carlsen",
+    "name": "Carlsen"
+  },
+  {
+    "id": "caruana",
+    "name": "Caruana"
+  },
+  {
+    "id": "chiburdanidze",
+    "name": "Chiburdanidze"
+  },
+  {
+    "id": "chigorin",
+    "name": "Chigorin"
+  },
+  {
+    "id": "christiansen",
+    "name": "Christiansen"
+  },
+  {
+    "id": "defirmian",
+    "name": "Defirmian"
+  },
+  {
+    "id": "delabourdonnais",
+    "name": "Delabourdonnais"
+  },
+  {
+    "id": "denker",
+    "name": "Denker"
+  },
+  {
+    "id": "ding",
+    "name": "Ding"
+  },
+  {
+    "id": "dominguezperez",
+    "name": "Dominguezperez"
+  },
+  {
+    "id": "dreev",
+    "name": "Dreev"
+  },
+  {
+    "id": "duda",
+    "name": "Duda"
+  },
+  {
+    "id": "dzindzichashvili",
+    "name": "Dzindzichashvili"
+  },
+  {
+    "id": "ehlvest",
+    "name": "Ehlvest"
+  },
+  {
+    "id": "eljanov",
+    "name": "Eljanov"
+  },
+  {
+    "id": "erigaisi",
+    "name": "Erigaisi"
+  },
+  {
+    "id": "euwe",
+    "name": "Euwe"
+  },
+  {
+    "id": "evans",
+    "name": "Evans"
+  },
+  {
+    "id": "fedorowicz",
+    "name": "Fedorowicz"
+  },
+  {
+    "id": "fine",
+    "name": "Fine"
+  },
+  {
+    "id": "finegold",
+    "name": "Finegold"
+  },
+  {
+    "id": "firouzja",
+    "name": "Firouzja"
+  },
+  {
+    "id": "fischer",
+    "name": "Fischer"
+  },
+  {
+    "id": "fishbein",
+    "name": "Fishbein"
+  },
+  {
+    "id": "flohr",
+    "name": "Flohr"
+  },
+  {
+    "id": "gaprindashvili",
+    "name": "Gaprindashvili"
+  },
+  {
+    "id": "gashimov",
+    "name": "Gashimov"
+  },
+  {
+    "id": "gelfand",
+    "name": "Gelfand"
+  },
+  {
+    "id": "geller",
+    "name": "Geller"
+  },
+  {
+    "id": "georgiev",
+    "name": "Georgiev"
+  },
+  {
+    "id": "giri",
+    "name": "Giri"
+  },
+  {
+    "id": "gligoric",
+    "name": "Gligoric"
+  },
+  {
+    "id": "goldin",
+    "name": "Goldin"
+  },
+  {
+    "id": "grandazuniga",
+    "name": "Grandazuniga"
+  },
+  {
+    "id": "grischuk",
+    "name": "Grischuk"
+  },
+  {
+    "id": "gukesh",
+    "name": "Gukesh"
+  },
+  {
+    "id": "gulko",
+    "name": "Gulko"
+  },
+  {
+    "id": "gunsberg",
+    "name": "Gunsberg"
+  },
+  {
+    "id": "gurevichd",
+    "name": "Gurevichd"
+  },
+  {
+    "id": "gurevichm",
+    "name": "Gurevichm"
+  },
+  {
+    "id": "harikrishna",
+    "name": "Harikrishna"
+  },
+  {
+    "id": "hort",
+    "name": "Hort"
+  },
+  {
+    "id": "horwitz",
+    "name": "Horwitz"
+  },
+  {
+    "id": "hou",
+    "name": "Hou"
+  },
+  {
+    "id": "huebner",
+    "name": "Huebner"
+  },
+  {
+    "id": "ibragimov",
+    "name": "Ibragimov"
+  },
+  {
+    "id": "illescascordoba",
+    "name": "Illescascordoba"
+  },
+  {
+    "id": "inarkiev",
+    "name": "Inarkiev"
+  },
+  {
+    "id": "ivanchuk",
+    "name": "Ivanchuk"
+  },
+  {
+    "id": "ivanova",
+    "name": "Ivanova"
+  },
+  {
+    "id": "ivanovi",
+    "name": "Ivanovi"
+  },
+  {
+    "id": "ivkov",
+    "name": "Ivkov"
+  },
+  {
+    "id": "jakovenko",
+    "name": "Jakovenko"
+  },
+  {
+    "id": "janowski",
+    "name": "Janowski"
+  },
+  {
+    "id": "jobava",
+    "name": "Jobava"
+  },
+  {
+    "id": "jussupow",
+    "name": "Jussupow"
+  },
+  {
+    "id": "kaidanov",
+    "name": "Kaidanov"
+  },
+  {
+    "id": "kamsky",
+    "name": "Kamsky"
+  },
+  {
+    "id": "karjakin",
+    "name": "Karjakin"
+  },
+  {
+    "id": "karpov",
+    "name": "Karpov"
+  },
+  {
+    "id": "kasimdzhanov",
+    "name": "Kasimdzhanov"
+  },
+  {
+    "id": "kasparov",
+    "name": "Kasparov"
+  },
+  {
+    "id": "kavalek",
+    "name": "Kavalek"
+  },
+  {
+    "id": "keres",
+    "name": "Keres"
+  },
+  {
+    "id": "keymer",
+    "name": "Keymer"
+  },
+  {
+    "id": "khalifman",
+    "name": "Khalifman"
+  },
+  {
+    "id": "kholmov",
+    "name": "Kholmov"
+  },
+  {
+    "id": "koneru",
+    "name": "Koneru"
+  },
+  {
+    "id": "korchnoi",
+    "name": "Korchnoi"
+  },
+  {
+    "id": "korobov",
+    "name": "Korobov"
+  },
+  {
+    "id": "kosteniuk",
+    "name": "Kosteniuk"
+  },
+  {
+    "id": "kotov",
+    "name": "Kotov"
+  },
+  {
+    "id": "kramnik",
+    "name": "Kramnik"
+  },
+  {
+    "id": "krasenkow",
+    "name": "Krasenkow"
+  },
+  {
+    "id": "krush",
+    "name": "Krush"
+  },
+  {
+    "id": "kudrin",
+    "name": "Kudrin"
+  },
+  {
+    "id": "lahno",
+    "name": "Lahno"
+  },
+  {
+    "id": "larsen",
+    "name": "Larsen"
+  },
+  {
+    "id": "lasker",
+    "name": "Lasker"
+  },
+  {
+    "id": "lautier",
+    "name": "Lautier"
+  },
+  {
+    "id": "le",
+    "name": "Le"
+  },
+  {
+    "id": "leko",
+    "name": "Leko"
+  },
+  {
+    "id": "levenfish",
+    "name": "Levenfish"
+  },
+  {
+    "id": "li",
+    "name": "Li"
+  },
+  {
+    "id": "lilienthal",
+    "name": "Lilienthal"
+  },
+  {
+    "id": "ljubojevic",
+    "name": "Ljubojevic"
+  },
+  {
+    "id": "lputian",
+    "name": "Lputian"
+  },
+  {
+    "id": "mackenzie",
+    "name": "Mackenzie"
+  },
+  {
+    "id": "malakhov",
+    "name": "Malakhov"
+  },
+  {
+    "id": "mamedyarov",
+    "name": "Mamedyarov"
+  },
+  {
+    "id": "maroczy",
+    "name": "Maroczy"
+  },
+  {
+    "id": "marshall",
+    "name": "Marshall"
+  },
+  {
+    "id": "mcdonnell",
+    "name": "Mcdonnell"
+  },
+  {
+    "id": "mcshane",
+    "name": "Mcshane"
+  },
+  {
+    "id": "mecking",
+    "name": "Mecking"
+  },
+  {
+    "id": "mikenas",
+    "name": "Mikenas"
+  },
+  {
+    "id": "miles",
+    "name": "Miles"
+  },
+  {
+    "id": "milov",
+    "name": "Milov"
+  },
+  {
+    "id": "morozevich",
+    "name": "Morozevich"
+  },
+  {
+    "id": "morphy",
+    "name": "Morphy"
+  },
+  {
+    "id": "motylev",
+    "name": "Motylev"
+  },
+  {
+    "id": "movsesian",
+    "name": "Movsesian"
+  },
+  {
+    "id": "muzychuk",
+    "name": "Muzychuk"
+  },
+  {
+    "id": "najdorf",
+    "name": "Najdorf"
+  },
+  {
+    "id": "najer",
+    "name": "Najer"
+  },
+  {
+    "id": "nakamura",
+    "name": "Nakamura"
+  },
+  {
+    "id": "navara",
+    "name": "Navara"
+  },
+  {
+    "id": "negi",
+    "name": "Negi"
+  },
+  {
+    "id": "nepomniachtchi",
+    "name": "Nepomniachtchi"
+  },
+  {
+    "id": "ni",
+    "name": "Ni"
+  },
+  {
+    "id": "nielsen",
+    "name": "Nielsen"
+  },
+  {
+    "id": "nikolic",
+    "name": "Nikolic"
+  },
+  {
+    "id": "nimzowitsch",
+    "name": "Nimzowitsch"
+  },
+  {
+    "id": "nisipeanu",
+    "name": "Nisipeanu"
+  },
+  {
+    "id": "novikov",
+    "name": "Novikov"
+  },
+  {
+    "id": "nunn",
+    "name": "Nunn"
+  },
+  {
+    "id": "olafsson",
+    "name": "Olafsson"
+  },
+  {
+    "id": "oll",
+    "name": "Oll"
+  },
+  {
+    "id": "onischuk",
+    "name": "Onischuk"
+  },
+  {
+    "id": "pachman",
+    "name": "Pachman"
+  },
+  {
+    "id": "paehtz",
+    "name": "Paehtz"
+  },
+  {
+    "id": "panno",
+    "name": "Panno"
+  },
+  {
+    "id": "paulsen",
+    "name": "Paulsen"
+  },
+  {
+    "id": "petrosian",
+    "name": "Petrosian"
+  },
+  {
+    "id": "pillsbury",
+    "name": "Pillsbury"
+  },
+  {
+    "id": "pilnik",
+    "name": "Pilnik"
+  },
+  {
+    "id": "polgarj",
+    "name": "Polgarj"
+  },
+  {
+    "id": "polgars",
+    "name": "Polgars"
+  },
+  {
+    "id": "polgarz",
+    "name": "Polgarz"
+  },
+  {
+    "id": "polugaevsky",
+    "name": "Polugaevsky"
+  },
+  {
+    "id": "ponomariov",
+    "name": "Ponomariov"
+  },
+  {
+    "id": "portisch",
+    "name": "Portisch"
+  },
+  {
+    "id": "praggnanandhaa",
+    "name": "Praggnanandhaa"
+  },
+  {
+    "id": "psakhis",
+    "name": "Psakhis"
+  },
+  {
+    "id": "quinteros",
+    "name": "Quinteros"
+  },
+  {
+    "id": "radjabov",
+    "name": "Radjabov"
+  },
+  {
+    "id": "rapport",
+    "name": "Rapport"
+  },
+  {
+    "id": "reshevsky",
+    "name": "Reshevsky"
+  },
+  {
+    "id": "reti",
+    "name": "Reti"
+  },
+  {
+    "id": "ribli",
+    "name": "Ribli"
+  },
+  {
+    "id": "rohde",
+    "name": "Rohde"
+  },
+  {
+    "id": "rubinstein",
+    "name": "Rubinstein"
+  },
+  {
+    "id": "rublevsky",
+    "name": "Rublevsky"
+  },
+  {
+    "id": "saemisch",
+    "name": "Saemisch"
+  },
+  {
+    "id": "sakaev",
+    "name": "Sakaev"
+  },
+  {
+    "id": "salov",
+    "name": "Salov"
+  },
+  {
+    "id": "sasikiran",
+    "name": "Sasikiran"
+  },
+  {
+    "id": "schlechter",
+    "name": "Schlechter"
+  },
+  {
+    "id": "seirawan",
+    "name": "Seirawan"
+  },
+  {
+    "id": "serper",
+    "name": "Serper"
+  },
+  {
+    "id": "shabalov",
+    "name": "Shabalov"
+  },
+  {
+    "id": "shamkovich",
+    "name": "Shamkovich"
+  },
+  {
+    "id": "shirov",
+    "name": "Shirov"
+  },
+  {
+    "id": "short",
+    "name": "Short"
+  },
+  {
+    "id": "shulman",
+    "name": "Shulman"
+  },
+  {
+    "id": "smirin",
+    "name": "Smirin"
+  },
+  {
+    "id": "smyslov",
+    "name": "Smyslov"
+  },
+  {
+    "id": "so",
+    "name": "So"
+  },
+  {
+    "id": "sokolov",
+    "name": "Sokolov"
+  },
+  {
+    "id": "soltis",
+    "name": "Soltis"
+  },
+  {
+    "id": "spassky",
+    "name": "Spassky"
+  },
+  {
+    "id": "speelman",
+    "name": "Speelman"
+  },
+  {
+    "id": "spielmann",
+    "name": "Spielmann"
+  },
+  {
+    "id": "stahlberg",
+    "name": "Stahlberg"
+  },
+  {
+    "id": "staunton",
+    "name": "Staunton"
+  },
+  {
+    "id": "stefanova",
+    "name": "Stefanova"
+  },
+  {
+    "id": "stein",
+    "name": "Stein"
+  },
+  {
+    "id": "steinitz",
+    "name": "Steinitz"
+  },
+  {
+    "id": "suetin",
+    "name": "Suetin"
+  },
+  {
+    "id": "sultankhan",
+    "name": "Sultankhan"
+  },
+  {
+    "id": "sutovsky",
+    "name": "Sutovsky"
+  },
+  {
+    "id": "svidler",
+    "name": "Svidler"
+  },
+  {
+    "id": "szabo",
+    "name": "Szabo"
+  },
+  {
+    "id": "taimanov",
+    "name": "Taimanov"
+  },
+  {
+    "id": "tal",
+    "name": "Tal"
+  },
+  {
+    "id": "tarrasch",
+    "name": "Tarrasch"
+  },
+  {
+    "id": "tartakower",
+    "name": "Tartakower"
+  },
+  {
+    "id": "teichmann",
+    "name": "Teichmann"
+  },
+  {
+    "id": "timman",
+    "name": "Timman"
+  },
+  {
+    "id": "tiviakov",
+    "name": "Tiviakov"
+  },
+  {
+    "id": "tkachiev",
+    "name": "Tkachiev"
+  },
+  {
+    "id": "tomashevsky",
+    "name": "Tomashevsky"
+  },
+  {
+    "id": "topalov",
+    "name": "Topalov"
+  },
+  {
+    "id": "torrerepetto",
+    "name": "Torrerepetto"
+  },
+  {
+    "id": "uhlmann",
+    "name": "Uhlmann"
+  },
+  {
+    "id": "unzicker",
+    "name": "Unzicker"
+  },
+  {
+    "id": "ushenina",
+    "name": "Ushenina"
+  },
+  {
+    "id": "vachierlagrave",
+    "name": "Vachierlagrave"
+  },
+  {
+    "id": "vaganian",
+    "name": "Vaganian"
+  },
+  {
+    "id": "vallejopons",
+    "name": "Vallejopons"
+  },
+  {
+    "id": "vanwely",
+    "name": "Vanwely"
+  },
+  {
+    "id": "vitiugov",
+    "name": "Vitiugov"
+  },
+  {
+    "id": "volokitin",
+    "name": "Volokitin"
+  },
+  {
+    "id": "waitzkin",
+    "name": "Waitzkin"
+  },
+  {
+    "id": "wang",
+    "name": "Wang"
+  },
+  {
+    "id": "wangh",
+    "name": "Wangh"
+  },
+  {
+    "id": "wei",
+    "name": "Wei"
+  },
+  {
+    "id": "winawer",
+    "name": "Winawer"
+  },
+  {
+    "id": "wojtaszek",
+    "name": "Wojtaszek"
+  },
+  {
+    "id": "wojtkiewicz",
+    "name": "Wojtkiewicz"
+  },
+  {
+    "id": "wolff",
+    "name": "Wolff"
+  },
+  {
+    "id": "xie",
+    "name": "Xie"
+  },
+  {
+    "id": "xu",
+    "name": "Xu"
+  },
+  {
+    "id": "ye",
+    "name": "Ye"
+  },
+  {
+    "id": "yermolinsky",
+    "name": "Yermolinsky"
+  },
+  {
+    "id": "yu",
+    "name": "Yu"
+  },
+  {
+    "id": "yudasin",
+    "name": "Yudasin"
+  },
+  {
+    "id": "zhu",
+    "name": "Zhu"
+  },
+  {
+    "id": "zukertort",
+    "name": "Zukertort"
+  },
+  {
+    "id": "zvjaginsev",
+    "name": "Zvjaginsev"
+  },
+  {
+    "id": "jalifman",
+    "name": "Jalifman"
+  }
+]

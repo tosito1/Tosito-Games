@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administrador - Ajedrez</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@700&display=swap');
+
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.9);
+            --board-light: #eeeed2;
+            --board-dark: #769656;
+            --text-color: #f8fafc;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-color), #1e293b);
+            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            margin: 0;
+            background: linear-gradient(to right, #f43f5e, #fb923c);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 10px 30px rgba(244, 63, 94, 0.3);
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
+            margin-top: 5px;
+        }
+
+        .dashboard-container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        /* Spectator Board Styles */
+        .board-container {
+            flex: 2;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 15px;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            position: relative;
+        }
+
+        .light {
+            background-color: var(--board-light);
+        }
+
+        .dark {
+            background-color: var(--board-dark);
+        }
+
+        /* Pieces */
+        .piece {
+            z-index: 2;
+            font-size: 45px;
+            font-family: "Segoe UI Symbol", Arial, sans-serif;
+            filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.4));
+        }
+
+        .piece.white {
+            color: #ffffff;
+            stroke: #000;
+            stroke-width: 1px;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+            text-shadow: 0 3px 0 #94a3b8, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+
+        .piece.black {
+            color: #0c0a09;
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.5)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
+            text-shadow: 0 2px 0 #475569, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+        }
+
+        /* Controls / Info Panel */
+        .sidebar {
+            flex: 1;
+            background: var(--panel-bg);
+            padding: 2rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .sidebar h2 {
+            margin-top: 0;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            color: #f43f5e;
+            border-bottom: 2px solid rgba(244, 63, 94, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #fb923c;
+        }
+
+        .event-log {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #a7f3d0;
+            overflow-y: auto;
+            max-height: 250px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+            padding-bottom: 2px;
+        }
+
+        .pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulse-anim 1.5s infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes pulse-anim {
+            0% {
+                opacity: 0.5;
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 15px #10b981;
+            }
+
+            100% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .dashboard-container {
+                flex-direction: column;
+            }
+
+            .board {
+                grid-template-columns: repeat(8, 40px);
+                grid-template-rows: repeat(8, 40px);
+            }
+
+            .piece {
+                font-size: 30px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>Centro de Control de Misiones</h1>
+        <div class="subtitle"><span class="pulse"></span> Supervisando partida global en tiempo real...</div>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- Spectator Board & Eval Bar -->
+        <div class="board-container" style="display: flex; gap: 15px;">
+            <!-- Eval Bar for Admin -->
+            <div id="eval-bar"
+                style="width: 25px; border-radius: 6px; background: #1e293b; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.1); box-shadow: inset 0 0 6px rgba(0,0,0,0.5);">
+                <div id="eval-fill"
+                    style="position: absolute; bottom: 0; left: 0; right: 0; background: #f8fafc; height: 50%; transition: height 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+                </div>
+                <div id="eval-text"
+                    style="position: absolute; top: 50%; width: 100%; text-align: center; color: #fff; font-size: 0.65rem; font-weight: bold; font-family: 'Inter', sans-serif; transform: translateY(-50%); mix-blend-mode: difference; z-index: 2;">
+                    0.0</div>
+            </div>
+
+            <div class="board" id="admin-board">
+                <!-- Squares injected by JS -->
+            </div>
+        </div>
+
+        <!-- Meta Information -->
+        <div class="sidebar">
+            <h2>Datos en Vivo</h2>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <div class="stat-box" style="flex: 1; border-color: #38bdf8; background: rgba(56, 189, 248, 0.1);">
+                    <div class="stat-label" style="color: #7dd3fc;">Nivel IA</div>
+                    <div class="stat-value" id="admin-ai" style="color: #38bdf8;">-</div>
+                </div>
+
+                <div class="stat-box" style="flex: 1; border-color: #818cf8; background: rgba(129, 140, 248, 0.1);">
+                    <div class="stat-label" style="color: #a5b4fc;">Conexiones</div>
+                    <div class="stat-value" id="admin-viewers" style="color: #818cf8;">0</div>
+                </div>
+            </div>
+
+            <div class="stat-box">
+                <div class="stat-label">Estado de la Partida</div>
+                <div class="stat-value" id="admin-status">Conectando...</div>
+            </div>
+
+            <div class="stat-box">
+                <div class="stat-label">Movimiento Actual</div>
+                <div class="stat-value" id="admin-turn" style="color: #6ee7b7;">-</div>
+            </div>
+
+            <h3 style="color: #94a3b8; font-size: 1rem; margin-bottom: 0px; margin-top: 10px;">Registro del Sistema</h3>
+            <div class="event-log" id="admin-log">
+                <div class="log-entry">> Inicializando satelite espia... OK</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const boardEl = document.getElementById('admin-board');
+        const statusEl = document.getElementById('admin-status');
+        const turnEl = document.getElementById('admin-turn');
+        const logEl = document.getElementById('admin-log');
+        const aiEl = document.getElementById('admin-ai');
+        const watchersEl = document.getElementById('admin-viewers');
+
+        let lastTurn = null;
+        let lastMoveText = null;
+
+        const syms = {
+            'white': { 'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔' },
+            'black': { 'P': '♟', 'N': '♞', 'B': '♝', 'R': '♜', 'Q': '♛', 'K': '♚' }
+        };
+
+        function createBoard() {
+            boardEl.innerHTML = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const sq = document.createElement('div');
+                    sq.className = `square ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                    boardEl.appendChild(sq);
+                }
+            }
+        }
+
+        function logEvent(msg) {
+            const d = new Date();
+            const timeStr = d.getHours().toString().padStart(2, '0') + ":" +
+                d.getMinutes().toString().padStart(2, '0') + ":" +
+                d.getSeconds().toString().padStart(2, '0');
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerText = `[${timeStr}] > ${msg}`;
+            logEl.prepend(entry);
+        }
+
+        async function fetchAdminState() {
+            try {
+                // We ask the main Flask server (port 5000) for the JSON state!
+                const res = await fetch('http://127.0.0.1:5000/api/state');
+                const gameState = await res.json();
+
+                // Render Board Spectator Mode
+                const subs = boardEl.children;
+                let i = 0;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const sq = subs[i++];
+                        const piece = gameState.grid[r][c];
+                        let pEl = sq.querySelector('.piece');
+
+                        if (piece) {
+                            if (!pEl) {
+                                pEl = document.createElement('div');
+                                sq.appendChild(pEl);
+                            }
+                            pEl.className = `piece ${piece.color}`;
+                            pEl.innerText = syms[piece.color][piece.type];
+                        } else {
+                            if (pEl) sq.removeChild(pEl);
+                        }
+                    }
+                }
+
+                // Update Meta Info
+                if (gameState.winner) {
+                    statusEl.innerText = gameState.winner;
+                    statusEl.style.color = '#ef4444';
+                    turnEl.innerText = "Partida Finalizada";
+
+                    if (lastTurn !== "finalized") {
+                        logEvent(`PARTIDA CONCLUIDA. Resultado: ${gameState.winner}`);
+                        lastTurn = "finalized";
+                    }
+                } else {
+                    statusEl.innerText = "EN PROGRESO";
+                    statusEl.style.color = '#fb923c';
+                    const turnStr = gameState.turn === 'white' ? 'Humano (Blancas)' : 'IA (Negras)';
+                    turnEl.innerText = `Pensando: ${turnStr}`;
+
+                    if (gameState.turn !== lastTurn && lastTurn !== "finalized") {
+                        if (lastTurn !== null) {
+                            logEvent(`Movimiento ejecutado. Cambio de turno a ${turnStr}.`);
+                        }
+                        lastTurn = gameState.turn;
+                    }
+                }
+
+                // Update Extra Data
+                if (gameState.ai_level) {
+                    aiEl.innerText = gameState.ai_level.toUpperCase();
+                }
+
+                if (gameState.viewers !== undefined) {
+                    let viewStr = gameState.viewers;
+                    if (viewStr > 0) {
+                        watchersEl.innerText = viewStr;
+                        watchersEl.style.textShadow = "0 0 10px #818cf8";
+                    } else {
+                        watchersEl.innerText = "0";
+                        watchersEl.style.textShadow = "none";
+                    }
+                }
+
+                // Track Moves in Log
+                if (gameState.last_move && gameState.last_move.text !== lastMoveText) {
+                    const colorMov = gameState.last_move.color === 'white' ? 'Humano' : 'IA';
+                    let logMsg = `[Jugada] ${colorMov}: ${gameState.last_move.text}`;
+                    if (gameState.last_move.reasoning) {
+                         // Mostrar razonamiento en el log administrativo
+                         logMsg += ` - Pensamiento: ${gameState.last_move.reasoning}`;
+                    }
+                    logEvent(logMsg);
+                    lastMoveText = gameState.last_move.text;
+                }
+
+                // Update Admin Eval Bar
+                if (gameState.eval_score !== undefined) {
+                    const evalInfo = gameState.eval_score;
+                    const evalText = document.getElementById('eval-text');
+                    const evalFill = document.getElementById('eval-fill');
+
+                    let scoreInPawns = evalInfo / 100.0;
+                    if (scoreInPawns > 0) {
+                        evalText.innerText = "+" + scoreInPawns.toFixed(1);
+                        evalText.style.top = "90%";
+                    } else if (scoreInPawns < 0) {
+                        evalText.innerText = scoreInPawns.toFixed(1);
+                        evalText.style.top = "10%";
+                    } else {
+                        evalText.innerText = "0.0";
+                        evalText.style.top = "50%";
+                    }
+
+                    let percent = 50 + (scoreInPawns / 10.0) * 50;
+                    percent = Math.max(0, Math.min(100, percent));
+                    evalFill.style.height = `${percent}%`;
+                }
+
+            } catch (e) {
+                statusEl.innerText = "Servidor Desconectado";
+                statusEl.style.color = '#64748b';
+            }
+        }
+
+        // Init Admin
+        createBoard();
+        fetchAdminState();
+        setInterval(fetchAdminState, 2000); // Polling every 2 seconds to spy
+
+    </script>
+</body>
+
+</html>

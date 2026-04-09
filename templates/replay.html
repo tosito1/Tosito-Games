@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Partidas Históricas</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@700&display=swap');
+
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.9);
+            --board-light: #eeeed2;
+            --board-dark: #769656;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --text-color: #f8fafc;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: radial-gradient(circle at top right, #1e293b, var(--bg-color));
+            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.5rem;
+            margin: 0;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 30px;
+            width: 100%;
+            max-width: 1300px;
+        }
+
+        /* Game List */
+        .list-panel {
+            flex: 1;
+            background: var(--panel-bg);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .list-panel h2 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--accent);
+            margin-top: 0;
+        }
+
+        .game-list {
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .game-item {
+            background: rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .game-item:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+
+        .game-item.active {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .game-meta {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        /* Replay Board */
+        .replay-container {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .board-wrapper {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(8, 65px);
+            grid-template-rows: repeat(8, 65px);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .square {
+            width: 65px;
+            height: 65px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .light { background-color: var(--board-light); }
+        .dark { background-color: var(--board-dark); }
+
+        .piece {
+            font-size: 50px;
+            z-index: 2;
+            cursor: default;
+            user-select: none;
+        }
+
+        .piece.white {
+            color: #ffffff;
+            stroke: #000;
+            stroke-width: 1px;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+            text-shadow: 0 3px 0 #94a3b8, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+
+        .piece.black {
+            color: #0c0a09;
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.5)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
+            text-shadow: 0 2px 0 #475569, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+        }
+
+        .highlight-last { background-color: rgba(255, 255, 0, 0.4) !important; }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 15px;
+            background: var(--panel-bg);
+            padding: 15px 30px;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: transform 0.15s, color 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+        }
+
+        .btn:hover:not(:disabled) {
+            color: var(--accent);
+            transform: scale(1.2);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .step-info {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            color: #94a3b8;
+        }
+
+        /* Move history log */
+        .history-panel {
+            flex: 1;
+            background: var(--panel-bg);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-panel h2 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--accent);
+            margin-top: 0;
+            font-size: 1.2rem;
+        }
+
+        .moves-grid {
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            font-family: monospace;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+
+        .move-entry {
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .move-entry.active {
+            background: var(--accent);
+            color: #000;
+            font-weight: bold;
+        }
+
+        @media (max-width: 1100px) {
+            .main-container { flex-direction: column; }
+            .board { grid-template-columns: repeat(8, 45px); grid-template-rows: repeat(8, 45px); }
+            .square { width: 45px; height: 45px; }
+            .piece { font-size: 35px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Centro de Inteligencia de Partidas</h1>
+        <div style="color: #94a3b8;">Analiza y revive las victorias guardadas contra la IA</div>
+    </div>
+
+    <div class="main-container">
+        <!-- Part 1: Game List -->
+        <div class="list-panel">
+            <h2>Partidas Guardadas</h2>
+            <div class="game-list" id="game-list">
+                <div style="padding: 20px; text-align: center; color: #64748b;">Cargando historial...</div>
+            </div>
+        </div>
+
+        <!-- Part 2: Replay Board -->
+        <div class="replay-container">
+            <div class="board-wrapper">
+                <div class="board" id="replay-board"></div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn" id="btn-start" disabled title="Inicio">⏮</button>
+                <button class="btn" id="btn-prev" disabled title="Atrás [Flecha Izquierda]">◀</button>
+                <div class="step-info" id="step-count">- / -</div>
+                <button class="btn" id="btn-next" disabled title="Adelante [Flecha Derecha]">▶</button>
+                <button class="btn" id="btn-end" disabled title="Final">⏭</button>
+            </div>
+        </div>
+
+        <!-- Part 3: Move Log -->
+        <div class="history-panel">
+            <h2>Registro de Jugadas</h2>
+            <div class="moves-grid" id="move-history"></div>
+        </div>
+    </div>
+
+    <script>
+        const gameListEl = document.getElementById('game-list');
+        const boardEl = document.getElementById('replay-board');
+        const moveHistoryEl = document.getElementById('move-history');
+        const stepCountEl = document.getElementById('step-count');
+        
+        const btnStart = document.getElementById('btn-start');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const btnEnd = document.getElementById('btn-end');
+
+        let currentMoves = [];
+        let currentStep = -1; // -1 means initial board
+
+        async function loadGameList() {
+            try {
+                const res = await fetch('/api/saved_games');
+                const games = await res.json();
+                
+                if (games.length === 0) {
+                    gameListEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">No hay partidas guardadas.</div>';
+                    return;
+                }
+
+                gameListEl.innerHTML = '';
+                games.reverse().forEach((game, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'game-item';
+                    item.innerHTML = `
+                        <div class="game-info">
+                            <strong>Partida #${game.id + 1}</strong>
+                            <span style="color: var(--accent)">${game.moves_count} movimientos</span>
+                        </div>
+                        <div class="game-meta">Victoria Humana • Histórico</div>
+                    `;
+                    item.onclick = () => selectGame(game.id, item);
+                    gameListEl.appendChild(item);
+                });
+            } catch (e) {
+                gameListEl.innerHTML = '<div style="color: #ef4444;">Error cargando partidas.</div>';
+            }
+        }
+
+        async function selectGame(id, element) {
+            document.querySelectorAll('.game-item').forEach(i => i.classList.remove('active'));
+            element.classList.add('active');
+
+            try {
+                const res = await fetch(`/api/saved_game/${id}`);
+                const data = await res.json();
+                currentMoves = data.moves;
+                currentStep = -1;
+                renderBoardAtStep(-1);
+                updateControls();
+                renderMoveHistory();
+            } catch (e) {
+                console.error("Error cargando jugadas", e);
+            }
+        }
+
+        const syms = {
+            'white': { 'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔' },
+            'black': { 'P': '♟', 'N': '♞', 'B': '♝', 'R': '♜', 'Q': '♛', 'K': '♚' }
+        };
+
+        function getInitialGrid() {
+            const grid = Array(8).fill(null).map(() => Array(8).fill(null));
+            const whiteParts = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
+            const blackParts = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
+            
+            for (let c = 0; c < 8; c++) {
+                grid[0][c] = { color: 'black', type: blackParts[c] };
+                grid[1][c] = { color: 'black', type: 'P' };
+                grid[6][c] = { color: 'white', type: 'P' };
+                grid[7][c] = { color: 'white', type: whiteParts[c] };
+            }
+            return grid;
+        }
+
+        function renderBoardAtStep(step) {
+            let tempGrid = getInitialGrid();
+            let lastStart = -1;
+            let lastEnd = -1;
+
+            for (let i = 0; i <= step; i++) {
+                const [startIdx, endIdx] = currentMoves[i];
+                const sr = Math.floor(startIdx / 8), sc = startIdx % 8;
+                const er = Math.floor(endIdx / 8), ec = endIdx % 8;
+                
+                const piece = tempGrid[sr][sc];
+                if (!piece) continue;
+
+                // Handle Castling in Replay
+                if (piece.type === 'K' && Math.abs(ec - sc) === 2) {
+                    if (ec > sc) { // Kingside
+                        const rook = tempGrid[sr][7];
+                        tempGrid[sr][5] = rook;
+                        tempGrid[sr][7] = null;
+                        if (rook) rook.has_moved = true;
+                    } else { // Queenside
+                        const rook = tempGrid[sr][0];
+                        tempGrid[sr][3] = rook;
+                        tempGrid[sr][0] = null;
+                        if (rook) rook.has_moved = true;
+                    }
+                }
+
+                // Handle Promotion in Replay (Default to Queen)
+                if (piece.type === 'P' && (er === 0 || er === 7)) {
+                    piece.type = 'Q';
+                }
+
+                tempGrid[er][ec] = piece;
+                tempGrid[sr][sc] = null;
+                piece.has_moved = true;
+                
+                if (i === step) {
+                    lastStart = startIdx;
+                    lastEnd = endIdx;
+                }
+            }
+
+            boardEl.innerHTML = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const sq = document.createElement('div');
+                    sq.className = `square ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
+                    const idx = r * 8 + c;
+                    
+                    if (idx === lastStart || idx === lastEnd) sq.classList.add('highlight-last');
+                    
+                    const piece = tempGrid[r][c];
+                    if (piece) {
+                        const pEl = document.createElement('div');
+                        pEl.className = `piece ${piece.color}`;
+                        pEl.innerText = syms[piece.color][piece.type];
+                        sq.appendChild(pEl);
+                    }
+                    boardEl.appendChild(sq);
+                }
+            }
+            
+            stepCountEl.innerText = `${step + 1} / ${currentMoves.length}`;
+            highlightMoveEntry(step);
+        }
+
+        function updateControls() {
+            btnStart.disabled = currentStep < 0;
+            btnPrev.disabled = currentStep < 0;
+            btnNext.disabled = currentStep >= currentMoves.length - 1;
+            btnEnd.disabled = currentStep >= currentMoves.length - 1;
+        }
+
+        function renderMoveHistory() {
+            moveHistoryEl.innerHTML = '';
+            currentMoves.forEach((move, i) => {
+                const sr = Math.floor(move[0] / 8), sc = move[0] % 8;
+                const er = Math.floor(move[1] / 8), ec = move[1] % 8;
+                const letters = 'abcdefgh';
+                const moveText = `${letters[sc]}${8-sr}→${letters[ec]}${8-er}`;
+                
+                const entry = document.createElement('div');
+                entry.className = 'move-entry';
+                entry.id = `move-${i}`;
+                entry.innerText = `${i+1}. ${moveText}`;
+                entry.onclick = () => {
+                    currentStep = i;
+                    renderBoardAtStep(i);
+                    updateControls();
+                };
+                moveHistoryEl.appendChild(entry);
+            });
+        }
+
+        function highlightMoveEntry(step) {
+            document.querySelectorAll('.move-entry').forEach(e => e.classList.remove('active'));
+            if (step >= 0) {
+                const el = document.getElementById(`move-${step}`);
+                if (el) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }
+        }
+
+        btnStart.onclick = () => { currentStep = -1; renderBoardAtStep(-1); updateControls(); };
+        btnPrev.onclick = () => { if (currentStep >= 0) { currentStep--; renderBoardAtStep(currentStep); updateControls(); } };
+        btnNext.onclick = () => { if (currentStep < currentMoves.length - 1) { currentStep++; renderBoardAtStep(currentStep); updateControls(); } };
+        btnEnd.onclick = () => { currentStep = currentMoves.length - 1; renderBoardAtStep(currentStep); updateControls(); };
+
+        window.onkeydown = (e) => {
+            if (e.key === 'ArrowRight' && !btnNext.disabled) btnNext.click();
+            if (e.key === 'ArrowLeft' && !btnPrev.disabled) btnPrev.click();
+        };
+
+        renderBoardAtStep(-1);
+        loadGameList();
+    </script>
+</body>
+</html>

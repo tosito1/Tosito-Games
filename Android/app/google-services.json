@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "645438147659",
+    "project_id": "tosito-chest",
+    "storage_bucket": "tosito-chest.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:645438147659:android:7524423a3439daf91f11ce",
+        "android_client_info": {
+          "package_name": "com.toust.tositochest"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "645438147659-jaku13nsgee022rbsq5lfgosphl1mga6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.toust.tositochest",
+            "certificate_hash": "e9ef0d74f1121b3200b84ff3c11c657dd5324fb6"
+          }
+        },
+        {
+          "client_id": "645438147659-rnv7bo0bk4gj7tvjgfhjj5ak6f00nksd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrBpiu7NHzoUvVBWBfKKs2bb_lCQsESCc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "645438147659-rnv7bo0bk4gj7tvjgfhjj5ak6f00nksd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
