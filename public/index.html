@@ -337,9 +337,25 @@ body.nav-open #app-container {
 }
 .hub-hero .hero-user:hover { background: rgba(255,255,255,.06); border-color: var(--sky); transform: scale(1.05); }
 
+.hub-section-container {
+  max-width: 960px; margin: 0 auto 4rem;
+}
+.hub-section-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 2px;
+  margin-bottom: 2rem; display: flex; align-items: center; gap: 15px;
+}
+.hub-section-title::after {
+  content: ''; flex: 1; height: 1px; background: linear-gradient(to right, rgba(255,255,255,0.1), transparent);
+}
+.hub-section-title span {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  padding: 4px 12px; border-radius: 6px; color: var(--sky);
+}
+
 .hub-games-grid {
   display: grid; grid-template-columns: 1fr; gap: 18px;
-  max-width: 960px; margin: 0 auto; padding-bottom: 2rem;
 }
 @media (min-width: 640px) { .hub-games-grid { grid-template-columns: repeat(2,1fr); } }
 @media (min-width: 960px) { .hub-games-grid { grid-template-columns: repeat(3,1fr); } }
@@ -926,41 +942,51 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       </div>
     </div>
 
-    <div class="hub-games-grid">
-      <!-- Ajedrez Pro -->
-      <div class="hub-card btn-juicy card-chess" onclick="showScreen('lobby')" id="hub-card-chess">
-        <div class="card-glow"></div>
-        <span class="card-emoji">♟️</span>
-        <h3 class="card-name">Ajedrez Pro</h3>
-        <p class="card-desc">Juega contra la IA, resuelve puzzles tácticos, explora aperturas y compite online. El tablero definitivo.</p>
-        <button class="card-action">Entrar al Lobby →</button>
-      </div>
+    <!-- SECCIÓN: ESTRATEGIA Y TABLERO -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span>01</span> Estrategia y Tablero</h4>
+      <div class="hub-games-grid">
+        <!-- Ajedrez Pro -->
+        <div class="hub-card btn-juicy card-chess" onclick="showScreen('lobby')" id="hub-card-chess">
+          <div class="card-glow"></div>
+          <span class="card-emoji">♟️</span>
+          <h3 class="card-name">Ajedrez Pro</h3>
+          <p class="card-desc">Juega contra la IA, resuelve puzzles tácticos, explora aperturas y compite online. El tablero definitivo.</p>
+          <button class="card-action">Entrar al Lobby →</button>
+        </div>
 
-      <!-- Tres en Raya -->
-      <div class="hub-card btn-juicy card-ttt" onclick="showTTTScreen()" id="hub-card-ttt">
-        <div class="card-glow"></div>
-        <span class="card-emoji">❌⭕</span>
-        <h3 class="card-name">Tres en Raya</h3>
-        <p class="card-desc">Rápido, letal e icónico. Juega Tic-Tac-Toe contra la IA con animaciones fluidas y estrategia pura.</p>
-        <button class="card-action">Jugar Ahora →</button>
-      </div>
+        <!-- Tres en Raya -->
+        <div class="hub-card btn-juicy card-ttt" onclick="showTTTScreen()" id="hub-card-ttt">
+          <div class="card-glow"></div>
+          <span class="card-emoji">❌⭕</span>
+          <h3 class="card-name">Tres en Raya</h3>
+          <p class="card-desc">Rápido, letal e icónico. Juega Tic-Tac-Toe contra la IA con animaciones fluidas y estrategia pura.</p>
+          <button class="card-action">Jugar Ahora →</button>
+        </div>
 
-      <!-- Las Damas -->
-      <div class="hub-card btn-juicy card-damas" onclick="showCheckersScreen()" id="hub-card-damas">
-        <div class="card-glow"></div>
-        <span class="card-emoji">🔴</span>
-        <h3 class="card-name">Las Damas</h3>
-        <p class="card-desc">El clásico juego de estrategia con reglamento oficial español. Vence capturando o bloqueando a la IA.</p>
-        <button class="card-action">Jugar Ahora →</button>
+        <!-- Las Damas -->
+        <div class="hub-card btn-juicy card-damas" onclick="showCheckersScreen()" id="hub-card-damas">
+          <div class="card-glow"></div>
+          <span class="card-emoji">🔴</span>
+          <h3 class="card-name">Las Damas</h3>
+          <p class="card-desc">El clásico juego de estrategia con reglamento oficial español. Vence capturando o bloqueando a la IA.</p>
+          <button class="card-action">Jugar Ahora →</button>
+        </div>
       </div>
+    </div>
 
-      <!-- Cyber Stack -->
-      <div class="hub-card btn-juicy card-stack" onclick="showStackScreen()" id="hub-card-stack">
-        <div class="card-glow"></div>
-        <span class="card-emoji">🧱</span>
-        <h3 class="card-name">Cyber Stack</h3>
-        <p class="card-desc">Desafío de equilibrio 3D. Apila bloques de neón, mantén la precisión y escala hasta las nubes.</p>
-        <button class="card-action">¡Construir! →</button>
+    <!-- SECCIÓN: ARCADE Y ACCIÓN -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span style="color:var(--indigo)">02</span> Arcade y Acción</h4>
+      <div class="hub-games-grid">
+        <!-- Cyber Stack -->
+        <div class="hub-card btn-juicy card-stack" onclick="showStackScreen()" id="hub-card-stack">
+          <div class="card-glow"></div>
+          <span class="card-emoji">🧱</span>
+          <h3 class="card-name">Cyber Stack</h3>
+          <p class="card-desc">Desafío de equilibrio 3D. Apila bloques de neón, mantén la precisión y escala hasta las nubes.</p>
+          <button class="card-action">¡Construir! →</button>
+        </div>
       </div>
     </div>
   </div>
