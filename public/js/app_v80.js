@@ -577,28 +577,54 @@ function showScreen(id) {
   if (navBtn) navBtn.classList.add('active');
 
   if (typeof gsap !== 'undefined') {
+    const tl = gsap.timeline();
+    
     if (current) {
-      gsap.to(current, { 
+      // Depth Transition Out
+      tl.to(current, { 
         opacity: 0, 
-        scale: 0.95, 
-        y: 20, 
-        duration: 0.4, 
-        ease: "power2.in",
+        scale: 0.9, 
+        filter: "blur(10px)",
+        y: 30, 
+        duration: 0.5, 
+        ease: "power2.inOut",
         onComplete: () => {
           current.classList.remove('active');
-          target.classList.add('active');
-          gsap.fromTo(target, { opacity: 0, scale: 1.05, y: -20 }, { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "back.out(1.2)" });
+          gsap.set(current, { clearProps: "all" });
         }
       });
+      
+      // Depth Transition In
+      tl.fromTo(target, 
+        { opacity: 0, scale: 1.1, filter: "blur(10px)", y: -30 }, 
+        { 
+          opacity: 1, 
+          scale: 1, 
+          filter: "blur(0px)",
+          y: 0, 
+          duration: 0.8, 
+          ease: "expo.out",
+          onStart: () => {
+            target.classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          },
+          onComplete: () => {
+            if (typeof initJuicyUI === 'function') initJuicyUI();
+            const h1 = target.querySelector('h1, h2');
+            if (h1) gsap.from(h1, { x: -30, opacity: 0, duration: 0.6, ease: "power2.out" });
+          }
+        }, 
+        "-=0.2"
+      );
     } else {
       target.classList.add('active');
-      gsap.fromTo(target, { opacity: 0, scale: 1.05 }, { opacity: 1, scale: 1, duration: 0.6 });
+      gsap.fromTo(target, { opacity: 0, scale: 1.05 }, { opacity: 1, scale: 1, duration: 0.8, ease: "power2.out" });
     }
   } else {
     if (current) current.classList.remove('active');
     target.classList.add('active');
   }
-
+}
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   if (nav) {
@@ -2648,5 +2674,120 @@ async function viewMasterGameFirestore(gameId) {
   }
 }
 
-setInterval(()=>{ if(getEl('screen-game').classList.contains('active')&&!isAiGame&&currentRoom) fetchBoardState(); },3000);
-setInterval(()=>{ if(getEl('screen-lobby').classList.contains('active')) fetchRooms(); },10000);
+// ============================================================
+//  JUICY UI & AMBIENT ANIMATIONS (V12.0)
+// ============================================================
+
+/**
+ * Sistema de partículas premium en canvas para el fondo.
+ */
+function initAmbientBackground() {
+  const canvas = document.getElementById('bg-canvas');
+  if (!canvas || typeof gsap === 'undefined') return;
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      this.x = Math.random() * w;
+      this.y = Math.random() * h;
+      this.size = Math.random() * 2 + 0.5;
+      this.speedX = (Math.random() - 0.5) * 0.5;
+      this.speedY = (Math.random() - 0.5) * 0.5;
+      this.opacity = Math.random() * 0.5 + 0.1;
+      this.pulse = Math.random() * 0.02;
+    }
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      this.opacity += this.pulse;
+      if (this.opacity > 0.6 || this.opacity < 0.1) this.pulse *= -1;
+      if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(56, 189, 248, ${this.opacity})`; // UI Sky Blue
+      ctx.fill();
+    }
+  }
+
+  function init() {
+    resize();
+    particles = Array.from({ length: 40 }, () => new Particle());
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => { p.update(); p.draw(); });
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', resize);
+  init();
+  animate();
+}
+
+/**
+ * Aplica efectos magnéticos y de brillo a todos los botones.
+ */
+window.initJuicyUI = function() {
+  if (typeof gsap === 'undefined') return;
+
+  const buttons = document.querySelectorAll('.btn, .nav-btn, .hub-card, .item-card');
+  buttons.forEach(btn => {
+    if (btn._juicyBound) return;
+    btn._juicyBound = true;
+
+    btn.addEventListener('mouseenter', () => {
+      gsap.to(btn, { scale: 1.05, duration: 0.3, ease: "back.out(2)" });
+    });
+    btn.addEventListener('mouseleave', () => {
+      gsap.to(btn, { scale: 1, duration: 0.3, ease: "power2.out" });
+    });
+    btn.addEventListener('mousedown', () => {
+      gsap.to(btn, { scale: 0.95, duration: 0.1 });
+    });
+    btn.addEventListener('mouseup', () => {
+      gsap.to(btn, { scale: 1.05, duration: 0.2 });
+    });
+  });
+};
+
+/**
+ * Lanza una celebración masiva de victoria.
+ */
+window.triggerCelebration = function() {
+  if (typeof gsap === 'undefined') return;
+  toast("✨ ¡VICTORIA EXCEPCIONAL! ✨");
+  
+  // Flash effect
+  const overlay = document.createElement('div');
+  overlay.style.cssText = "position:fixed; inset:0; background:white; z-index:9999; pointer-events:none; opacity:0;";
+  document.body.appendChild(overlay);
+  
+  gsap.to(overlay, { 
+    opacity: 0.3, 
+    duration: 0.1, 
+    repeat: 3, 
+    yoyo: true, 
+    onComplete: () => overlay.remove() 
+  });
+
+  // Simple screen shake
+  gsap.to("#app-container", { x: 10, duration: 0.05, repeat: 10, yoyo: true, ease: "none" });
+};
+
+// Global Init on Load
+document.addEventListener('DOMContentLoaded', () => {
+  initAmbientBackground();
+  initJuicyUI();
+});

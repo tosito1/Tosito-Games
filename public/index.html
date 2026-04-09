@@ -138,6 +138,26 @@ body.nav-open #app-container {
   #nav-download { margin-top: auto; padding-bottom: 2rem; }
 }
 
+/* Magnetic / Juicy Button effect */
+.btn-juicy {
+  position: relative;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.btn-juicy::before {
+  content: ''; position: absolute; inset: -5px; border-radius: inherit;
+  background: var(--sky); opacity: 0; filter: blur(12px);
+  transition: opacity 0.3s; pointer-events: none;
+}
+.btn-juicy:hover::before { opacity: 0.2; }
+
+#bg-canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.6;
+}
+
 /* ============================================================
    AUTH WALL
    ============================================================ */
@@ -800,7 +820,8 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 .apk-dl a { color:var(--sky); text-decoration:none; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; }
 </style>
 </head>
-<body>
+<!-- Ambient Background -->
+<canvas id="bg-canvas"></canvas>
 
 <!-- ============================================================
      APP LOADER
@@ -907,7 +928,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 
     <div class="hub-games-grid">
       <!-- Ajedrez Pro -->
-      <div class="hub-card card-chess" onclick="showScreen('lobby')" id="hub-card-chess">
+      <div class="hub-card btn-juicy card-chess" onclick="showScreen('lobby')" id="hub-card-chess">
         <div class="card-glow"></div>
         <span class="card-emoji">♟️</span>
         <h3 class="card-name">Ajedrez Pro</h3>
@@ -916,7 +937,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       </div>
 
       <!-- Tres en Raya -->
-      <div class="hub-card card-ttt" onclick="showTTTScreen()" id="hub-card-ttt">
+      <div class="hub-card btn-juicy card-ttt" onclick="showTTTScreen()" id="hub-card-ttt">
         <div class="card-glow"></div>
         <span class="card-emoji">❌⭕</span>
         <h3 class="card-name">Tres en Raya</h3>
@@ -925,7 +946,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       </div>
 
       <!-- Las Damas -->
-      <div class="hub-card card-damas" onclick="showCheckersScreen()" id="hub-card-damas">
+      <div class="hub-card btn-juicy card-damas" onclick="showCheckersScreen()" id="hub-card-damas">
         <div class="card-glow"></div>
         <span class="card-emoji">🔴</span>
         <h3 class="card-name">Las Damas</h3>
@@ -934,7 +955,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       </div>
 
       <!-- Cyber Stack -->
-      <div class="hub-card card-stack" onclick="showStackScreen()" id="hub-card-stack">
+      <div class="hub-card btn-juicy card-stack" onclick="showStackScreen()" id="hub-card-stack">
         <div class="card-glow"></div>
         <span class="card-emoji">🧱</span>
         <h3 class="card-name">Cyber Stack</h3>
@@ -2432,6 +2453,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function endGame(title, msg) {
     chActive = false;
+    if (title.includes('GANASTE') && typeof triggerCelebration === 'function') triggerCelebration();
     showWinnerModal(title);
     const mMsg = document.getElementById('winner-msg');
     if (mMsg) mMsg.textContent = msg;
