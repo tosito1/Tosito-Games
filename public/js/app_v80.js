@@ -489,14 +489,31 @@ function updateLobbyUI() {
   
   // Lobby/Hub info
   safeSetText('lobby-sub', `Hola, ${name} · ELO ${userProfile.elo}`);
+  safeSetText('hub-header-username', name);
   
-  // Profile Screen
+  // Profile Dashboard Hydration
   safeSetText('profile-name', name);
   safeSetText('profile-email', currentUser?.email || '');
+  safeSetText('profile-user-display', userProfile.username ? `@${userProfile.username}` : 'Sin @usuario');
+  
+  // Chess Card
   safeSetText('prof-elo', userProfile.elo);
   safeSetText('prof-wins', userProfile.wins);
   safeSetText('prof-losses', userProfile.losses);
-  safeSetText('profile-user-display', userProfile.username ? `@${userProfile.username}` : 'Sin @usuario');
+
+  // Arcade Card (Retrieving from local records)
+  const stackBest = localStorage.getItem('tosito_stack_best') || 0;
+  safeSetText('prof-stack-best', `${stackBest}m`);
+  
+  // Rank Calculation Logic
+  const totalSolved = (userProfile.solved_puzzles || []).length;
+  const rankScore = (userProfile.elo - 1000) + (userProfile.wins * 10) + (totalSolved * 5);
+  let rankLabel = "Bronce I";
+  if (rankScore > 1000) rankLabel = "Platino V";
+  else if (rankScore > 500) rankLabel = "Oro I";
+  else if (rankScore > 200) rankLabel = "Plata II";
+  
+  safeSetText('prof-global-rank', `Rango Plataforma: ${rankLabel}`);
   
   if (currentUser?.photoURL) {
     safeSetSrc('profile-avatar', currentUser.photoURL);
@@ -628,7 +645,7 @@ function showScreen(id) {
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   if (nav) {
-    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack'];
+    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'profile'];
     if (hiddenScreens.includes(id)) {
       nav.classList.add('hidden');
       if (typeof syncNavOpen === 'function') syncNavOpen(false);
@@ -1485,10 +1502,6 @@ async function loadHistoryGames() {
       const win = d.result === 'win' || d.result?.includes('Victoria');
       container.innerHTML += `<div class="game-card item-card"><div><div style="font-weight:700">${d.title || d.openingName || 'Partida de Ajedrez'}</div><div style="font-size:.75rem;color:var(--muted)">${d.opponentName || 'IA'} · ${date}</div></div><span style="font-size:.8rem;font-weight:800;color:${win?'var(--green)':'var(--red)'}">${win?'VICTORIA':'DERROTA'}</span></div>`;
     });
-    // Also render in profile
-    const profGames = getEl('profile-games');
-    if(profGames) profGames.innerHTML = container.innerHTML;
-    
     animateListItems('#history-container .item-card');
   } catch(e) { console.error("Error history:", e); }
 }

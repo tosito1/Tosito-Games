@@ -301,11 +301,36 @@ body.nav-open #app-container {
 /* ============================================================
    GAMES HUB - PREMIUM OVERHAUL
    ============================================================ */
+.hub-header {
+  position: sticky; top: 0; left: 0; right: 0;
+  height: 80px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 2rem; z-index: 1000;
+  background: rgba(2, 6, 23, 0.4); 
+  backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0 -1rem; /* compensate for screen padding if any */
+}
+.hub-header .header-brand {
+  font-family: 'Orbitron', sans-serif; font-weight: 900; color: var(--sky);
+  font-size: 1.2rem; letter-spacing: 1px;
+}
+.hub-header .header-actions {
+  display: flex; align-items: center; gap: 1rem;
+}
+.hub-header .header-user {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  padding: 6px 16px; border-radius: 99px;
+  cursor: pointer; transition: all 0.3s;
+}
+.hub-header .header-user:hover { background: rgba(56,189,248,0.1); border-color: var(--sky); transform: translateY(-2px); }
+.header-user-name { font-weight: 700; font-size: 0.85rem; color: var(--text); }
+
 .hub-hero {
-  position: relative; padding: 6rem 1rem 4rem; text-align: center;
+  position: relative; padding: 4rem 1rem 3rem; text-align: center;
   overflow: visible; z-index: 10;
   background: url('tosito_games_hero_background_1775740953334.png') no-repeat center center;
-  background-size: cover; border-radius: 40px; margin: 2rem;
+  background-size: cover; border-radius: 40px; margin: 1rem 2rem 2rem;
   box-shadow: 0 40px 100px rgba(0,0,0,0.8), inset 0 0 100px rgba(0,0,0,0.5);
   border: 1px solid rgba(255,255,255,0.1);
 }
@@ -594,8 +619,36 @@ input:checked + .switch-slider:before { transform: translateX(20px); }
 .avatar-img { width:100%; height:100%; border-radius:50%; object-fit:cover; border:2px solid var(--sky); position:relative; z-index:2; }
 .avatar-glow { position:absolute; inset:-4px; border-radius:50%; background:var(--sky); opacity:.25; filter:blur(8px); z-index:1; }
 .avatar-placeholder { width:100%;height:100%;border-radius:50%;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:2.5rem;border:1px solid var(--border);position:relative;z-index:2; }
-.profile-stats { display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;width:100%;max-width:500px;margin:0 auto 2rem; }
-.stat-box { background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:14px;padding:1.1rem;text-align:center; }
+.profile-stats-grid {
+  display: grid; grid-template-columns: 1fr; gap: 1.5rem;
+  width: 100%; max-width: 900px; margin: 0 auto 2.5rem;
+}
+@media (min-width: 640px) { .profile-stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.profile-stat-card {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+  border-radius: 24px; padding: 1.8rem; position: relative; overflow: hidden;
+  transition: transform 0.3s, border-color 0.3s;
+}
+.profile-stat-card:hover { transform: translateY(-5px); border-color: rgba(255,255,255,0.15); }
+.profile-stat-card .card-icon { font-size: 2rem; margin-bottom: 1rem; opacity: 0.8; }
+.profile-stat-card h4 { font-family: 'Orbitron', sans-serif; font-size: 0.9rem; letter-spacing: 1px; color: var(--muted); margin-bottom: 1.2rem; }
+
+.mini-stats-row { display: flex; gap: 1.5rem; }
+.mini-stat { flex: 1; }
+.mini-stat-val { font-size: 1.6rem; font-weight: 900; font-family: 'Outfit', sans-serif; }
+.mini-stat-lbl { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+/* Isolated Profile Tweaks */
+#screen-profile.active { display: block; padding-top: 2rem; }
+.btn-back-hub {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  padding: 10px 20px; border-radius: 99px; color: var(--text);
+  font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.3s;
+  margin-bottom: 2rem;
+}
+.btn-back-hub:hover { background: rgba(255,255,255,0.1); border-color: var(--sky); transform: translateX(-5px); }
 
 /* === TRES EN RAYA PREMIUM === */
 .ttt-container {
@@ -919,16 +972,10 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   <button class="nav-btn" onclick="showScreen('social')" id="nav-social">
     <span class="icon">👥</span>SOCIAL
   </button>
-  <button class="nav-btn" onclick="showScreen('profile')" id="nav-profile">
-    <span class="icon">👤</span>PERFIL
-  </button>
   <a href="https://drive.google.com/file/d/1tdaixmzbIuKbwp2s6U5TgPasxLrG7bdj/view?usp=sharing"
      target="_blank" class="nav-btn" id="nav-download">
     <span class="icon">📱</span>APP MÓVIL
   </a>
-  <button class="nav-btn" onclick="signOut()" style="color:var(--red); border-top: 1px solid var(--border); margin-top: 10px; padding-top: 15px;">
-    <span class="icon">🚪</span>SALIR
-  </button>
 </nav>
 
 <!-- ============================================================
@@ -939,14 +986,21 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   <!-- ======================================================
        GAMES HUB
        ====================================================== -->
-  <div id="screen-hub" class="screen">
+  <div id="screen-hub" class="screen" style="padding-top:0;">
+    <header class="hub-header">
+      <div class="header-brand">TOSITO GAMES</div>
+      <div class="header-actions">
+        <div class="header-user" onclick="showScreen('profile')">
+          <span style="font-size:1.1rem">👤</span>
+          <span id="hub-header-username" class="header-user-name">Perfil</span>
+        </div>
+        <button class="btn btn-glass" onclick="signOut()" style="width:auto; padding:8px 14px; font-size:0.75rem; border-color:var(--red); color:var(--red);">🚪 Salir</button>
+      </div>
+    </header>
+
     <div class="hub-hero">
       <h1>Tosito Games</h1>
       <p class="hero-sub">Tu plataforma de juegos de mesa. Desafía a la IA, compite con amigos y domina cada tablero.</p>
-      <div style="display:flex; justify-content:center; align-items:center; gap:15px; margin-top:1rem;">
-        <div class="hero-user" onclick="showScreen('profile')" style="cursor:pointer; margin:0;">👤 <span id="hub-username">Cargando...</span></div>
-        <button class="btn btn-glass" onclick="signOut()" style="width:auto; padding:6px 14px; font-size:0.75rem; border-color:var(--red); color:var(--red); background:rgba(239,68,68,0.05);">🚪 Cerrar Sesión</button>
-      </div>
     </div>
 
     <!-- SECCIÓN: ESTRATEGIA Y TABLERO -->
@@ -1502,46 +1556,81 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
        PROFILE SCREEN
        ====================================================== -->
   <div id="screen-profile" class="screen">
-    <h2 class="section-title" style="margin-bottom:1.5rem;">Mi Perfil</h2>
+    <div style="max-width:900px; margin: 0 auto;">
+      <button class="btn-back-hub" onclick="showScreen('hub')">← Volver a Juegos</button>
+      
+      <div class="section-header" style="margin-bottom:3rem; justify-content: space-between; align-items: flex-end;">
+        <div>
+          <h2 class="section-title" style="margin-bottom: 5px;">Mi Cuenta</h2>
+          <div class="section-sub">Perfil Maestro · Plataforma Tosito Games</div>
+        </div>
+        <div id="prof-global-rank" class="badge badge-sky" style="font-size:0.9rem; padding:8px 18px; border-radius:12px;">Nivel: Bronce II</div>
+      </div>
 
-    <div class="profile-header">
+    <div class="profile-header" style="padding-top:0;">
       <div class="avatar-container">
         <div class="avatar-glow"></div>
         <img id="profile-avatar" class="avatar-img" src="" alt="Avatar" style="display:none;">
         <div id="profile-avatar-ph" class="avatar-placeholder">👤</div>
       </div>
-      <h2 id="profile-name" style="font-size:2.2rem;font-family:'Outfit',sans-serif;font-weight:900;margin-bottom:4px;">--</h2>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span id="profile-user-display" style="color:var(--sky);font-size:1rem;font-weight:600;cursor:pointer;" onclick="startEditUser()"></span>
-        <button class="btn btn-glass" style="padding:4px 8px;font-size:.78rem;" onclick="startEditUser()">Editar</button>
-        <button id="prof-admin-btn" class="btn btn-glass" style="display:none;padding:4px 8px;font-size:.78rem;border-color:var(--amber);color:var(--amber);" onclick="showScreen('lobby');switchLobbyTab('tab-admin')">Admin 👑</button>
+      <h2 id="profile-name" style="font-size:2.5rem;font-family:'Orbitron',sans-serif;font-weight:900;margin-bottom:6px;">--</h2>
+      <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
+        <span id="profile-user-display" style="color:var(--sky);font-size:1.1rem;font-weight:700;cursor:pointer;" onclick="startEditUser()"></span>
+        <button id="prof-admin-btn" class="badge badge-amber" style="display:none; cursor:pointer;" onclick="showScreen('lobby');switchLobbyTab('tab-admin')">ADMIN 👑</button>
       </div>
-      <input type="text" id="profile-user-input" class="input" style="display:none;width:auto;text-align:center;margin-top:8px;" placeholder="Tu @usuario">
       <p id="profile-email" style="color:var(--muted);font-size:.88rem;margin-top:10px;"></p>
-    </div>
-
-    <div class="profile-stats">
-      <div class="stat-box">
-        <div id="prof-wins" style="font-size:2rem;font-weight:900;color:var(--green);">0</div>
-        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Victorias</div>
-      </div>
-      <div class="stat-box" style="border-color:var(--sky);background:rgba(56,189,248,.04);transform:scale(1.05);">
-        <div id="prof-elo" style="font-size:2.4rem;font-weight:900;color:var(--sky);font-family:'Outfit',sans-serif;">1200</div>
-        <div style="font-size:.75rem;color:var(--sky);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-top:4px;">RATING ELO</div>
-      </div>
-      <div class="stat-box">
-        <div id="prof-losses" style="font-size:2rem;font-weight:900;color:var(--red);">0</div>
-        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Derrotas</div>
+      
+      <div style="display:flex; justify-content:center; gap:10px; margin-top:2rem;">
+        <button class="btn btn-glass" style="width:auto; padding:10px 25px; font-size:0.9rem;" onclick="startEditUser()">✏️ Ajustes de Cuenta</button>
+        <button class="btn btn-danger" onclick="signOut()" style="width:auto; padding:10px 25px; font-size:0.9rem;">🚪 Cerrar Sesión</button>
       </div>
     </div>
 
-    <div style="max-width:800px;margin:0 auto;">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:1.5rem;">
-        <button class="btn btn-danger" onclick="signOut()" style="width:auto;padding:10px 22px;">🚪 Cerrar Sesión</button>
+    <div style="max-width:900px; margin: 4rem auto 2rem;">
+      <h3 style="margin-bottom:2rem; font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:2.5px; text-align:center;">Habilidades y Logros</h3>
+      
+      <div class="profile-stats-grid">
+      <!-- DASHBOARD: AJEDREZ -->
+      <div class="profile-stat-card" style="border-left: 4px solid var(--sky);">
+        <div class="card-icon">♟️</div>
+        <h4>ESTADÍSTICAS AJEDREZ</h4>
+        <div class="mini-stats-row">
+          <div class="mini-stat">
+            <div id="prof-elo" class="mini-stat-val" style="color:var(--sky);">1200</div>
+            <div class="mini-stat-lbl">Rating ELO</div>
+          </div>
+          <div class="mini-stat">
+            <div id="prof-wins" class="mini-stat-val" style="color:var(--green);">0</div>
+            <div class="mini-stat-lbl">Victorias</div>
+          </div>
+          <div class="mini-stat">
+            <div id="prof-losses" class="mini-stat-val" style="color:var(--red);">0</div>
+            <div class="mini-stat-lbl">Derrotas</div>
+          </div>
+        </div>
       </div>
-      <h3 style="margin-bottom:1.5rem;font-size:1rem;color:var(--muted);text-transform:uppercase;">Historial Reciente</h3>
-      <div id="profile-games" class="list-grid"></div>
+
+      <!-- DASHBOARD: ARCADE & MINI-GAMES -->
+      <div class="profile-stat-card" style="border-left: 4px solid var(--purple);">
+        <div class="card-icon">🕹️</div>
+        <h4>RÉCORDS ARCADE</h4>
+        <div class="mini-stats-row">
+          <div class="mini-stat">
+            <div id="prof-stack-best" class="mini-stat-val" style="color:var(--purple);">0m</div>
+            <div class="mini-stat-lbl">Cyber Stack</div>
+          </div>
+          <div class="mini-stat">
+            <div id="prof-ttt-wins" class="mini-stat-val" style="color:var(--amber);">0</div>
+            <div class="mini-stat-lbl">Tres en Raya</div>
+          </div>
+        </div>
+      </div>
     </div>
+
+      </div>
+    </div>
+
+  </div><!-- /max-width container -->
   </div>
 
 </div><!-- /#app-container -->
@@ -1984,12 +2073,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.updateHubUsername = function() {
     try {
-      const el = document.getElementById('hub-username');
-      if (!el) return;
+      const headerEl = document.getElementById('hub-header-username');
       const name = (userProfile && (userProfile.username || userProfile.displayName))
         ? (userProfile.username || userProfile.displayName)
         : (currentUser ? (currentUser.displayName || currentUser.email) : 'Jugador');
-      el.textContent = name;
+      
+      if (headerEl) headerEl.textContent = name;
+      safeSetText('lobby-sub', `Hola, ${name} · ELO ${userProfile.elo}`);
     } catch(e) { console.warn('Hub username error:', e); }
   };
 
