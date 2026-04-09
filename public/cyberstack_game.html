@@ -391,10 +391,7 @@
                         const newCombos = [...prevCombos];
                         newCombos[pIdx] += 1;
                         audio.playPerfect(newCombos[pIdx]);
-                        if (newCombos[pIdx] >= 2) {
-                            curr.w = Math.min(BASE_SIZE * 1.5, curr.w + 6);
-                            curr.d = Math.min(BASE_SIZE * 1.5, curr.d + 6);
-                        }
+                        // Eliminado el crecimiento de la pieza propia por pedido del usuario
                         return newCombos;
                     });
                     createParticles(pIdx, curr.x, curr.y, curr.z, curr.w, curr.d, curr.color);
@@ -406,21 +403,39 @@
                         const oppIdx = pIdx === 0 ? 1 : 0;
                         const oppP = gameRef.current.players[oppIdx];
                         if (oppP && oppP.state === 'playing') {
-                            const chosenSabotage = SABOTAGES[Math.floor(Math.random() * SABOTAGES.length)];
-                            audio.playSabotage();
-                            const duration = chosenSabotage === 'SHRINK' ? 1 : 7;
-                            oppP.sabotage = { type: chosenSabotage, timer: duration };
-                            if (chosenSabotage === 'SHRINK') {
-                                const oppCurr = oppP.blocks[oppP.blocks.length - 1];
-                                if (oppCurr && oppCurr.isMoving) {
-                                    oppCurr.w = Math.max(BASE_SIZE * 0.5, oppCurr.w * 0.7);
-                                    oppCurr.d = Math.max(BASE_SIZE * 0.5, oppCurr.d * 0.7);
+                            // Reducimos la probabilidad de encoger al rival (SHRINK) porque es una ventaja muy fuerte.
+                            // Si es perfecto, solo hay un 20% de probabilidad de SHRINK. Si no, se elige otro sabotaje aleatorio o no pasa nada.
+                            let chosenSabotage = null;
+                            if (isPerfect) {
+                                if (Math.random() < 0.20) {
+                                    chosenSabotage = 'SHRINK';
+                                } else {
+                                    // Si no es shrink, elegimos entre los otros sabotajes menos agresivos
+                                    const others = SABOTAGES.filter(s => s !== 'SHRINK');
+                                    chosenSabotage = others[Math.floor(Math.random() * others.length)];
                                 }
+                            } else if (Math.random() < 0.10) { 
+                                // En jugadas normales, hay una probabilidad muy baja de activar cualquier sabotaje
+                                chosenSabotage = SABOTAGES[Math.floor(Math.random() * SABOTAGES.length)];
                             }
-                            setActiveSabotages(prev => { const next = [...prev]; next[oppIdx] = chosenSabotage; return next; });
-                            setTimeout(() => {
-                                setActiveSabotages(prev => { const next = [...prev]; if (next[oppIdx] === chosenSabotage) next[oppIdx] = null; return next; });
-                            }, 7000);
+
+                            if (chosenSabotage) {
+                                audio.playSabotage();
+                                const duration = chosenSabotage === 'SHRINK' ? 1 : 7;
+                                oppP.sabotage = { type: chosenSabotage, timer: duration };
+                                if (chosenSabotage === 'SHRINK') {
+                                    // Reducir pieza del oponente
+                                    const oppCurr = oppP.blocks[oppP.blocks.length - 1];
+                                    if (oppCurr && oppCurr.isMoving) {
+                                        oppCurr.w = Math.max(BASE_SIZE * 0.4, oppCurr.w * 0.75);
+                                        oppCurr.d = Math.max(BASE_SIZE * 0.4, oppCurr.d * 0.75);
+                                    }
+                                }
+                                setActiveSabotages(prev => { const next = [...prev]; next[oppIdx] = chosenSabotage; return next; });
+                                setTimeout(() => {
+                                    setActiveSabotages(prev => { const next = [...prev]; if (next[oppIdx] === chosenSabotage) next[oppIdx] = null; return next; });
+                                }, 7000);
+                            }
                         }
                     }
                 } else {
@@ -624,12 +639,25 @@
                                     const theta = Math.sin(p.movementTime * (p.speed / 60)) * 0.8;
                                     const pos = (isX ? prev.x : prev.z) + PENDULUM_L * Math.sin(theta);
                                     if (isX) { curr.x = pos; curr.z = prev.z; } else { curr.z = pos; curr.x = prev.x; }
-                                    curr.y = curr.targetY + DROP_HEIGHT + (PENDULUM_L - PENDULUM_L * Math.cos(theta));
+                                    
+                                    // IMPLEMENTACIÓN DEL VIENTO: Oscilación lateral
+                                    if (isWind) {
+                                        const windOffset = Math.sin(globalTime * 15) * 40;
+                                        if (isX) curr.z += windOffset;
+                                        else curr.x += windOffset;
+                                    }
                                 } else {
                                     const range = 180; const period = (range * 2) / p.speed;
                                     const phase = (p.movementTime % period) / period;
                                     let pos = phase < 0.5 ? -range + (phase * 2) * (range * 2) : range - ((phase - 0.5) * 2) * (range * 2);
                                     if (isX) { curr.x = pos; curr.z = prev.z; } else { curr.z = pos; curr.x = prev.x; }
+
+                                    // IMPLEMENTACIÓN DEL VIENTO: Oscilación lateral
+                                    if (isWind) {
+                                        const windOffset = Math.sin(globalTime * 15) * 40;
+                                        if (isX) curr.z += windOffset;
+                                        else curr.x += windOffset;
+                                    }
                                 }
                             } else if (curr.isDropping) {
                                 curr.vy -= 1200 * dt; curr.y += curr.vy * dt;

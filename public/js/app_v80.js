@@ -612,24 +612,25 @@ function showScreen(id) {
       });
       
       // Depth Transition In
-      const isStack = id === 'stack';
+      const isGameFull = id === 'stack' || id === 'slither';
       tl.fromTo(target, 
-        { opacity: 0, scale: isStack ? 1 : 1.1, filter: isStack ? "none" : "blur(10px)", y: isStack ? 0 : -30 }, 
+        { opacity: 0, scale: isGameFull ? 1 : 1.1, filter: isGameFull ? "none" : "blur(10px)", y: isGameFull ? 0 : -30 }, 
         { 
           opacity: 1, 
           scale: 1, 
           filter: "blur(0px)",
           y: 0, 
-          duration: isStack ? 0.3 : 0.8, 
-          ease: isStack ? "power2.out" : "expo.out",
+          duration: isGameFull ? 0.3 : 0.8, 
+          ease: isGameFull ? "power2.out" : "expo.out",
           onStart: () => {
             target.classList.add('active');
-            if (!isStack) window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!isGameFull) window.scrollTo({ top: 0, behavior: 'smooth' });
           },
           onComplete: () => {
+            gsap.set(target, { clearProps: "all" });
             if (typeof initJuicyUI === 'function') initJuicyUI();
             const h1 = target.querySelector('h1, h2');
-            if (h1 && !isStack) gsap.from(h1, { x: -30, opacity: 0, duration: 0.6, ease: "power2.out" });
+            if (h1 && !isGameFull) gsap.from(h1, { x: -30, opacity: 0, duration: 0.6, ease: "power2.out" });
           }
         }, 
         "-=0.2"
@@ -646,7 +647,7 @@ function showScreen(id) {
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   if (nav) {
-    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'profile'];
+    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'slither', 'profile'];
     if (hiddenScreens.includes(id)) {
       nav.classList.add('hidden');
       if (typeof syncNavOpen === 'function') syncNavOpen(false);
@@ -2977,5 +2978,24 @@ window.updateArcadeRecord = function(gameId, score) {
       
       updateLobbyUI();
     }
+  }
+};
+
+/**
+ * SLITHER NEO INTEGRATION
+ */
+window.showSlitherScreen = function() {
+  showScreen('slither');
+  
+  const frame = document.getElementById('slither-frame');
+  if (frame) {
+    const appId = 'slither-neo-evolved';
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig || {}));
+    const v = Date.now();
+    const name = encodeURIComponent(userProfile.displayName || userProfile.username || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Jugador');
+    const src = `/slither_game.html?v=${v}&appId=${appId}&config=${config}&playerName=${name}`;
+    
+    // Always update src to force reload and avoid cache
+    frame.src = src;
   }
 };

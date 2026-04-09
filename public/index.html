@@ -7,8 +7,8 @@
 <meta name="description" content="Tosito Games — Ajedrez, Tres en Raya y más. Juega contra IA, compite online, explora aperturas y resuelve puzzles tácticos.">
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
-  /* FORCED FULLSCREEN FOR CYBER STACK */
-  #screen-stack {
+  /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
+  #screen-stack, #screen-slither {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -22,7 +22,7 @@
     overflow: hidden !important;
     border: none !important;
   }
-  #screen-stack.active {
+  #screen-stack.active, #screen-slither.active {
     display: block !important;
   }
 </style>
@@ -1166,6 +1166,15 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
           <p class="card-desc">Desafío de equilibrio 3D. Apila bloques de neón, mantén la precisión y escala hasta las nubes.</p>
           <button class="card-action">¡Construir! →</button>
         </div>
+
+        <!-- Slither Neo -->
+        <div class="hub-card btn-juicy card-slither" onclick="showSlitherScreen()" id="hub-card-slither">
+          <div class="card-glow" style="background:radial-gradient(circle at center, var(--indigo), transparent 70%);"></div>
+          <span class="card-emoji">🐍</span>
+          <h3 class="card-name">Slither Neo</h3>
+          <p class="card-desc">Evolución multijugador. Consume energía, domina la arena global y conviértete en el depredador alfa del vacío.</p>
+          <button class="card-action" style="background:var(--indigo); color:white;">Entrar al Vacío →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1175,6 +1184,13 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
        ====================================================== -->
   <div id="screen-stack" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
     <iframe id="stack-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- ======================================================
+       SLITHER NEO (MULTIPLE LAYER REACT IFRAME)
+       ====================================================== -->
+  <div id="screen-slither" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="slither-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
 

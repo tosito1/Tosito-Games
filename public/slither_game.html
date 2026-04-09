@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Slither Neo Evolved | Tosito Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #020617; font-family: 'Inter', sans-serif; }
+        canvas { display: block; }
+        ::-webkit-scrollbar { display: none; }
+        * { -webkit-tap-highlight-color: transparent; outline: none !important; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.263.1",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import ReactDOM from 'react-dom';
+        import { initializeApp } from 'firebase/app';
+        import { 
+          getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp 
+        } from 'firebase/firestore';
+        import { 
+          getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+        } from 'firebase/auth';
+        import { Trophy, Users, Zap, Skull, Map as MapIcon, ChevronRight, RotateCcw } from 'lucide-react';
+
+        // --- BRIDGE FIREBASE ---
+        window.process = { env: { NODE_ENV: 'production' } };
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const configParam = urlParams.get('config');
+        const appIdParam = urlParams.get('appId');
+        const __initial_auth_token = urlParams.get('token');
+
+        const firebaseConfig = configParam ? JSON.parse(decodeURIComponent(configParam)) : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "dummy", authDomain: "dummy", projectId: "dummy", storageBucket: "dummy", messagingSenderId: "dummy", appId: "dummy"
+        });
+        
+        const app = Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey !== "dummy" ? initializeApp(firebaseConfig) : null;
+        const auth = app ? getAuth(app) : null;
+        const db = app ? getFirestore(app) : null;
+        const appId = appIdParam || (typeof __app_id !== 'undefined' ? __app_id : 'slither-neo-evolved');
+
+        // --- CONSTANTES DEL JUEGO ---
+        const MAP_SIZE = 4000;
+        const INITIAL_LENGTH = 15;
+        const BASE_SPEED = 2.8;
+        const BOOST_SPEED = 5.5;
+        const TURN_SPEED = 0.07;
+        const FOOD_COUNT = 250;
+        const TICK_RATE = 80;
+
+        // --- CLASE DE PARTÍCULAS ---
+        class Particle {
+          constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = (Math.random() - 0.5) * 10;
+            this.alpha = 1;
+            this.life = 1.0;
+          }
+          update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vx *= 0.95;
+            this.vy *= 0.95;
+            this.life -= 0.02;
+            this.alpha = Math.max(0, this.life);
+          }
+        }
+
+        function App() {
+          const [user, setUser] = useState(null);
+          const [gameState, setGameState] = useState('START'); 
+          const [playerName, setPlayerName] = useState(urlParams.get('playerName') || '');
+          const [players, setPlayers] = useState({});
+          const [food, setFood] = useState([]);
+          const [score, setScore] = useState(0);
+          const [leaderboard, setLeaderboard] = useState([]);
+          const [isBoosting, setIsBoosting] = useState(false);
+
+          const canvasRef = useRef(null);
+          const requestRef = useRef();
+          const particles = useRef([]);
+          
+          const mySnake = useRef({
+            id: null,
+            name: '',
+            color: `hsl(${Math.random() * 360}, 80%, 60%)`,
+            points: [], 
+            angle: Math.random() * Math.PI * 2,
+            length: INITIAL_LENGTH,
+            isDead: false,
+            boost: false,
+            zoom: 1.0
+          });
+
+          const keys = useRef({});
+
+          // 1. Inicialización de Auth
+          useEffect(() => {
+            const init = async () => {
+              try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                  await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                  await signInAnonymously(auth);
+                }
+              } catch(e) { console.error("Auth init fail", e); }
+            };
+            init();
+            return onAuthStateChanged(auth, (u) => {
+              if (u) {
+                setUser(u);
+                mySnake.current.id = u.uid;
+              }
+            });
+          }, []);
+
+          // 2. Sincronización Realtime
+          useEffect(() => {
+            if (!user) return;
+
+            const playersCol = collection(db, 'artifacts', appId, 'public', 'data', 'players');
+            const unsubPlayers = onSnapshot(playersCol, (snapshot) => {
+              const pData = {};
+              snapshot.forEach(doc => {
+                if (doc.id !== user.uid) pData[doc.id] = doc.data();
+              });
+              setPlayers(pData);
+              const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+              setLeaderboard(all.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10));
+            });
+
+            const foodCol = collection(db, 'artifacts', appId, 'public', 'data', 'food');
+            const unsubFood = onSnapshot(foodCol, (snapshot) => {
+              setFood(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+
+            return () => { unsubPlayers(); unsubFood(); };
+          }, [user, appId]);
+
+          // 3. Motor de Generación de Comida (Mantenimiento Automático)
+          useEffect(() => {
+            if (!db || !user || food.length > FOOD_COUNT * 0.7) return;
+
+            const maintainFood = async () => {
+              const amountToSpawn = FOOD_COUNT - food.length;
+              if (amountToSpawn <= 0) return;
+
+              console.log(`[🌱] Sembrando ${amountToSpawn} puntos de vida...`);
+              for (let i = 0; i < Math.min(amountToSpawn, 50); i++) {
+                const fId = `food_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
+                  x: Math.random() * MAP_SIZE,
+                  y: Math.random() * MAP_SIZE,
+                  color: `hsl(${Math.random() * 360}, 80%, 60%)`,
+                  value: Math.random() > 0.9 ? 3 : 1
+                }).catch(() => {});
+              }
+            };
+
+            const timer = setTimeout(maintainFood, 1000 + Math.random() * 3000);
+            return () => clearTimeout(timer);
+          }, [food.length, user, db, appId]);
+
+          const startGame = async () => {
+            if (!playerName.trim()) return;
+            const startX = Math.random() * (MAP_SIZE - 400) + 200;
+            const startY = Math.random() * (MAP_SIZE - 400) + 200;
+            
+            mySnake.current = {
+              ...mySnake.current,
+              name: playerName,
+              points: Array.from({ length: INITIAL_LENGTH }, (_, i) => ({ x: startX, y: startY })),
+              angle: Math.random() * Math.PI * 2,
+              length: INITIAL_LENGTH,
+              isDead: false,
+              boost: false,
+              zoom: 1.0
+            };
+
+            setScore(0);
+            setGameState('PLAYING');
+
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid), {
+              name: playerName,
+              color: mySnake.current.color,
+              points: mySnake.current.points,
+              score: 0,
+              isBoosting: false,
+              lastUpdate: serverTimestamp()
+            });
+          };
+
+          const die = async () => {
+            if (mySnake.current.isDead) return;
+            mySnake.current.isDead = true;
+            setGameState('GAMEOVER');
+            
+            // Crear partículas de explosión
+            for(let i=0; i<30; i++) {
+                particles.current.push(new Particle(mySnake.current.points[0].x, mySnake.current.points[0].y, mySnake.current.color));
+            }
+
+            // Convertir cuerpo en comida (Mecánica de Restos)
+            mySnake.current.points.forEach((p, i) => {
+              if (i % 4 === 0) { // Mayor densidad de comida al morir
+                const fId = `remains_${user.uid}_${i}_${Date.now()}`;
+                setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
+                  x: p.x + (Math.random()-0.5)*40,
+                  y: p.y + (Math.random()-0.5)*40,
+                  color: mySnake.current.color,
+                  value: 2
+                }).catch(() => {});
+              }
+            });
+
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid));
+          };
+
+          const update = () => {
+            if (gameState !== 'PLAYING' || mySnake.current.isDead) return;
+
+            const s = mySnake.current;
+            const head = { ...s.points[0] };
+
+            // Lógica de Boost
+            const boosting = (keys.current[' '] || keys.current['mousedown']) && s.length > 20;
+            s.boost = boosting;
+            setIsBoosting(boosting);
+            const currentSpeed = boosting ? BOOST_SPEED : BASE_SPEED;
+
+            if (boosting) {
+                s.length -= 0.05; // Consume masa
+                if (Math.random() > 0.8) { // Deja rastro de comida
+                    const fId = `boost_trail_${Date.now()}_${Math.random()}`;
+                    setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
+                        x: s.points[s.points.length-1].x,
+                        y: s.points[s.points.length-1].y,
+                        color: s.color,
+                        value: 1
+                    });
+                }
+            }
+
+            // Controles
+            if (keys.current['ArrowLeft'] || keys.current['a']) s.angle -= TURN_SPEED;
+            if (keys.current['ArrowRight'] || keys.current['d']) s.angle += TURN_SPEED;
+
+            head.x += Math.cos(s.angle) * currentSpeed;
+            head.y += Math.sin(s.angle) * currentSpeed;
+
+            // Colisión con límites
+            if (head.x < 0 || head.x > MAP_SIZE || head.y < 0 || head.y > MAP_SIZE) {
+              die(); return;
+            }
+
+            // Colisión con otros (Simplificada: Cabeza contra cualquier punto)
+            Object.values(players).forEach(p => {
+              if (!p.points) return;
+              p.points.forEach((pt, idx) => {
+                const dist = Math.hypot(head.x - pt.x, head.y - pt.y);
+                if (dist < 18) { die(); return; }
+              });
+            });
+
+            // Colisión con comida
+            food.forEach(f => {
+              const dist = Math.hypot(head.x - f.x, head.y - f.y);
+              if (dist < 25) {
+                s.length += f.value;
+                setScore(prev => prev + f.value * 15);
+                deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', f.id)).catch(()=>{});
+                // Partículas al comer
+                for(let i=0; i<5; i++) particles.current.push(new Particle(f.x, f.y, f.color));
+              }
+            });
+
+            // Actualizar puntos del cuerpo
+            const newPoints = [head, ...s.points];
+            const targetLength = Math.floor(s.length);
+            if (newPoints.length > targetLength) newPoints.pop();
+            s.points = newPoints;
+
+            // Ajustar Zoom basado en puntuación
+            const targetZoom = Math.max(0.4, 1.0 - (s.length / 500));
+            s.zoom += (targetZoom - s.zoom) * 0.01;
+
+            // Actualizar Partículas
+            particles.current.forEach((p, i) => {
+              p.update();
+              if (p.life <= 0) particles.current.splice(i, 1);
+            });
+
+            draw();
+            requestRef.current = requestAnimationFrame(update);
+          };
+
+          const draw = () => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width = window.innerWidth;
+            const h = canvas.height = window.innerHeight;
+
+            const head = mySnake.current.points[0];
+            if (!head) return;
+
+            const zoom = mySnake.current.zoom;
+            const offX = w / 2 - head.x * zoom;
+            const offY = h / 2 - head.y * zoom;
+
+            // Fondo: Espacio Profundo
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, w, h);
+
+            // Grid con Paralaje
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            const gSize = 100 * zoom;
+            for (let x = offX % gSize; x < w; x += gSize) {
+              ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+            }
+            for (let y = offY % gSize; y < h; y += gSize) {
+              ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+
+            // Límites
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 10 * zoom;
+            ctx.strokeRect(offX, offY, MAP_SIZE * zoom, MAP_SIZE * zoom);
+
+            // Dibujar Comida con Resplandor
+            food.forEach(f => {
+              ctx.shadowBlur = 15 * zoom;
+              ctx.shadowColor = f.color;
+              ctx.fillStyle = f.color;
+              ctx.beginPath();
+              ctx.arc(f.x * zoom + offX, f.y * zoom + offY, (6 + f.value) * zoom, 0, Math.PI * 2);
+              ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            // Otros Jugadores
+            Object.values(players).forEach(p => {
+              drawSnake(ctx, p.points, p.color, p.name, offX, offY, zoom, p.isBoosting);
+            });
+
+            // Mi Serpiente
+            drawSnake(ctx, mySnake.current.points, mySnake.current.color, mySnake.current.name, offX, offY, zoom, mySnake.current.boost);
+
+            // Dibujar Partículas
+            particles.current.forEach(p => {
+              ctx.globalAlpha = p.alpha;
+              ctx.fillStyle = p.color;
+              ctx.beginPath();
+              ctx.arc(p.x * zoom + offX, p.y * zoom + offY, 3 * zoom, 0, Math.PI * 2);
+              ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+          };
+
+          const drawSnake = (ctx, points, color, name, offX, offY, zoom, boosting) => {
+            if (!points || points.length < 2) return;
+
+            if (boosting) {
+              ctx.shadowBlur = 20 * zoom;
+              ctx.shadowColor = 'white';
+            }
+
+            const radius = 12 * zoom;
+            points.forEach((p, i) => {
+              if (i % 2 !== 0) return; 
+              const alpha = 1 - (i / points.length) * 0.6;
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.arc(p.x * zoom + offX, p.y * zoom + offY, radius * (1 - i/points.length * 0.3), 0, Math.PI * 2);
+              ctx.fill();
+            });
+
+            // Cabeza
+            const headP = points[0];
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(headP.x * zoom + offX, headP.y * zoom + offY, radius * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ojos
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(headP.x * zoom + offX, headP.y * zoom + offY, radius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Nombre
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            const textWidth = ctx.measureText(name).width;
+            ctx.roundRect(headP.x * zoom + offX - textWidth/2 - 5, headP.y * zoom + offY - 45 * zoom, textWidth + 10, 20 * zoom, 5);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${14 * zoom}px Inter, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(name, headP.x * zoom + offX, headP.y * zoom + offY - 30 * zoom);
+          };
+
+          // Sync Loop
+          useEffect(() => {
+            const interval = setInterval(() => {
+              if (gameState === 'PLAYING' && user) {
+                updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid), {
+                  points: mySnake.current.points.filter((_, i) => i % 2 === 0), 
+                  score: score,
+                  isBoosting: mySnake.current.boost,
+                  lastUpdate: serverTimestamp()
+                }).catch(() => {});
+              }
+            }, TICK_RATE);
+            return () => clearInterval(interval);
+          }, [gameState, user, score]);
+
+          // Eventos
+          useEffect(() => {
+            const down = (e) => keys.current[e.key] = true;
+            const up = (e) => keys.current[e.key] = false;
+            const mDown = () => keys.current['mousedown'] = true;
+            const mUp = () => keys.current['mouseup'] = false;
+            
+            window.addEventListener('keydown', down);
+            window.addEventListener('keyup', up);
+            window.addEventListener('mousedown', mDown);
+            window.addEventListener('mouseup', mUp);
+            
+            if (gameState === 'PLAYING') requestRef.current = requestAnimationFrame(update);
+
+            return () => {
+              window.removeEventListener('keydown', down);
+              window.removeEventListener('keyup', up);
+              window.removeEventListener('mousedown', mDown);
+              window.removeEventListener('mouseup', mUp);
+              cancelAnimationFrame(requestRef.current);
+            };
+          }, [gameState]);
+
+          return (
+            <div className="relative w-full h-screen bg-slate-950 overflow-hidden font-sans text-white select-none">
+              <canvas ref={canvasRef} className="block w-full h-full" />
+
+              <button onClick={(e) => { e.stopPropagation(); if(window.parent && window.parent.showScreen) window.parent.showScreen('hub'); }}
+                  className="absolute top-6 left-6 z-50 p-3 rounded-full bg-white/5 backdrop-blur-md border border-white/10 hover:bg-white/10 transition-colors group flex items-center gap-2 pr-6">
+                  <div className="p-1 rounded-full bg-white/10 group-hover:bg-sky-500 transition-colors">
+                      <RotateCcw className="w-4 h-4 rotate-180" />
+                  </div>
+                  <span className="text-[10px] font-bold tracking-[2px] uppercase opacity-60 group-hover:opacity-100 transition-opacity text-white">Salir</span>
+              </button>
+
+              {gameState === 'START' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/60 backdrop-blur-xl z-50 p-6">
+                  <div className="w-full max-w-md bg-white/5 border border-white/10 p-10 rounded-[2.5rem] shadow-2xl text-center backdrop-blur-2xl">
+                    <div className="inline-flex p-4 bg-indigo-500/20 rounded-3xl mb-6 ring-1 ring-indigo-500/50">
+                        <Zap className="w-10 h-10 text-indigo-400 fill-indigo-400" />
+                    </div>
+                    <h1 className="text-5xl font-black mb-2 tracking-tighter bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent">
+                      SLITHER <span className="text-indigo-500">NEO</span>
+                    </h1>
+                    <p className="text-slate-400 mb-10 font-medium">La evolución del multijugador clásico.</p>
+                    
+                    <div className="space-y-4">
+                      {urlParams.get('playerName') ? (
+                        <div className="bg-black/40 border border-white/10 p-6 rounded-2xl">
+                          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Sesión Iniciada como</p>
+                          <p className="text-2xl font-black text-indigo-400">{playerName}</p>
+                        </div>
+                      ) : (
+                        <div className="relative group">
+                          <input 
+                            type="text" 
+                            placeholder="Tu Nickname"
+                            maxLength={14}
+                            value={playerName}
+                            onChange={(e) => setPlayerName(e.target.value)}
+                            className="w-full px-6 py-5 bg-black/40 border border-white/10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all text-center text-xl font-bold tracking-wide placeholder:text-slate-600"
+                          />
+                        </div>
+                      )}
+                      <button 
+                        onClick={startGame}
+                        disabled={!playerName.trim()}
+                        className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white font-black rounded-2xl transition-all shadow-[0_0_40px_-10px_rgba(79,70,229,0.6)] text-xl flex items-center justify-center gap-3 active:scale-95"
+                      >
+                        EMPEZAR PARTIDA <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </div>
+
+                    <div className="mt-10 flex justify-center gap-6 text-slate-500 font-bold text-xs uppercase tracking-widest">
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">A / D</span>
+                        <span>Girar</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">ESPACIO</span>
+                        <span>Turbo</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {gameState === 'PLAYING' && (
+                <>
+                  <div className="absolute top-8 left-8 flex flex-col gap-4 pointer-events-none">
+                    <div className="bg-black/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 shadow-2xl min-w-[160px]">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Masa Total</p>
+                      </div>
+                      <p className="text-5xl font-black tabular-nums tracking-tighter italic">
+                        {score}
+                      </p>
+                    </div>
+                    
+                    {isBoosting && (
+                        <div className="bg-indigo-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest animate-bounce flex items-center gap-2 w-fit">
+                            <Zap className="w-3 h-3 fill-current" /> NITRO ACTIVADO
+                        </div>
+                    )}
+                  </div>
+
+                  <div className="absolute top-8 right-8 w-64 group pointer-events-none">
+                    <div className="bg-black/40 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 shadow-2xl transition-all group-hover:bg-black/60">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-amber-400">
+                          <Trophy className="w-5 h-5" />
+                          <h3 className="text-xs font-black uppercase tracking-widest">Dominación</h3>
+                        </div>
+                        <Users className="w-4 h-4 text-slate-500" />
+                      </div>
+                      <div className="space-y-3">
+                        {leaderboard.map((p, i) => (
+                          <div key={p.id} className={`flex justify-between items-center ${p.id === user?.uid ? 'scale-105 origin-left' : ''}`}>
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <span className={`text-[10px] font-black w-4 ${i < 3 ? 'text-amber-500' : 'text-slate-600'}`}>{i + 1}</span>
+                              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+                              <span className={`text-sm font-bold truncate ${p.id === user?.uid ? 'text-indigo-400' : 'text-slate-300'}`}>
+                                {p.name}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-black text-slate-500 tabular-nums">{(p.score || 0).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-8 right-8 group pointer-events-none">
+                    <div className="bg-black/40 backdrop-blur-xl p-3 rounded-3xl border border-white/10 shadow-2xl">
+                      <div className="relative w-36 h-36 bg-slate-900/50 rounded-2xl overflow-hidden ring-1 ring-white/5">
+                        <div 
+                          className="absolute w-2.5 h-2.5 bg-white rounded-full z-10 shadow-[0_0_12px_#fff] border-2 border-indigo-500"
+                          style={{
+                            left: `${(mySnake.current.points[0]?.x / MAP_SIZE) * 100}%`,
+                            top: `${(mySnake.current.points[0]?.y / MAP_SIZE) * 100}%`,
+                            transform: 'translate(-50%, -50%)'
+                          }}
+                        />
+                        {Object.values(players).map((p, i) => (
+                          <div 
+                            key={i}
+                            className="absolute w-1.5 h-1.5 rounded-full opacity-40"
+                            style={{
+                              backgroundColor: p.color,
+                              left: `${(p.points[0]?.x / MAP_SIZE) * 100}%`,
+                              top: `${(p.points[0]?.y / MAP_SIZE) * 100}%`,
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-2 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2">
+                        <MapIcon className="w-3 h-3" /> ARENA GLOBAL
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {gameState === 'GAMEOVER' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-red-950/40 backdrop-blur-xl z-[60] p-6">
+                  <div className="w-full max-w-sm bg-slate-900 p-10 rounded-[2.5rem] border-2 border-red-500/30 shadow-[0_0_100px_-20px_rgba(239,68,68,0.4)] text-center animate-in zoom-in duration-300">
+                    <div className="w-24 h-24 bg-red-500/10 rounded-[2rem] flex items-center justify-center mx-auto mb-6 ring-1 ring-red-500/40">
+                      <Skull className="w-12 h-12 text-red-500" />
+                    </div>
+                    <h2 className="text-4xl font-black mb-2 tracking-tighter">FIN DEL TRAYECTO</h2>
+                    <p className="text-slate-400 mb-8 font-medium italic">"Tu energía ahora alimenta la arena."</p>
+                    
+                    <div className="bg-black/40 p-6 rounded-3xl mb-10 border border-white/5">
+                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Puntuación Final</p>
+                      <p className="text-5xl font-black text-indigo-400 italic tabular-nums">{score}</p>
+                    </div>
+
+                    <button 
+                      onClick={() => setGameState('START')}
+                      className="w-full py-5 bg-white text-slate-950 font-black rounded-2xl hover:bg-slate-200 transition-all shadow-xl text-xl uppercase tracking-tighter"
+                    >
+                      VOLVER A INTENTARLO
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
