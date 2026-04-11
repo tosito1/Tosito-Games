@@ -434,6 +434,30 @@
             bots.current = Array.from({ length: 15 }, (_, i) => new Bot(`bot_${Date.now()}_${i}`));
           };
 
+          const handleExit = () => {
+              try {
+                  if (window.parent && window.parent.exitHubGame) {
+                      window.parent.exitHubGame();
+                  } else {
+                      window.location.href = 'index.html';
+                  }
+              } catch(e) {
+                  window.location.href = 'index.html';
+              }
+          };
+
+          // --- FIREBASE SYNC: Save high scores on Game Over ---
+          useEffect(() => {
+              if (gameState === 'GAMEOVER' && score > 0) {
+                  console.log(`[Slither] Session Ended. Score: ${score}. Syncing...`);
+                  try {
+                      if (window.parent && window.parent.saveArcadeScore) {
+                          window.parent.saveArcadeScore('slither', score);
+                      }
+                  } catch(e) { console.error("Hub Sync failed", e); }
+              }
+          }, [gameState]);
+
           const die = async () => {
             if (mySnake.current.isDead) return;
             mySnake.current.isDead = true;
@@ -1166,12 +1190,20 @@
                       <p className="text-5xl font-black text-indigo-400 italic tabular-nums">{score}</p>
                     </div>
 
-                    <button 
-                      onClick={() => setGameState('START')}
-                      className="w-full py-5 bg-white text-slate-950 font-black rounded-2xl hover:bg-slate-200 transition-all shadow-xl text-xl uppercase tracking-tighter"
-                    >
-                      VOLVER A INTENTARLO
-                    </button>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setGameState('START')}
+                        className="flex-1 py-5 bg-white text-slate-950 font-black rounded-2xl hover:bg-slate-200 transition-all shadow-xl text-xl uppercase tracking-tighter"
+                      >
+                        REINTENTAR
+                      </button>
+                      <button 
+                        onClick={handleExit}
+                        className="flex-1 py-5 bg-slate-800 text-white font-black rounded-2xl hover:bg-slate-700 transition-all border border-white/10 uppercase tracking-tighter"
+                      >
+                        MENU HUB
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

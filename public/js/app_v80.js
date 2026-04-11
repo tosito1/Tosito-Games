@@ -356,9 +356,111 @@ function switchLobbyTab(tabId) {
   }
 }
 
+
+// ============================================================
+//  ARCADE PLATFORM INTEGRATION (PRO)
+// ============================================================
+
+/**
+ * Persists high scores to Firestore and updates local profile.
+ * Standardized for all arcade games in the platform.
+ */
+window.saveArcadeScore = async function(gameId, score) {
+  if (!currentUser) return;
+  console.log(`[🏆] Saving score for ${gameId}: ${score}`);
+  
+  try {
+    const currentBest = userProfile.arcade_records?.[gameId] || 0;
+    if (score > currentBest) {
+      const records = { ...userProfile.arcade_records, [gameId]: score };
+      await db.collection('users').doc(currentUser.uid).update({ 
+        arcade_records: records 
+      });
+      userProfile.arcade_records = records;
+      toast(`🔥 ¡NUEVO RECORD! ${score} en ${gameId.toUpperCase()}`);
+    }
+  } catch(e) { console.error("Error saving score:", e); }
+};
+
+/**
+ * Builds a cross-origin URL with session credentials and config.
+ */
+function getHubGameUrl(path) {
+  const token = currentUser ? currentUser.uid : 'anon';
+  const config = encodeURIComponent(JSON.stringify(firebaseConfig));
+  return `${path}?appId=tosito-games&token=${token}&config=${config}&user=${encodeURIComponent(userProfile.username || currentUser.displayName || 'Agente')}`;
+}
+
+window.showAnomaliaScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('anomalia-frame');
+  if (iframe) iframe.src = getHubGameUrl('anomalia_game.html');
+  showScreen('anomalia');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showSlitherScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('slither-frame');
+  if (iframe) iframe.src = getHubGameUrl('slither_game.html');
+  showScreen('slither');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showTurboDriftScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('turbo-drift-frame');
+  if (iframe) iframe.src = getHubGameUrl('turbo-drift.html');
+  showScreen('turbo-drift');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showStackScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('stack-frame');
+  if (iframe) iframe.src = getHubGameUrl('cyberstack_game.html');
+  showScreen('stack');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showHexaFallsScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('logicmaster-frame');
+  if (iframe) iframe.src = 'hexa-falls.html';
+  showScreen('logicmaster');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showMario64Screen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('mario64-frame');
+  if (iframe) iframe.src = 'mario64/index.html';
+  showScreen('mario64');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showSonicScreen = function() {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('sonic-frame');
+  if (iframe) iframe.src = 'sonic/index.html';
+  showScreen('sonic');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.exitHubGame = window.exitGame = function() {
+  document.body.classList.remove('game-mode');
+  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame'];
+  frames.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.src = 'about:blank';
+  });
+  showScreen('hub');
+};
+
 // ============================================================
 //  BACKEND DISCOVERY & STATUS
 // ============================================================
+
 function updateBackendStatusUI() {
   const el = document.getElementById('backend-status');
   const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
@@ -3187,10 +3289,24 @@ window.openRemoteModal = function() {
 
 window.updateRemoteQR = function() {
   const hostInput = document.getElementById('remote-host-input');
-  const host = (hostInput && hostInput.value) || window.location.hostname;
+  let host = (hostInput && hostInput.value) || window.location.hostname;
+  
+  // Use current port if not localhost (or if requested by input)
+  const port = window.location.port ? `:${window.location.port}` : '';
+  const protocol = window.location.protocol;
+  
   const user = firebase.auth().currentUser;
   if (!user) return;
-  const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent("http://" + host + ":5000/?mode=remote&uid=" + user.uid);
+  
+  // Construct URL. If host doesn't have a port, add the current one.
+  let finalUrl = "";
+  if (host.includes(':')) {
+    finalUrl = protocol + "//" + host + "/?mode=remote&uid=" + user.uid;
+  } else {
+    finalUrl = protocol + "//" + host + port + "/?mode=remote&uid=" + user.uid;
+  }
+
+  const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(finalUrl);
   const qrImg = document.getElementById('remote-qr');
   if (qrImg) qrImg.src = qrUrl;
 };

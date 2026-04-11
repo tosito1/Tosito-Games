@@ -74,26 +74,29 @@
         };
 
         const App = () => {
-    // --- FIREBASE SYNC ---
+    // --- FIREBASE SYNC: Save high scores on Game Over ---
     React.useEffect(() => {
         if (gameState === 'GAMEOVER' && score > 0) {
+            console.log(`[Turbo] Session Ended. Score: ${score}. Syncing...`);
             try {
                 if (window.parent && window.parent.saveArcadeScore) {
                     window.parent.saveArcadeScore('turbo', score);
                 }
-            } catch(e) {}
+            } catch(e) { console.error("Hub Sync failed", e); }
         }
     }, [gameState]);
-    // --- FIREBASE SYNC ---
-    React.useEffect(() => {
-        if (gameState === 'GAMEOVER' && score > 0) {
-            try {
-                if (window.parent && window.parent.saveArcadeScore) {
-                    window.parent.saveArcadeScore('turbo', score);
-                }
-            } catch(e) {}
+
+    const handleExit = () => {
+        try {
+            if (window.parent && window.parent.exitHubGame) {
+                window.parent.exitHubGame();
+            } else {
+                window.location.href = 'index.html';
+            }
+        } catch(e) { 
+            window.location.href = 'index.html';
         }
-    }, [gameState]);
+    };
           // Estado de UI y Progresión
           const [gameState, setGameState] = useState('START'); 
           const [credits, setCredits] = useState(0);
@@ -957,7 +960,8 @@
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <button onClick={() => setGameState('START')} className="text-white/50 hover:text-white font-bold uppercase tracking-[0.4em] text-xs transition border-b border-transparent hover:border-white pb-1">Volver al Menú</button>
+                  <button onClick={() => setGameState('START')} className="text-white/50 hover:text-white font-bold uppercase tracking-[0.4em] text-xs transition border-b border-transparent hover:border-white pb-1">Volver al Garaje</button>
+                  <button onClick={handleExit} className="text-red-400/50 hover:text-red-400 font-bold uppercase tracking-[0.4em] text-xs transition border-b border-white/10 hover:border-red-500/50 pb-1">Abandonar Hub</button>
                   <button onClick={startGame} className="cyber-btn !py-4 !px-10 text-lg"><span className="relative z-10 flex items-center gap-2">Desplegar <Play fill="currentColor" size={20}/></span></button>
                 </div>
               </div>
@@ -968,10 +972,13 @@
             <div className="relative w-full h-screen overflow-hidden bg-[#020005] text-white font-sans select-none crt-container">
                 {/* Back Button */}
               <button 
-                  onClick={() => window.parent.postMessage('exit_game', '*')} 
-                  className="fixed top-4 right-4 z-[100] bg-white/10 hover:bg-red-500/20 p-3 rounded-2xl border border-white/10 transition-all pointer-events-auto"
+                  onClick={handleExit}
+                  className="fixed top-4 right-4 z-[100] bg-white/5 hover:bg-red-500/20 px-6 py-3 rounded-2xl border border-white/10 transition-all pointer-events-auto group backdrop-blur-md"
               >
-                  <AlertTriangle size={24} className="text-white/60" />
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white transition-colors">Salir al Hub</span>
+                    <AlertTriangle size={18} className="text-white/40 group-hover:text-red-500 transition-colors" />
+                  </div>
               </button>
 
               <div ref={containerRef} className="absolute inset-0 z-0" />
@@ -1099,7 +1106,7 @@
                     </div>
                     <div className="flex gap-6">
                       <button onClick={startGame} className="cyber-btn flex-1 !py-5 text-lg !border-red-500 before:!from-red-600 before:!to-orange-500 shadow-[0_0_30px_rgba(255,0,0,0.3)]"><span className="relative z-10 flex justify-center items-center gap-3"><RotateCcw size={20}/> REINTENTAR</span></button>
-                      <button onClick={() => setGameState('GARAGE')} className="cyber-btn flex-1 !py-5 text-lg"><span className="relative z-10 flex justify-center items-center gap-3">GARAJE <Wrench size={20}/></span></button>
+                      <button onClick={handleExit} className="cyber-btn flex-1 !py-5 text-lg !border-white/20 before:!from-white/10 before:!to-white/5"><span className="relative z-10 flex justify-center items-center gap-3">MENU HUB</span></button>
                     </div>
                   </div>
                 </div>

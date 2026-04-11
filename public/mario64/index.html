@@ -4,7 +4,7 @@
     <style>
         @font-face {
             font-family: 'Mario64';
-            src: url('/Mario64.ttf') format('truetype');
+            src: url('./Mario64.ttf') format('truetype');
         }
 
         body {
@@ -459,7 +459,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: url('/supermario64.png');
+            background: url('./supermario64.png');
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -512,7 +512,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: url('/supermario64.png');
+            background: url('./supermario64.png');
             filter: blur(8px);
             transform: scale(1.1); /* Avoid blurred edges */
             z-index: -1;
@@ -568,7 +568,7 @@
     </div>
 
     <div id="titleScreen">
-        <img src="/Boxart.jpeg" alt="Super Mario 64 box art">
+        <img src="./Boxart.jpeg" alt="Super Mario 64 box art">
         <div class="buttons">
             <button id="startGameBtn">PLAY GAME</button>
             <button id="fullscreenStartBtn">PLAY IN FULLSCREEN</button>
@@ -622,7 +622,7 @@
         <div id="gameContainer">
             <canvas id="canvas"></canvas>
             <div id="loading" class="loading">
-                <img src="/Boxart.jpeg" alt="Super Mario 64 box art">
+                <img src="./Boxart.jpeg" alt="Super Mario 64 box art">
                 <div class="loading-text">Loading...</div>
             </div>
         </div>
@@ -650,6 +650,18 @@
         </div>
     </div>
 
-    <script src="/controls.js"></script>
+    <script src="./controls.js"></script>
+    <script>
+        function handleExit() {
+            try {
+                if (window.parent && window.parent.exitHubGame) {
+                    window.parent.exitHubGame();
+                } else {
+                    window.location.href = '../index.html';
+                }
+            } catch(e) { window.location.href = '../index.html'; }
+        }
+    </script>
+    <button onclick="handleExit()" style="position:fixed; top:10px; right:10px; z-index:5000; background:rgba(230,0,18,0.8); color:white; border:none; padding:8px 15px; border-radius:10px; font-family:Arial, sans-serif; font-weight:bold; cursor:pointer; font-size:12px; box-shadow:0 0 15px rgba(0,0,0,0.5);">VOLVER AL HUB</button>
 </body>
 </html>

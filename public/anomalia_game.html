@@ -110,8 +110,9 @@
         // --- FIREBASE IMPORTS (Modular SDK) ---
         import { initializeApp } from 'firebase/app';
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-        import * as firestore from 'firebase/firestore'; 
-        const { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, query, where, orderBy, limit } = firestore;
+        import { 
+            getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, query, where, orderBy, limit 
+        } from 'firebase/firestore';
 
         // --- BRIDGE PARAMS ---
         const urlParams = new URLSearchParams(window.location.search);
@@ -268,24 +269,17 @@
                 }
             }, [gameState]);
 
-            // FIREBASE SYNC: Save high scores on Game Over
-            useEffect(() => {
-                if (gameState === 'gameover' && score > 0) {
-                    console.log(`[Anomalía] Mission Terminated. Final Score: ${score}. Syncing...`);
-                    try {
-                        if (window.parent && window.parent.saveArcadeScore) {
-                            window.parent.saveArcadeScore('anomalia', score);
-                        }
-                    } catch (e) { }
-                }
-            }, [gameState]);
-
             const handleExit = () => {
                 console.log("Exiting game...");
                 try {
-                    window.parent.postMessage({ type: 'exit_game' }, '*');
-                } catch (e) { }
-                window.location.href = '/index.html';
+                    if (window.parent && window.parent.exitHubGame) {
+                        window.parent.exitHubGame();
+                    } else {
+                        window.location.href = 'index.html';
+                    }
+                } catch (e) { 
+                    window.location.href = 'index.html';
+                }
             };
 
             const game = useRef({

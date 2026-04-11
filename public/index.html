@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
   /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
-  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls, #screen-anomalia, #screen-turbo-drift {
+  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls, #screen-anomalia, #screen-turbo-drift, #screen-mario64, #screen-sonic {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -17,10 +17,23 @@
     width: 100vw !important;
     height: 100vh !important;
     z-index: 9999 !important;
-    background: #020617 !important;
+    background: #000 !important;
     display: none;
-    overflow: auto !important;
+    overflow: hidden !important;
     border: none !important;
+  }
+
+  /* Game Mode: Hide Hub UI */
+  body.game-mode #bottom-nav {
+    display: none !important;
+  }
+  body.game-mode #app-container {
+    padding-left: 0 !important;
+  }
+  body.game-mode .screen.active {
+    padding: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
   }
   #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active, #screen-anomalia.active, #screen-turbo-drift.active {
     display: block !important;
@@ -145,6 +158,7 @@ body.nav-open #app-container {
     flex-direction: column; justify-content: flex-start; align-items: stretch;
     border-top: none; border-right: 1px solid var(--border);
     padding-top: 2rem; right: auto;
+    overflow-y: auto; overflow-x: hidden;
   }
   .nav-btn {
     flex: none; flex-direction: row; justify-content: flex-start;
@@ -1133,6 +1147,27 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 }
 .remote-active .hub-card { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 #screen-remote-controller button { -webkit-tap-highlight-color: transparent; user-select: none; }
+#floating-remote-btn {
+  position: fixed; bottom: 25px; right: 25px;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--sky); color: #0f172a;
+  border: none; font-size: 1.6rem; display: none;
+  align-items: center; justify-content: center;
+  z-index: 10001; box-shadow: 0 8px 32px rgba(56,189,248,0.4);
+  cursor: pointer; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+#floating-remote-btn:hover { transform: scale(1.1) rotate(15deg); box-shadow: 0 12px 40px rgba(56,189,248,0.6); }
+#floating-remote-btn:active { transform: scale(0.9); }
+body.game-mode #floating-remote-btn { display: flex; }
+
+.btn-header-remote {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  color: var(--sky); width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s; font-size: 1.1rem;
+}
+.btn-header-remote:hover { background: rgba(56,189,248,0.1); border-color: var(--sky); transform: translateY(-2px); }
+
 </style>
 
 </head>
@@ -1222,6 +1257,8 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   </a>
 </nav>
 
+<button id="floating-remote-btn" onclick="openRemoteModal()" title="Vincular Mando Móvil">📡</button>
+
 <!-- ============================================================
      MAIN CONTAINER
      ============================================================ -->
@@ -1234,6 +1271,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
     <header class="hub-header">
       <div class="header-brand">TOSITO GAMES</div>
       <div class="header-actions">
+        <button class="btn-header-remote" onclick="openRemoteModal()" title="Vincular Mando Móvil">📡</button>
         <div class="header-user" onclick="showScreen('profile')">
           <span style="font-size:1.1rem">👤</span>
           <span id="hub-header-username" class="header-user-name">Perfil</span>
@@ -1390,6 +1428,40 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
         </div>
       </div>
     </div>
+
+    <!-- SECCIÓN: NINTENDO RETRO -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span style="color:#E60012">04</span> Nintendo Retro</h4>
+      <div class="hub-games-grid">
+        <!-- Super Mario 64 -->
+        <div class="hub-card btn-juicy card-mario" onclick="showMario64Screen()" id="hub-card-mario">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #E60012, transparent 70%);"></div>
+          <span class="card-emoji">🍄</span>
+          <h3 class="card-name" style="color:#E60012">Super Mario 64</h3>
+          <p class="card-desc">El clásico revolucionario en 3D. Explora el castillo de Peach y recupera las estrellas de poder.</p>
+          <button class="card-action" style="background:#E60012; color:white;">¡Jugar Ahora! →</button>
+        </div>
+
+        <!-- Sonic Mega Classic Collection -->
+        <div class="hub-card btn-juicy card-sonic" onclick="showSonicScreen()" id="hub-card-sonic">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #005DC3, transparent 70%);"></div>
+          <span class="card-emoji">🦔</span>
+          <h3 class="card-name" style="color:#005DC3">Sonic Mega Collection</h3>
+          <p class="card-desc">Gotta go fast! Una colección masiva de los clásicos de 16 bits y hacks legendarios del erizo.</p>
+          <button class="card-action" style="background:#005DC3; color:white;">¡Correr! →</button>
+        </div>
+
+        <!-- Legend of Tosito -->
+        <div class="hub-card btn-juicy card-retro-legend" id="hub-card-retro-legend">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #ca8a04, transparent 70%);"></div>
+          <span class="card-emoji">⚔️</span>
+          <h3 class="card-name" style="color:#ca8a04">The Legend of Tosito</h3>
+          <p class="card-desc">Una épica aventura de 8 bits. Explora mazmorras, encuentra artefactos y forja tu destino.</p>
+          <div class="badge-coming">Próximamente</div>
+          <button class="card-action" style="background:#ca8a04; color:white; opacity:0.6; cursor:not-allowed;">Aventurarse →</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ======================================================
@@ -1397,6 +1469,20 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
        ====================================================== -->
   <div id="screen-stack" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
     <iframe id="stack-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- ======================================================
+       SUPER MARIO 64 (WASM)
+       ====================================================== -->
+  <div id="screen-mario64" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#000 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="mario64-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- ======================================================
+       SONIC MEGA CLASSIC COLLECTION (EMULATORS)
+       ====================================================== -->
+  <div id="screen-sonic" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#000 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="sonic-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
   <!-- ======================================================

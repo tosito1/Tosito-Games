@@ -252,7 +252,7 @@
                         const docRef = doc(db, 'cyberstack_stats', user.uid);
                         const docSnap = await getDoc(docRef);
                         if (docSnap.exists()) setHighScore(docSnap.data().score || 0);
-                    } catch (e) { console.error("Error score", e); }
+                    } catch (error) { console.error("Score fetch error:", error); }
                 };
                 fetchPersonalScore();
 
@@ -266,6 +266,18 @@
 
                 return () => unsubscribe();
             }, [user]);
+
+            const handleExit = () => {
+                try {
+                    if (window.parent && window.parent.exitHubGame) {
+                        window.parent.exitHubGame();
+                    } else {
+                        window.location.href = 'index.html';
+                    }
+                } catch(e) { 
+                    window.location.href = 'index.html';
+                }
+            };
 
             const saveScoreSingle = useCallback(async (finalScore) => {
                 if (!user || !db || finalScore <= 0 || gameMode.includes('LOCAL_MULTI')) return;
@@ -802,7 +814,10 @@
                                 <button onClick={(e) => { e.stopPropagation(); startGame('SINGLE'); }} className="w-full py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg hover:scale-105 transition-transform shadow-xl">NORMAL</button>
                                 <button onClick={(e) => { e.stopPropagation(); startGame('GRAVITY'); }} className="w-full py-4 rounded-2xl bg-amber-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-lg shadow-amber-500/20">PÉNDULO</button>
                                 <button onClick={(e) => { e.stopPropagation(); startGame('LOCAL_MULTI'); }} className="w-full py-4 rounded-2xl bg-indigo-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-lg shadow-indigo-500/20">LOCAL 1 vs 1</button>
-                                <button onClick={(e) => { e.stopPropagation(); startGame('LOCAL_MULTI_GRAVITY'); }} className="w-full py-4 rounded-2xl bg-rose-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-lg shadow-rose-500/20">1vs1 + SABOTAJE</button>
+                                <div className="flex gap-4">
+                                    <button onClick={(e) => { e.stopPropagation(); startGame('LOCAL_MULTI_GRAVITY'); }} className="flex-1 py-4 rounded-2xl bg-rose-500 text-white font-bold text-lg hover:scale-105 transition-transform shadow-lg shadow-rose-500/20">1vs1 + SABOTAJE</button>
+                                    <button onClick={handleExit} className="px-6 rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors">SALIR</button>
+                                </div>
                             </div>
                             {leaderboard.length > 0 && (
                                 <div className="mt-12 p-6 rounded-3xl bg-white/5 border border-white/10 w-72 animate-slide-up" style={{animationDelay: '0.4s'}}>
@@ -865,9 +880,12 @@
                                         </div>
                                     </div>
                                 )}
-                                <div className="flex gap-4 w-full max-w-xs px-4">
-                                    <button onClick={(e) => { e.stopPropagation(); startGame(gameMode); }} className="flex-1 py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg hover:scale-105 transition-transform">REINTENTAR</button>
-                                    <button onClick={(e) => { e.stopPropagation(); setAppState('MENU'); }} className="flex-1 py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-colors">MENÚ</button>
+                                <div className="flex flex-col gap-4 w-full max-w-xs px-4">
+                                    <button onClick={(e) => { e.stopPropagation(); startGame(gameMode); }} className="w-full py-4 rounded-2xl bg-white text-slate-900 font-bold text-lg hover:scale-105 transition-transform shadow-xl">REINTENTAR</button>
+                                    <div className="flex gap-4">
+                                        <button onClick={(e) => { e.stopPropagation(); setAppState('MENU'); }} className="flex-1 py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-colors">MENÚ</button>
+                                        <button onClick={handleExit} className="flex-1 py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-red-500/10 transition-colors">SALIR AL HUB</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -31,6 +31,7 @@
       <button class="nav-tab" data-console="PC"><img src="PCLogo.png" alt="PC"></button>
     </nav>
     <div class="header-buttons">
+      <button class="back-hub-button" onclick="handleExit()">VOLVER AL HUB</button>
       <img src="faq_icon.png" alt="FAQ" id="faq-btn" class="faq-button">
       <img src="bug_icon.png" alt="Report Bug" id="bug-report-btn" class="bug-report-button">
       <img src="settings_cog.png" alt="Settings" class="settings-button">
@@ -245,7 +246,7 @@
   <script type="importmap">
   {
       "imports": {
-          "@websim/websim-socket": "https://esm.websim.com/@websim/websim-socket"
+          "@websim/websim-socket": "./websim_mock.js"
       }
   }
   </script>
@@ -259,5 +260,18 @@
     window.EJS_pathtodata = 'https://cdn.jsdelivr.net/npm/emulatorjs@1.2.1/data/';
   </script>
   <script type="module" src="app.js"></script>
+  <script>
+    function handleExit() {
+      try {
+        if (window.parent && window.parent.exitHubGame) {
+          window.parent.exitHubGame();
+        } else {
+          window.location.href = '../index.html';
+        }
+      } catch (err) {
+        window.location.href = '../index.html';
+      }
+    }
+  </script>
 </body>
 </html>

@@ -24,6 +24,8 @@ body {
   color: var(--text-color);
   display: flex;
   flex-direction: column;
+  justify-content: flex-start; /* Ensure content starts at top */
+  align-items: stretch;
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
@@ -53,22 +55,29 @@ header {
   justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
-  background: rgba(13, 17, 23, 0.8);
-  backdrop-filter: blur(5px);
-  border-bottom: 1px solid var(--border-color);
+  background: rgba(13, 17, 23, 0.9); /* Slightly more opaque */
+  backdrop-filter: blur(8px);
+  border-bottom: 2px solid var(--primary-blue);
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
+  flex-wrap: wrap; /* For mobile */
+  gap: 15px;
 }
 
 .logo {
-  width: 250px;
-  height: auto;
+  max-width: 250px;
+  width: auto;
+  height: 40px;
+  object-fit: contain;
 }
 
 #console-nav {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .nav-tab {
@@ -119,30 +128,47 @@ header {
 
 .settings-button:hover { transform: rotate(90deg); }
 
-.bug-report-button {
+.bug-report-button, .faq-button {
     width: 32px;
     height: 32px;
     cursor: pointer;
     transition: transform 0.2s ease-in-out;
+    object-fit: contain;
 }
-.bug-report-button:hover {
+.bug-report-button:hover, .faq-button:hover {
     transform: scale(1.1);
 }
 
-.faq-button {
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    transition: transform 0.2s ease-in-out;
+.back-hub-button {
+  background: #E60012; /* Nintendo Red by default, or maybe Sega Blue? Let's use Red to match the Mario exit button for consistency in UX */
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'NiseSegaSonic', Arial, sans-serif;
+  font-size: 14px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  box-shadow: 0 0 10px rgba(230, 0, 18, 0.4);
 }
-.faq-button:hover {
-    transform: scale(1.1);
+
+.back-hub-button:hover {
+  background: #ff1a2b;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(230, 0, 18, 0.6);
 }
 
 /* Main Content */
 main {
   flex: 1;
-  padding: 30px;
+  padding: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .game-grid {
@@ -171,9 +197,11 @@ main {
 
 .game-card-cover {
   width: 100%;
-  height: 300px;
+  height: 280px;
   object-fit: cover;
   display: block;
+  background: #000 url('asset_name.png') center center no-repeat; /* Fallback for broken images */
+  background-size: 50px;
 }
 
 .game-card-info {
@@ -265,13 +293,11 @@ footer button:hover { background: var(--light-bg); color: white; }
 .popup-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
   z-index: 1999;
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(5px);
+  pointer-events: auto;
 }
 
 .game-info-popup {
@@ -433,14 +459,14 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .modal {
     display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
     background: var(--medium-bg); padding: 30px; border-radius: 15px; border: 1px solid var(--border-color);
-    z-index: 2000; width: 600px; max-width: 90vw; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 2000; width: 500px; max-width: 90vw; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     font-family: 'NiseSegaSonic', Arial, sans-serif;
 }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .modal-title { font-family: 'NiseSegaSonic', Arial, sans-serif; color: var(--primary-blue); font-size: 24px; margin: 0; }
 .close-modal-btn { background: none; border: none; color: #888; font-size: 30px; cursor: pointer; transition: color 0.2s; }
 .close-modal-btn:hover { color: white; }
-.modal-content { max-height: 60vh; overflow-y: auto; font-family: 'NiseSegaSonic', Arial, sans-serif; }
+.modal-content { max-height: 50vh; overflow-y: auto; font-family: 'NiseSegaSonic', Arial, sans-serif; }
 
 /* Sound Test Screen */
 #sound-test-screen {
@@ -579,6 +605,12 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .update-version { color: var(--primary-blue); font-size: 18px; margin-bottom: 5px; }
 .update-details { color: var(--text-color); font-size: 16px; padding-left: 20px; font-family: Arial, sans-serif; line-height: 1.5; }
 
+#faq-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
 .faq-entry { background: var(--light-bg); padding: 15px; border-radius: 8px; margin-bottom: 15px; position: relative; }
 .faq-title { font-weight: bold; color: var(--primary-blue); font-size: 18px; margin-bottom: 10px; }
 .faq-content-inner p { color: var(--text-color); font-family: Arial, sans-serif; line-height: 1.6; margin: 0; }
@@ -623,4 +655,14 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     height: 100vh;
     object-fit: cover;
     z-index: 9999;
+}
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  header { flex-direction: column; padding: 15px; }
+  .logo { height: 35px; }
+  #console-nav { justify-content: center; overflow-x: auto; width: 100%; }
+  .nav-tab { flex-shrink: 0; }
+  .game-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; }
+  .game-card-cover { height: 180px; }
+  .game-card-title { font-size: 13px; }
 }

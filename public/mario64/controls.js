@@ -1,3 +1,12 @@
+// Mock for WebsimSocket to prevent errors in non-websim environments
+if (typeof WebsimSocket === 'undefined') {
+    window.WebsimSocket = class {
+        constructor() {}
+        send() {}
+        set onmessage(val) {}
+    };
+}
+
 const room = new WebsimSocket();
 let isGamePaused = false;
 let originalWidth = window.innerWidth;
@@ -17,7 +26,7 @@ function initAudio() {
 async function loadMenuSound() {
     if (!audioContext) return;
     try {
-        const response = await fetch('/sm64_enter_course.wav');
+        const response = await fetch('./sm64_enter_course.wav');
         const arrayBuffer = await response.arrayBuffer();
         menuSoundBuffer = await audioContext.decodeAudioData(arrayBuffer);
     } catch (error) {
@@ -66,11 +75,11 @@ titleScreen.addEventListener('mousedown', () => {
 });
 
 titleScreen.addEventListener('mouseup', () => {
-    customCursor.style.backgroundImage = "url('/hamnd.png')";
+    customCursor.style.backgroundImage = "url('./hamnd.png')";
 });
 
 titleScreen.addEventListener('mouseenter', () => {
-    customCursor.style.backgroundImage = "url('/hamnd.png')";
+    customCursor.style.backgroundImage = "url('./hamnd.png')";
     customCursor.style.display = 'block';
 });
 
@@ -83,7 +92,7 @@ titleScreen.addEventListener('mouseleave', () => {
 titleScreen.addEventListener('touchstart', (e) => {
     initAudio();
     const touch = e.touches[0];
-    customCursor.style.backgroundImage = "url('/clickhand.png')";
+    customCursor.style.backgroundImage = "url('./clickhand.png')";
     updateCursor(touch.clientX, touch.clientY);
 }, { passive: true });
 
@@ -109,7 +118,7 @@ window.Module = {
     },
     locateFile: function(path) {
         if(path.endsWith('.wasm')) {
-            return '/sm64.wasm';
+            return './sm64.wasm';
         }
         return path;
     }
@@ -276,7 +285,7 @@ async function startGame() {
     originalHeight = window.innerHeight;
     
     const mainScript = document.createElement('script');
-    mainScript.src = '/sm64.js';
+    mainScript.src = './sm64.js';
     document.body.appendChild(mainScript);
 
     await new Promise(resolve => mainScript.onload = resolve);
