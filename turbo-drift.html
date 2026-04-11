@@ -1,0 +1,1458 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import * as THREE from 'three';
+import {
+Trophy, Play, RotateCcw, Shield, Flame, ZapOff, Crosshair, AlertTriangle, Zap, ChevronUp, Wrench, Battery, Cpu, Magnet,
+Clock, Disc, Target
+} from 'lucide-react';
+
+// --- Constantes y Utilidades ---
+const ROAD_WIDTH = 26;
+const LANES = [-8, 0, 8];
+const BASE_SPEED = 1.0;
+const SPEED_INCREMENT = 0.00025;
+const lerp = (start, end, t) => start * (1 - t) + end * t;
+
+const createSunTexture = () => {
+const canvas = document.createElement('canvas');
+canvas.width = 1024; canvas.height = 1024;
+const ctx = canvas.getContext('2d');
+const grad = ctx.createLinearGradient(0, 0, 0, 1024);
+grad.addColorStop(0, '#ff00ff'); grad.addColorStop(0.4, '#ff0055'); grad.addColorStop(1, '#ffdd00');
+ctx.fillStyle = grad;
+ctx.beginPath(); ctx.arc(512, 512, 500, 0, Math.PI * 2); ctx.fill();
+ctx.globalCompositeOperation = 'destination-out';
+for(let i = 0; i < 18; i++) ctx.fillRect(0, 500 + i * 30, 1024, 3 + i * 2); const tex=new THREE.CanvasTexture(canvas);
+  tex.anisotropy=16; return tex; }; const App=()=> {
+  // Estado de UI y Progresión
+  const [gameState, setGameState] = useState('START');
+  const [credits, setCredits] = useState(0);
+  const [score, setScore] = useState(0);
+  const [speed, setSpeed] = useState(0);
+  const [nitro, setNitro] = useState(100);
+  const [hasShield, setHasShield] = useState(true);
+  const [distance, setDistance] = useState(0);
+  const [multiplier, setMultiplier] = useState(1);
+  const [zoneAlert, setZoneAlert] = useState('');
+  const [actionTexts, setActionTexts] = useState([]);
+  const [combo, setCombo] = useState(0);
+  const [magnetActive, setMagnetActive] = useState(false);
+  const [timeWarpActive, setTimeWarpActive] = useState(false);
+  const [inSlipstream, setInSlipstream] = useState(false);
+  const [isHyper, setIsHyper] = useState(false);
+
+  const [upgrades, setUpgrades] = useState({ motor: 1, chasis: 1, bateria: 1 });
+  const getUpgradeCost = (level) => level * 1500;
+  const getMaxNitro = () => 100 + (upgrades.bateria - 1) * 50;
+
+  const containerRef = useRef(null);
+  const requestRef = useRef();
+
+  // Estado mutable 3D
+  const g = useRef({
+  scene: null, camera: null, renderer: null, player: null, playerWheels: [], playerLight: null, exhaustFlames: [],
+  traffic: [], scenery: [], obstacles: [], arches: [], particles: [], powerups: [], cubes: [], stars: [],
+  clock: new THREE.Clock(), speed: BASE_SPEED, targetLane: 1, currentX: 0, keys: {},
+  isNitroActive: false, isPadBoost: false, distanceTravelled: 0, shake: 0, currentFov: 75,
+  jumpY: 0, playerVelocityY: 0, squash: 0,
+  combo: 0, comboTimer: 0, magnetTimer: 0, boostTimer: 0, timeWarpTimer: 0, shieldTimer: 0,
+  curveUniform: { value: 0 }, curveTarget: 0,
+  hillUniform: { value: 0 }, hillTarget: 0,
+  timeUniform: { value: 0 },
+  currentZone: 'NORMAL',
+  lastTimes: { traffic: 0, building: 0, obstacle: 0, powerup: 0, arch: 0, zoneChange: 0, cube: 0, curve: 0 }
+  }).current;
+
+  // --- Sistema de Materiales con Vertex Shader (Curvas y Colinas) ---
+  const applyWorldShader = (material) => {
+  material.onBeforeCompile = (shader) => {
+  shader.uniforms.uCurve = g.curveUniform;
+  shader.uniforms.uHill = g.hillUniform;
+  shader.uniforms.uTime = g.timeUniform;
+  shader.vertexShader = `
+  uniform float uCurve;
+  uniform float uHill;
+  uniform float uTime;
+  ${shader.vertexShader}
+  `.replace(
+  `#include <begin_vertex>`,
+    `#include <begin_vertex>
+      float zDist = position.z;
+      transformed.x -= (zDist * zDist) * uCurve;
+      transformed.y += sin(zDist * 0.005 + uTime * 5.0) * uHill;
+      `
+      );
+      };
+      };
+
+      const assets = useRef({
+      playerMat: new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.8, roughness: 0.1, clearcoat: 1.0,
+      emissive: 0x111111 }),
+      glassMat: new THREE.MeshPhysicalMaterial({ color: 0x000000, metalness: 1, roughness: 0, transparent: true,
+      opacity: 0.8 }),
+      wheelMat: new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.9 }),
+      wheelGlowMat: new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.0 }),
+      truckMat: new THREE.MeshPhysicalMaterial({ color: 0x111115, metalness: 0.8, roughness: 0.4 }),
+      sportMat: new THREE.MeshPhysicalMaterial({ color: 0xff0044, metalness: 0.9, roughness: 0.1, clearcoat: 1.0 }),
+      hunterMat: new THREE.MeshPhysicalMaterial({ color: 0x0a0000, metalness: 0.9, roughness: 0.2 }), // NUEVO: Material
+      Cazador
+      cubeMat: new THREE.MeshStandardMaterial({ color: 0x00bbff, emissive: 0x0055ff, emissiveIntensity: 1.5,
+      transparent: true, opacity: 0.9 }),
+      padMat: new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00ffaa, emissiveIntensity: 2.0, transparent:
+      true, opacity: 0.8 }),
+      neonCyan: new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2.5 }),
+      neonPink: new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 2.5 }),
+      neonYellow: new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 2.5 }),
+      neonOrange: new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff5500, emissiveIntensity: 2.5 }),
+      neonRed: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 3.0 }), // NUEVO
+      magnetMat: new THREE.MeshStandardMaterial({ color: 0xaa00ff, emissive: 0xaa00ff, emissiveIntensity: 2.0 }),
+      timeWarpMat: new THREE.MeshStandardMaterial({ color: 0x00aaff, emissive: 0x00aaff, emissiveIntensity: 2.0 }),
+      empMat: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 3.0 }),
+      tailLightMat: new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 4.0 }),
+      warningMat: new THREE.MeshStandardMaterial({ color: 0xff0055, emissive: 0xff0022, emissiveIntensity: 3.0 }),
+      roadMat: new THREE.MeshStandardMaterial({ color: 0x020005, metalness: 0.95, roughness: 0.15 }),
+      wireframeMat: new THREE.MeshBasicMaterial({ color: 0xff00aa, wireframe: true, transparent: true, opacity: 0.15 })
+      }).current;
+
+      const showActionText = useCallback((text, colorClass) => {
+      const id = Date.now() + Math.random();
+      setActionTexts(prev => [...prev, { id, text, colorClass }]);
+      setTimeout(() => setActionTexts(prev => prev.filter(t => t.id !== id)), 800);
+      }, []);
+
+      const buyUpgrade = (type) => {
+      const cost = getUpgradeCost(upgrades[type]);
+      if (credits >= cost && upgrades[type] < 5) { setCredits(c=> c - cost); setUpgrades(u => ({ ...u, [type]: u[type] +
+        1 }));
+        }
+        };
+
+        const createWheels = (group, xOffset, yOffset, zOffset, r, w, isPlayer) => {
+        const wheels = [];
+        [[xOffset, yOffset, zOffset], [-xOffset, yOffset, zOffset], [xOffset, yOffset, -zOffset], [-xOffset, yOffset,
+        -zOffset]].forEach(pos => {
+        const wheelGroup = new THREE.Group(); wheelGroup.position.set(...pos);
+        const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 24), assets.wheelMat); tire.rotation.z = Math.PI
+        / 2;
+        const rim = new THREE.Mesh(new THREE.CylinderGeometry(r*0.6, r*0.6, w+0.05, 16), isPlayer ? assets.wheelGlowMat
+        : assets.neonPink); rim.rotation.z = Math.PI / 2;
+        wheelGroup.add(tire, rim); group.add(wheelGroup); wheels.push(wheelGroup);
+        });
+        return wheels;
+        };
+
+        const buildPlayerCar = () => {
+        const group = new THREE.Group();
+        const bodyGeom = new THREE.CylinderGeometry(1.5, 1.8, 5, 4); bodyGeom.rotateX(Math.PI / 2);
+        bodyGeom.rotateZ(Math.PI / 4);
+        const body = new THREE.Mesh(bodyGeom, assets.playerMat); body.position.y = 0.6; body.scale.set(1, 0.3, 1);
+        const ledL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 4.8), assets.neonCyan); ledL.position.set(-1.2, 0.4,
+        0);
+        const ledR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 4.8), assets.neonCyan); ledR.position.set(1.2, 0.4,
+        0);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 2), assets.glassMat); cabin.position.set(0, 1.0,
+        -0.2);
+        const spoiler = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 0.5), assets.playerMat); spoiler.position.set(0,
+        1.1, 2.2);
+
+        const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 });
+        const exhaustL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5), exhaustMat); exhaustL.rotation.x =
+        Math.PI / 2; exhaustL.position.set(-0.8, 0.3, 2.5);
+        const exhaustR = exhaustL.clone(); exhaustR.position.x = 0.8;
+
+        const flameMat = assets.neonCyan.clone();
+        const flameL = new THREE.Mesh(new THREE.ConeGeometry(0.15, 1.5, 8), flameMat); flameL.rotation.x = -Math.PI / 2;
+        flameL.position.set(0, 0, 0.8);
+        const flameR = flameL.clone();
+        exhaustL.add(flameL); exhaustR.add(flameR);
+        g.exhaustFlames = [flameL, flameR];
+
+        group.add(body, ledL, ledR, cabin, spoiler, exhaustL, exhaustR);
+
+        g.playerLight = new THREE.PointLight(0x00ffff, 3, 25); g.playerLight.position.set(0, 2, 0);
+        group.add(g.playerLight);
+        const headLight = new THREE.SpotLight(0xffffff, 10, 200, Math.PI / 5, 0.5, 1);
+        headLight.position.set(0, 1, -2); headLight.target.position.set(0, 0, -50);
+        group.add(headLight, headLight.target);
+        g.playerWheels = createWheels(group, 1.4, 0.4, 1.6, 0.45, 0.3, true);
+        return group;
+        };
+
+        const buildEnemyCar = (type) => {
+        const group = new THREE.Group(); let wheels = [];
+        if (type === 'TRUCK') {
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(3.5, 3, 3.5), assets.truckMat); cab.position.set(0, 2, -3);
+        const trailer = new THREE.Mesh(new THREE.BoxGeometry(3.8, 4, 8), new THREE.MeshPhysicalMaterial({color:0x111,
+        clearcoat:0.3})); trailer.position.set(0, 2.5, 3);
+        const tailLight = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.4, 0.2), assets.tailLightMat);
+        tailLight.position.set(0, 1, 7.1);
+        group.add(cab, trailer, tailLight); wheels = createWheels(group, 2, 0.7, 3.5, 0.7, 0.6);
+        } else if (type === 'HUNTER') {
+        // NUEVO: Coche Cazador con IA y neones rojos
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 4.8), assets.hunterMat); body.position.y = 0.6;
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.2), assets.glassMat); cabin.position.set(0, 1.0,
+        0);
+        const underglow = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 5.0), assets.neonRed); underglow.position.y =
+        0.3;
+        const tailLight = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 0.2), assets.tailLightMat);
+        tailLight.position.set(0, 0.6, 2.4);
+        group.add(body, cabin, underglow, tailLight); wheels = createWheels(group, 1.3, 0.4, 1.7, 0.4, 0.35);
+        } else if (type === 'SPORT') {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 4.8), assets.sportMat); body.position.y = 0.8;
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.2), assets.glassMat); cabin.position.set(0, 1.2,
+        0);
+        const underglow = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 5.2), assets.neonCyan); underglow.rotation.x =
+        -Math.PI / 2; underglow.position.y = 0.4;
+        const tailLight = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 0.2), assets.neonPink);
+        tailLight.position.set(0, 0.8, 2.4);
+        group.add(body, cabin, underglow, tailLight); group.userData.isHover = true;
+        } else {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.8, 4.2), assets.sportMat); body.position.y = 0.7;
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 2.5), assets.glassMat); cabin.position.set(0, 1.3,
+        0);
+        const tailLight = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 0.2), assets.tailLightMat);
+        tailLight.position.set(0, 0.8, 2.1);
+        group.add(body, cabin, tailLight); wheels = createWheels(group, 1.2, 0.45, 1.5, 0.45, 0.25);
+        }
+        return { group, wheels };
+        };
+
+        const initGame = useCallback(() => {
+        if (!containerRef.current || g.scene) return;
+
+        g.scene = new THREE.Scene(); g.scene.background = new THREE.Color(0x020005); g.scene.fog = new
+        THREE.FogExp2(0x020005, 0.0012);
+        g.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        g.camera.position.set(0, 6, 18);
+
+        g.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        g.renderer.setSize(window.innerWidth, window.innerHeight);
+        g.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        g.renderer.toneMapping = THREE.ACESFilmicToneMapping; g.renderer.toneMappingExposure = 1.5;
+        containerRef.current.appendChild(g.renderer.domElement);
+
+        g.scene.add(new THREE.AmbientLight(0x222244, 1.0));
+        g.scene.add(new THREE.HemisphereLight(0xff00ff, 0x00ffff, 0.8));
+
+        const roadWorldMat = assets.roadMat.clone(); applyWorldShader(roadWorldMat);
+        const borderCyanMat = assets.neonCyan.clone(); applyWorldShader(borderCyanMat);
+        const borderPinkMat = assets.neonPink.clone(); applyWorldShader(borderPinkMat);
+
+        const roadGroup = new THREE.Group();
+        const roadGeom = new THREE.BoxGeometry(ROAD_WIDTH, 0.5, 3000, 1, 1, 150); roadGeom.translate(0, -0.25, -1500);
+        const road = new THREE.Mesh(roadGeom, roadWorldMat); roadGroup.add(road);
+
+        const gridMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.15
+        });
+        applyWorldShader(gridMat);
+        g.grid = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH * 2, 3000, 20, 150), gridMat);
+        g.grid.rotation.x = -Math.PI / 2; g.grid.position.set(0, -0.1, -1500);
+        roadGroup.add(g.grid);
+
+        const borderGeom = new THREE.BoxGeometry(1, 0.5, 3000, 1, 1, 150); borderGeom.translate(0, 0.25, -1500);
+        const edgeL = new THREE.Mesh(borderGeom, borderCyanMat); edgeL.position.set(-ROAD_WIDTH/2 - 0.5, 0, 0);
+        const edgeR = new THREE.Mesh(borderGeom, borderPinkMat); edgeR.position.set(ROAD_WIDTH/2 + 0.5, 0, 0);
+        roadGroup.add(edgeL, edgeR); g.scene.add(roadGroup);
+
+        const sunGeom = new THREE.PlaneGeometry(1200, 1200);
+        g.sun = new THREE.Mesh(sunGeom, new THREE.MeshBasicMaterial({ map: createSunTexture(), transparent: true, fog:
+        false }));
+        g.sun.position.set(0, 200, -1800); g.scene.add(g.sun);
+
+        for(let i=0; i<200; i++){ const star=new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 8), assets.neonCyan);
+          star.position.set((Math.random()-0.5)*300, Math.random()*80 + 2, -Math.random()*3000); g.scene.add(star);
+          g.stars.push(star); } g.player=buildPlayerCar(); g.scene.add(g.player); const onResize=()=> { g.camera.aspect
+          = window.innerWidth / window.innerHeight; g.camera.updateProjectionMatrix();
+          g.renderer.setSize(window.innerWidth, window.innerHeight); };
+          window.addEventListener('resize', onResize); return () => window.removeEventListener('resize', onResize);
+          }, [g, assets]);
+
+          // --- Spawners ---
+          const spawnItem = (mesh, arr, speedMult = 1, zPos = -1000, extraData = {}) => {
+          mesh.position.z = zPos; mesh.userData.baseX = mesh.position.x; mesh.userData.baseY = mesh.position.y || 0;
+          g.scene.add(mesh); arr.push({ mesh, speedMult, ...extraData });
+          };
+
+          const spawnBuilding = (zPos = -1200) => {
+          const side = Math.random() > 0.5 ? 1 : -1; const h = 60 + Math.random() * 250;
+          const building = new THREE.Mesh(new THREE.BoxGeometry(20 + Math.random() * 40, h, 30), new
+          THREE.MeshStandardMaterial({ color: 0x020108, emissive: side > 0 ? 0x001144 : 0x330022, roughness: 0.1 }));
+          building.position.set(side * (ROAD_WIDTH / 2 + 40 + Math.random() * 50), h/2 - 10, 0);
+          spawnItem(building, g.scenery, 1, zPos);
+          };
+
+          const spawnTraffic = (zPos = -1000) => {
+          const lane = Math.floor(Math.random() * 3);
+          const rand = Math.random();
+          const type = rand > 0.85 ? 'TRUCK' : (rand > 0.70 ? 'HUNTER' : (rand > 0.35 ? 'SPORT' : 'SEDAN'));
+          const { group, wheels } = buildEnemyCar(type);
+          group.position.x = LANES[lane];
+          spawnItem(group, g.traffic, type === 'TRUCK' ? 0.35 : (type === 'SPORT' ? 0.75 : (type === 'HUNTER' ? 0.8 :
+          0.5)), zPos, { wheels, nearMiss: false, isHunter: type === 'HUNTER' });
+          };
+
+          const clearTrafficNearSpawn = () => {
+          for (let i = g.traffic.length - 1; i >= 0; i--) {
+          if (g.traffic[i].mesh.position.z < -800) { g.scene.remove(g.traffic[i].mesh); g.traffic.splice(i, 1); } } };
+            const spawnLaserBarrier=(zPos=-1000)=> {
+            clearTrafficNearSpawn(); const group = new THREE.Group();
+            const baseL = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 3), assets.truckMat);
+            baseL.position.set(-ROAD_WIDTH/2, 2, 0);
+            const baseR = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 3), assets.truckMat);
+            baseR.position.set(ROAD_WIDTH/2, 2, 0);
+            const laser = new THREE.Mesh(new THREE.BoxGeometry(ROAD_WIDTH, 1.5, 1.5), assets.warningMat);
+            laser.position.set(0, 1.5, 0);
+            group.add(baseL, baseR, laser); spawnItem(group, g.obstacles, 1, zPos, { type: 'LASER' });
+            };
+
+            const spawnBlockade = (zPos = -1000) => {
+            clearTrafficNearSpawn(); const group = new THREE.Group(); const openLane = Math.floor(Math.random() * 3);
+            for(let i=0; i<3; i++) { if(i !==openLane) { const block=new THREE.Mesh(new THREE.BoxGeometry(8, 7, 3.5),
+              assets.truckMat); block.position.set(LANES[i], 3.5, 0); block.userData.isBlock=true; const neonX=new
+              THREE.Mesh(new THREE.BoxGeometry(7, 1.0, 3.8), assets.warningMat); neonX.rotation.z=Math.PI/4;
+              neonX.position.set(LANES[i], 3.5, 0); const neonX2=new THREE.Mesh(new THREE.BoxGeometry(7, 1.0, 3.8),
+              assets.warningMat); neonX2.rotation.z=-Math.PI/4; neonX2.position.set(LANES[i], 3.5, 0); group.add(block,
+              neonX, neonX2); } } spawnItem(group, g.obstacles, 1, zPos, { type: 'WALL' }); }; const
+              spawnEMP=(zPos=-1000)=> {
+              const lane = Math.floor(Math.random() * 3); const group = new THREE.Group();
+              const mine = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.4, 16), assets.empMat); mine.position.y
+              = 0.2;
+              const pulse = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.2, 16), assets.empMat); pulse.rotation.x =
+              Math.PI / 2; pulse.position.y = 0.3;
+              group.add(mine, pulse); group.position.x = LANES[lane];
+              spawnItem(group, g.obstacles, 1, zPos, { type: 'EMP', pulse });
+              };
+
+              const spawnRamp = (zPos = -1000) => {
+              const lane = Math.floor(Math.random() * 3); const group = new THREE.Group();
+              const rampL = 18; const rampH = 5.0; const angle = Math.atan2(rampH, rampL);
+
+              const surface = new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, Math.hypot(rampL, rampH)), assets.roadMat);
+              surface.rotation.x = angle; surface.position.y = rampH / 2;
+              const railL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, Math.hypot(rampL, rampH)), assets.neonCyan);
+              railL.position.set(-3, surface.position.y + 0.2, 0); railL.rotation.x = angle;
+              const railR = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, Math.hypot(rampL, rampH)), assets.neonPink);
+              railR.position.set(3, surface.position.y + 0.2, 0); railR.rotation.x = angle;
+              const support = new THREE.Mesh(new THREE.BoxGeometry(6.4, rampH, 1.5), assets.truckMat);
+              support.position.set(0, rampH / 2, -rampL / 2 + 0.5);
+
+              const createChevron = (zOff) => {
+              const chev = new THREE.Group();
+              const legGeom = new THREE.BoxGeometry(0.6, 0.1, 3);
+              const legL = new THREE.Mesh(legGeom, assets.neonYellow); legL.rotation.y = Math.PI / 4;
+              legL.position.set(-1.1, 0, 0);
+              const legR = new THREE.Mesh(legGeom, assets.neonYellow); legR.rotation.y = -Math.PI / 4;
+              legR.position.set(1.1, 0, 0);
+              chev.add(legL, legR); chev.rotation.x = angle;
+              chev.position.y = (rampH / 2) - (zOff * Math.sin(angle)) + 0.4; chev.position.z = zOff * Math.cos(angle);
+              return chev;
+              };
+              group.add(surface, railL, railR, support, createChevron(4), createChevron(0), createChevron(-4));
+              group.position.x = LANES[lane];
+              spawnItem(group, g.obstacles, 1, zPos, { type: 'RAMP', used: false });
+              };
+
+              // NUEVO: Anillo Aéreo
+              const spawnAirRing = (zPos = -1000) => {
+              const lane = Math.floor(Math.random() * 3);
+              const ringGroup = new THREE.Group();
+              const ring = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.4, 16, 32), assets.neonYellow);
+              ring.rotation.y = Math.PI / 2;
+              ringGroup.add(ring);
+              ringGroup.position.set(LANES[lane], 8.5, 0); // Alto en el cielo
+              spawnItem(ringGroup, g.obstacles, 1, zPos, { type: 'RING', used: false });
+              };
+
+              const spawnSpeedPad = (zPos = -1000) => {
+              const lane = Math.floor(Math.random() * 3);
+              const pad = new THREE.Mesh(new THREE.BoxGeometry(6, 0.2, 8), assets.padMat);
+              pad.position.x = LANES[lane]; pad.position.y = 0.1;
+              spawnItem(pad, g.powerups, 1, zPos, { type: 'PAD' });
+              };
+
+              const spawnCubeLine = (zPos = -1000) => {
+              const lane = Math.floor(Math.random() * 3);
+              for(let i=0; i<5; i++) { const cube=new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), assets.cubeMat);
+                cube.position.x=LANES[lane]; cube.position.y=1.2; spawnItem(cube, g.cubes, 1, zPos - (i * 15)); } };
+                const spawnPowerup=(zPos=-1000)=> {
+                const rand = Math.random(); let type = 'NITRO';
+                if (rand > 0.9) type = 'TIMEWARP'; else if (rand > 0.75) type = 'SHIELD'; else if (rand > 0.5) type =
+                'MAGNET';
+                const group = new THREE.Group();
+                const color = type === 'NITRO' ? assets.neonYellow : (type === 'SHIELD' ? assets.neonCyan : (type ===
+                'MAGNET' ? assets.magnetMat : assets.timeWarpMat));
+                const geom = type === 'TIMEWARP' ? new THREE.OctahedronGeometry(1.2, 1) : new
+                THREE.OctahedronGeometry(1.2, 0);
+                const core = new THREE.Mesh(geom, color);
+                const aura = new THREE.Mesh(geom.clone().scale(1.3,1.3,1.3), new THREE.MeshBasicMaterial({ color:
+                color.color, wireframe: true }));
+                group.add(core, aura); group.position.x = LANES[Math.floor(Math.random() * 3)];
+                spawnItem(group, g.powerups, 1, zPos, { type, core, aura });
+                };
+
+                // --- Partículas y Efectos ---
+                const createExplosion = (position, isEMP = false) => {
+                for (let i = 0; i < 40; i++) { const debris=new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), isEMP ?
+                  assets.empMat : assets.sportMat); debris.position.copy(position); debris.position.y +=Math.random() *
+                  3; g.scene.add(debris); g.particles.push({ mesh: debris, life: 2.5, velocity: new
+                  THREE.Vector3((Math.random()-0.5)*5, Math.random()*5 + 1, (Math.random()-0.5)*5), rotSpeed: new
+                  THREE.Vector3(Math.random()*0.2, Math.random()*0.2, Math.random()*0.2) }); } const flash=new
+                  THREE.Mesh(new THREE.SphereGeometry(8), isEMP ? assets.empMat : assets.neonOrange);
+                  flash.position.copy(position); g.scene.add(flash); g.particles.push({ mesh: flash, life: 0.8, isFlash:
+                  true }); }; const emitTrail=(pos, downward=false, heavy=false, slipstream=false)=> {
+                  const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, heavy ? 1.0 : 2.0), slipstream ?
+                  assets.neonCyan : (heavy ? assets.neonOrange : assets.neonPink));
+                  p.position.copy(pos); p.position.x += (Math.random() - 0.5) * 2.5; p.position.y += Math.random() * 1.5
+                  - (downward ? 0.8 : 0); p.position.z += 3;
+                  g.scene.add(p);
+                  g.particles.push({ mesh: p, life: downward ? 0.8 : 0.6, velocity: new THREE.Vector3(0, downward ? -0.5
+                  : Math.random()*0.1, 2.0) });
+                  };
+
+                  const createShockwave = (pos, colorMat) => {
+                  const mat = colorMat.clone(); mat.transparent = true; mat.opacity = 1;
+                  const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.4, 8, 32), mat);
+                  ring.position.copy(pos); ring.position.y = 0.5; ring.rotation.x = Math.PI / 2;
+                  g.scene.add(ring); g.particles.push({ mesh: ring, life: 1.0, isShockwave: true });
+                  };
+
+                  const createDeflection = (position, colorMat) => {
+                  const flash = new THREE.Mesh(new THREE.SphereGeometry(6), colorMat);
+                  flash.position.copy(position); g.scene.add(flash);
+                  g.particles.push({ mesh: flash, life: 0.8, isFlash: true });
+                  createShockwave(position, colorMat);
+                  for (let i = 0; i < 15; i++) { const spark=new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 2.0),
+                    colorMat); spark.position.copy(position); spark.position.y +=Math.random() * 2; g.scene.add(spark);
+                    g.particles.push({ mesh: spark, life: 1.5, velocity: new THREE.Vector3((Math.random()-0.5)*6,
+                    Math.random()*4 + 2, (Math.random()-0.5)*6 + 2) }); } }; // --- Loop Principal --- const
+                    update=useCallback(()=> {
+                    if (gameState !== 'PLAYING') return;
+                    const delta = g.clock.getDelta();
+                    const time = g.clock.getElapsedTime();
+                    g.timeUniform.value = time;
+
+                    const motorSpeed = BASE_SPEED + (upgrades.motor - 1) * 0.15;
+                    const handling = 0.18 + (upgrades.chasis - 1) * 0.04;
+                    const jumpForce = 0.55 + (upgrades.chasis - 1) * 0.05;
+
+                    g.speed += SPEED_INCREMENT;
+
+                    if (g.boostTimer > 0) g.boostTimer -= delta;
+                    if (g.timeWarpTimer > 0) {
+                    g.timeWarpTimer -= delta;
+                    if (!timeWarpActive) setTimeWarpActive(true);
+                    if (g.timeWarpTimer <= 0) setTimeWarpActive(false); } if (g.shieldTimer> 0) {
+                      g.shieldTimer -= delta;
+                      if (g.shieldTimer <= 0 && hasShield) { setHasShield(false); showActionText('SHIELD
+                        DEPLETED', 'text-gray-500' ); } } const isHyperspeed=(g.isNitroActive && nitro> 0) ||
+                        g.boostTimer > 0 || g.timeWarpTimer > 0;
+                        setIsHyper(isHyperspeed);
+
+                        const currentSpeed = isHyperspeed ? g.speed * 2.0 : g.speed * motorSpeed;
+                        g.distanceTravelled += currentSpeed;
+
+                        if (time - g.lastTimes.curve > 6) {
+                        g.curveTarget = (Math.random() - 0.5) * 0.0018;
+                        g.hillTarget = (Math.random() - 0.5) * 16.0;
+                        g.lastTimes.curve = time;
+                        }
+                        g.curveUniform.value = lerp(g.curveUniform.value, g.curveTarget, 0.015);
+                        g.hillUniform.value = lerp(g.hillUniform.value, g.hillTarget, 0.015);
+
+                        // Salto
+                        const wasAirborne = g.jumpY > 0;
+                        if ((g.keys['ArrowUp'] || g.keys['w']) && g.jumpY === 0) {
+                        g.playerVelocityY = jumpForce; createShockwave(g.player.position, assets.neonPink);
+                        showActionText('JUMP!', 'text-fuchsia-400');
+                        }
+                        g.playerVelocityY -= 0.035; g.jumpY = Math.max(0, g.jumpY + g.playerVelocityY);
+                        if (wasAirborne && g.jumpY === 0) { g.shake = 0.2; g.squash = 0.4; }
+                        if (g.jumpY > 0.1 && g.playerVelocityY > 0) emitTrail(g.player.position, true, true);
+
+                        // Físicas X
+                        if (g.keys['ArrowLeft'] || g.keys['a']) g.targetLane = Math.max(0, g.targetLane - handling);
+                        if (g.keys['ArrowRight'] || g.keys['d']) g.targetLane = Math.min(2, g.targetLane + handling);
+                        const targetX = LANES[0] + (g.targetLane * 8);
+                        g.currentX = lerp(g.currentX, targetX, 0.15);
+                        g.player.position.x = g.currentX;
+
+                        // Derrape
+                        const turnForce = Math.abs(targetX - g.currentX);
+                        if (turnForce > 1.5 && g.jumpY === 0) {
+                        emitTrail(new THREE.Vector3(g.player.position.x + (g.currentX < targetX ? -1 : 1), 0.5,
+                          g.player.position.z + 2.5), true, false); if (Math.random()> 0.8) { g.combo += 1; g.comboTimer
+                          = 2.0; setCombo(g.combo); }
+                          }
+
+                          if (g.comboTimer > 0) { g.comboTimer -= delta; if (g.comboTimer <= 0) { g.combo=0;
+                            setCombo(0); } } if (g.magnetTimer> 0) { g.magnetTimer -= delta; if (g.magnetTimer <= 0)
+                              setMagnetActive(false); } // Animación Coche const rawBend=-(targetX - g.currentX) * 0.15;
+                              const steeringBend=Math.max(-0.5, Math.min(0.5, rawBend));
+                              g.player.rotation.z=lerp(g.player.rotation.z, steeringBend, 0.2);
+                              g.player.rotation.y=lerp(g.player.rotation.y, steeringBend * 0.8, 0.2); if (g.jumpY> 0) {
+                              let progress = (jumpForce - g.playerVelocityY) / (2 * jumpForce);
+                              g.player.rotation.x = -(Math.max(0, Math.min(1, progress)) * Math.PI * 2);
+                              } else {
+                              let rotX = g.player.rotation.x % (Math.PI * 2);
+                              if (rotX < -Math.PI) rotX +=Math.PI * 2; if (rotX> Math.PI) rotX -= Math.PI * 2;
+                                g.player.rotation.x = lerp(rotX, 0, 0.3);
+                                }
+
+                                if (g.squash > 0) { g.player.scale.y = 1 - g.squash; g.player.scale.x = 1 + (g.squash *
+                                0.5); g.squash = lerp(g.squash, 0, 0.15); }
+                                else { g.player.scale.y = 1; g.player.scale.x = lerp(g.player.scale.x, isHyperspeed ?
+                                0.9 : 1, 0.2); }
+                                g.player.scale.z = lerp(g.player.scale.z, isHyperspeed ? 1.4 : 1, 0.2);
+
+                                const playerHillY = Math.sin(0 * 0.005 + time * 5.0) * g.hillUniform.value;
+                                const suspensionBounce = Math.sin(time * 30) * 0.04;
+                                g.player.position.y = lerp(g.player.position.y, g.jumpY + playerHillY +
+                                suspensionBounce, 0.4);
+
+                                // Llamas de Escape animadas
+                                g.exhaustFlames.forEach(flame => {
+                                const targetScale = isHyperspeed ? 3.0 + Math.random() * 0.8 : 1.0 + Math.random() *
+                                0.2;
+                                flame.scale.y = lerp(flame.scale.y, targetScale, 0.2);
+                                flame.material = isHyperspeed ? assets.neonPink : assets.neonCyan;
+                                });
+
+                                if (isHyperspeed) { g.playerLight.color.setHex(0xff00ff); g.playerLight.intensity = 6; }
+                                else { g.playerLight.color.setHex(0x00ffff); g.playerLight.intensity = 3.5; }
+                                g.playerWheels.forEach(w => w.rotation.x -= currentSpeed * 2);
+
+                                // Cámara "Action-Cam"
+                                const cameraHillY = Math.sin(16 * 0.005 + time * 5.0) * g.hillUniform.value;
+                                const targetCamY = playerHillY + (isHyperspeed ? 4.0 : 6.5) + g.jumpY*0.5;
+
+                                g.camera.position.x = lerp(g.camera.position.x, g.currentX * 0.4, 0.1);
+                                g.camera.position.y = Math.max(cameraHillY + 1.5, lerp(g.camera.position.y, targetCamY,
+                                0.15));
+                                g.camera.position.z = lerp(g.camera.position.z, isHyperspeed ? 12 : 17, 0.08);
+                                g.camera.position.y += Math.sin(time * 40) * 0.02; // Camera rumble
+
+                                // ACTION CAM ROLL
+                                g.camera.rotation.z = lerp(g.camera.rotation.z, steeringBend * 0.15 +
+                                (g.curveUniform.value * 80), 0.1);
+                                g.camera.rotation.y = lerp(g.camera.rotation.y, (g.curveUniform.value * 120), 0.08);
+                                g.camera.rotation.x = lerp(g.camera.rotation.x, -g.hillUniform.value * 0.015, 0.05);
+
+                                g.currentFov = lerp(g.currentFov, isHyperspeed ? 110 : 85, 0.1);
+                                g.camera.fov = g.currentFov; g.camera.updateProjectionMatrix();
+
+                                // Entorno Infinito
+                                if(g.grid && g.grid.material) {
+                                g.grid.material.opacity = isHyperspeed ? 0.3 : 0.15;
+                                }
+                                if(g.sun) { g.sun.scale.setScalar(1 + Math.sin(time) * 0.01); g.sun.position.x =
+                                g.camera.position.x * 0.8; }
+
+                                // Cyber-Dust Stars
+                                g.stars.forEach(s => {
+                                s.position.z += currentSpeed * (isHyperspeed ? 8 : 3);
+                                if (s.position.z > 50) {
+                                s.position.z -= 2000; s.position.x = (Math.random()-0.5)*300; s.position.y =
+                                Math.random()*80 + 2;
+                                }
+                                });
+
+                                const updateEntities = (arr, limit, onUpdate) => {
+                                for (let i = arr.length - 1; i >= 0; i--) {
+                                const item = arr[i]; const mesh = item.mesh;
+
+                                const warpSlowdown = (g.timeWarpTimer > 0 && arr === g.traffic) ? 0.1 : 1.0;
+                                mesh.position.z += currentSpeed * (item.speedMult || 1) * warpSlowdown;
+
+                                mesh.position.x = mesh.userData.baseX - (mesh.position.z * mesh.position.z) *
+                                g.curveUniform.value;
+                                mesh.position.y = mesh.userData.baseY + Math.sin(mesh.position.z * 0.005 + time * 5.0) *
+                                g.hillUniform.value;
+
+                                let removed = false;
+                                if (onUpdate) removed = onUpdate(item, i, arr);
+                                if (!removed && mesh.position.z > limit) {
+                                g.scene.remove(mesh); arr.splice(i, 1);
+                                if (arr === g.traffic || arr === g.obstacles) setScore(s => s + 75 * multiplier);
+                                }
+                                }
+                                };
+
+                                // --- Colisiones y Entidades ---
+                                let inSlip = false;
+                                updateEntities(g.traffic, 50, (car, i, arr) => {
+                                if(car.wheels) car.wheels.forEach(w => w.rotation.x -= currentSpeed * car.speedMult);
+                                if(car.mesh.userData.isHover) car.mesh.position.y += Math.sin(time * 10 + i) * 0.4;
+
+                                const dx = Math.abs(g.player.position.x - car.mesh.position.x);
+                                const dz = car.mesh.position.z - g.player.position.z;
+
+                                // NUEVO: Inteligencia Artificial del Coche Cazador
+                                if (car.isHunter && dz > -150 && dz < -20 && g.jumpY===0) {
+                                  car.mesh.userData.baseX=lerp(car.mesh.userData.baseX, g.currentX, 0.025);
+                                  car.mesh.rotation.y=car.mesh.userData.baseX < g.currentX ? -0.1 : 0.1; } else if
+                                  (car.isHunter) { car.mesh.rotation.y=lerp(car.mesh.rotation.y, 0, 0.1); } if (dz < 0
+                                  && dz> -60 && dx < 2.0 && g.jumpY===0) { inSlip=true; setScore(s=> s + 5 *
+                                    multiplier);
+                                    if (Math.random() > 0.6) emitTrail(g.player.position, false, false, true);
+                                    }
+
+                                    const distZ = Math.abs(dz);
+                                    if (dx < 3.5 && distZ < 4.5 && Math.abs(g.player.position.y - car.mesh.position.y) <
+                                      2.5) { if (isHyperspeed) { createDeflection(car.mesh.position, assets.neonYellow);
+                                      g.scene.remove(car.mesh); arr.splice(i, 1); g.shake=0.6; setScore(s=> s + 500 *
+                                      multiplier); showActionText('NITRO RAM!', 'text-yellow-400'); return true;
+                                      } else if (hasShield) {
+                                      setHasShield(false); g.shieldTimer = 0;
+                                      createDeflection(car.mesh.position, assets.neonCyan); g.scene.remove(car.mesh);
+                                      arr.splice(i, 1); g.shake = 1.0;
+                                      showActionText('SHIELD BROKEN!', 'text-cyan-400'); return true;
+                                      } else { createExplosion(g.player.position); g.player.visible = false; endGame();
+                                      }
+                                      } else if (!car.nearMiss && distZ < 4.5 && dx>= 3.5 && dx < 5.5 &&
+                                          Math.abs(g.player.position.y - car.mesh.position.y) < 2.5) {
+                                          car.nearMiss=true; g.combo +=2; g.comboTimer=2.0; setCombo(g.combo);
+                                          setNitro(n=> Math.min(getMaxNitro(), n + 15)); // RECARGA NITRO AL HACER NEAR
+                                          MISS
+                                          setScore(s => s + 200 * multiplier); showActionText('NEAR MISS!',
+                                          'text-orange-400'); g.shake = 0.3;
+                                          }
+                                          });
+
+                                          if (inSlip !== inSlipstream) {
+                                          setInSlipstream(inSlip);
+                                          }
+
+                                          updateEntities(g.obstacles, 50, (obs, i, arr) => {
+                                          const dz = Math.abs(g.player.position.z - obs.mesh.position.z);
+                                          const dy = Math.abs(g.player.position.y - obs.mesh.position.y);
+                                          const dx = Math.abs(g.player.position.x - obs.mesh.position.x);
+                                          let hit = false;
+
+                                          if (obs.type === 'LASER' && dz < 2.5 && dy < 2.5) hit=true; else if
+                                            (obs.type==='EMP' ) { obs.pulse.scale.setScalar(1 + Math.sin(time * 15) *
+                                            0.2); if (dz < 3.0 && dy < 2.0 && dx < 3.0) { setNitro(0); g.combo=0;
+                                            setCombo(0); setHasShield(false); g.shieldTimer=0; g.shake=1.5;
+                                            showActionText('SYSTEM HACKED!', 'text-red-600' );
+                                            createExplosion(obs.mesh.position, true); g.scene.remove(obs.mesh);
+                                            arr.splice(i, 1); return true; } } else if (obs.type==='RAMP' && dz < 8.0 &&
+                                            !obs.used) { if (dx < 3.5) { if (g.player.position.y < obs.mesh.position.y +
+                                            4.5) { g.playerVelocityY=1.3; g.combo +=5; g.comboTimer=3.0;
+                                            setCombo(g.combo); showActionText('MEGA JUMP!', 'text-fuchsia-400' );
+                                            createShockwave(g.player.position, assets.neonPink); obs.used=true; } else {
+                                            hit=true; } } } else if (obs.type==='RING' && dz < 2.5 && !obs.used) { if
+                                            (dx < 3.5 && Math.abs(g.player.position.y - obs.mesh.position.y) < 3.5) {
+                                            obs.used=true; setScore(s=> s + 1000 * multiplier); // Ya no recarga nitro,
+                                            solo da puntuación
+                                            g.combo += 3; g.comboTimer = 2.0; setCombo(g.combo);
+                                            showActionText('AIR RING!', 'text-yellow-400');
+                                            createShockwave(obs.mesh.position, assets.neonYellow);
+                                            g.scene.remove(obs.mesh); arr.splice(i, 1); return true;
+                                            }
+                                            }
+                                            else if (obs.type === 'WALL' && dz < 4.5) {
+                                              obs.mesh.children.forEach(child=> {
+                                              if (child.userData.isBlock) {
+                                              const bDx = Math.abs(g.player.position.x - (obs.mesh.position.x +
+                                              child.position.x));
+                                              if (bDx < 3.8 && dy < 4.0) hit=true; } }); } if (hit) { if (isHyperspeed
+                                                && obs.type !=='RAMP' && obs.type !=='RING' ) {
+                                                createDeflection(obs.mesh.position, assets.neonOrange);
+                                                g.scene.remove(obs.mesh); arr.splice(i, 1); g.shake=1.0; setScore(s=> s
+                                                + 800 * multiplier); showActionText('BREACH!', 'text-orange-500');
+                                                return true;
+                                                } else if (hasShield) {
+                                                setHasShield(false); g.shieldTimer = 0;
+                                                createDeflection(obs.mesh.position, assets.neonCyan);
+                                                g.scene.remove(obs.mesh); arr.splice(i, 1); g.shake = 2.0;
+                                                showActionText('SMASHED!', 'text-yellow-400'); return true;
+                                                } else { createExplosion(g.player.position); g.player.visible = false;
+                                                endGame(); }
+                                                }
+                                                });
+
+                                                updateEntities(g.cubes, 50, (cube, i, arr) => {
+                                                if (g.magnetTimer > 0) {
+                                                const dzMag = cube.mesh.position.z - g.player.position.z;
+                                                if (dzMag > -100 && dzMag < 20) {
+                                                  cube.mesh.userData.baseX=lerp(cube.mesh.userData.baseX,
+                                                  g.player.position.x, 0.2);
+                                                  cube.mesh.userData.baseY=lerp(cube.mesh.userData.baseY,
+                                                  g.player.position.y, 0.2); } } cube.mesh.rotation.x +=0.05;
+                                                  cube.mesh.rotation.y +=0.05; const baseY=cube.mesh.userData.baseY +
+                                                  Math.sin(cube.mesh.position.z * 0.005 + time * 5.0) *
+                                                  g.hillUniform.value; cube.mesh.position.y=baseY + 1.2 + Math.sin(time
+                                                  * 10 + i) * 0.3; const dx=Math.abs(g.player.position.x -
+                                                  cube.mesh.position.x); const dz=Math.abs(g.player.position.z -
+                                                  cube.mesh.position.z); const dy=Math.abs(g.player.position.y -
+                                                  cube.mesh.position.y); if (dx < 3.5 && dz < 3.5 && dy < 3.5) {
+                                                  setScore(s=> s + 50 * multiplier); setCredits(c => c + 1);
+                                                  g.combo += 1; g.comboTimer = 2.0; setCombo(g.combo);
+                                                  g.scene.remove(cube.mesh); arr.splice(i, 1); return true;
+                                                  }
+                                                  });
+
+                                                  function meshBaseY(item) { return item.mesh.userData.baseY +
+                                                  Math.sin(item.mesh.position.z * 0.005 + time * 5.0) *
+                                                  g.hillUniform.value; }
+
+                                                  updateEntities(g.powerups, 50, (p, i, arr) => {
+                                                  if(p.type === 'PAD') {
+                                                  const dx = Math.abs(g.player.position.x - p.mesh.position.x);
+                                                  const dz = Math.abs(g.player.position.z - p.mesh.position.z);
+                                                  if (dx < 3.5 && dz < 4.0 && g.jumpY===0) { g.boostTimer=2.0;
+                                                    showActionText('SPEED BOOST!', 'text-green-400' );
+                                                    g.scene.remove(p.mesh); arr.splice(i, 1); g.shake=0.6; return true;
+                                                    } } else { p.core.rotation.y +=0.05; p.aura.rotation.x -=0.03; const
+                                                    dx=Math.abs(g.player.position.x - p.mesh.position.x); const
+                                                    dz=Math.abs(g.player.position.z - p.mesh.position.z); const
+                                                    dy=Math.abs(g.player.position.y - p.mesh.position.y); if (dx < 4.5
+                                                    && dz < 4.5 && dy < 4.5) { if (p.type==='NITRO' ) setNitro(n=>
+                                                    Math.min(getMaxNitro(), n + 30)); // Nerfeado a 30
+                                                    if (p.type === 'SHIELD') { setHasShield(true); g.shieldTimer = 15.0;
+                                                    } // Escudo de 15 segundos
+                                                    if (p.type === 'MAGNET') { g.magnetTimer = 10.0;
+                                                    setMagnetActive(true); }
+                                                    if (p.type === 'TIMEWARP') { g.timeWarpTimer = 8.0;
+                                                    showActionText('TIME WARP!', 'text-blue-400'); }
+                                                    else showActionText(p.type + '!', 'text-cyan-400');
+                                                    setScore(s => s + 500);
+                                                    g.scene.remove(p.mesh); arr.splice(i, 1); g.shake = 0.5; return
+                                                    true;
+                                                    }
+                                                    }
+                                                    });
+
+                                                    updateEntities(g.scenery, 200, null);
+
+                                                    const now = Date.now();
+                                                    if (now - g.lastTimes.zoneChange > 15000) {
+                                                    const zones = ['NORMAL', 'DENSE_TRAFFIC', 'LASER_STORM',
+                                                    'CUBE_RUSH'];
+                                                    g.currentZone = zones[Math.floor(Math.random() * zones.length)];
+                                                    if(g.currentZone !== 'NORMAL') {
+                                                    setZoneAlert(`WARNING: ${g.currentZone.replace('_', ' ')}`);
+                                                    setTimeout(() => setZoneAlert(''), 3000);
+                                                    }
+                                                    g.lastTimes.zoneChange = now;
+                                                    }
+
+                                                    let trafficInterval = 1000;
+                                                    if (g.currentZone === 'DENSE_TRAFFIC') trafficInterval = 400;
+
+                                                    if (now - g.lastTimes.obstacle > 1500 / g.speed) {
+                                                    if (now - g.lastTimes.traffic > trafficInterval / (g.speed * 1.5)) {
+                                                    spawnTraffic(); g.lastTimes.traffic = now;
+                                                    }
+                                                    }
+
+                                                    if (now - g.lastTimes.building > 100 / g.speed) { spawnBuilding();
+                                                    g.lastTimes.building = now; }
+                                                    if (g.currentZone === 'CUBE_RUSH' && now - g.lastTimes.cube > 800) {
+                                                    spawnCubeLine(); g.lastTimes.cube = now; }
+                                                    else if (now - g.lastTimes.cube > 3500) { spawnCubeLine();
+                                                    g.lastTimes.cube = now; }
+
+                                                    if (now - g.lastTimes.obstacle > (g.currentZone === 'LASER_STORM' ?
+                                                    2000 : 4500) / g.speed) {
+                                                    const r = Math.random();
+                                                    if (r > 0.8) spawnLaserBarrier();
+                                                    if (r > 0.75) spawnLaserBarrier();
+                                                    else if (r > 0.5) spawnBlockade();
+                                                    else if (r > 0.25) spawnRamp();
+                                                    else spawnEMP();
+                                                    g.lastTimes.obstacle = now;
+                                                    }
+
+                                                    if (now - g.lastTimes.powerup > 10000) {
+                                                    if (Math.random() > 0.5) spawnSpeedPad(); else spawnPowerup();
+                                                    g.lastTimes.powerup = now;
+                                                    }
+
+                                                    if ((g.keys[' '] || g.isNitroActive) && nitro > 0) {
+                                                    g.isNitroActive = true; setNitro(n => Math.max(0, n - 0.4));
+                                                    setMultiplier(2 + Math.floor(g.combo / 10)); g.shake = lerp(g.shake,
+                                                    0.3, 0.1);
+                                                    } else {
+                                                    g.isNitroActive = false; setMultiplier(1 + Math.floor(g.combo /
+                                                    10));
+                                                    }
+
+                                                    if (Math.floor(g.distanceTravelled) % 5 === 0) {
+                                                    setDistance(Math.floor(g.distanceTravelled));
+                                                    setSpeed(Math.floor(currentSpeed * 230));
+                                                    }
+
+                                                    for (let i = g.particles.length - 1; i >= 0; i--) {
+                                                    const p = g.particles[i]; p.life -= delta * (p.isFlash ? 5 :
+                                                    (p.isShockwave ? 2 : 1));
+                                                    if (p.isShockwave) { p.mesh.scale.addScalar(delta * 40);
+                                                    p.mesh.material.opacity = p.life; }
+                                                    else if (!p.isFlash) { p.mesh.position.add(p.velocity); p.velocity.y
+                                                    -= 0.08; p.mesh.rotation.x += p.rotSpeed?.x||0.1; }
+                                                    if (p.life <= 0 || p.mesh.position.y < -10) {
+                                                      g.scene.remove(p.mesh); g.particles.splice(i, 1); } else if
+                                                      (!p.isFlash && !p.isShockwave) p.mesh.scale.setScalar(p.life); }
+                                                      g.renderer.render(g.scene, g.camera);
+                                                      requestRef.current=requestAnimationFrame(update); }, [gameState,
+                                                      hasShield, nitro, multiplier, g, assets, upgrades, showActionText,
+                                                      timeWarpActive, inSlipstream]); const endGame=()=> {
+                                                      setGameState('GAMEOVER');
+                                                      setCredits(c => c + Math.floor(score / 100));
+                                                      setTimeout(() => cancelAnimationFrame(requestRef.current), 1500);
+                                                      };
+
+                                                      const startGame = () => {
+                                                      setGameState('PLAYING');
+                                                      setScore(0); setDistance(0); setNitro(getMaxNitro() / 2);
+                                                      setHasShield(true);
+                                                      g.speed = BASE_SPEED; g.distanceTravelled = 0; g.currentFov = 80;
+                                                      g.player.visible = true; g.jumpY = 0; g.playerVelocityY = 0;
+                                                      g.currentZone = 'NORMAL';
+                                                      g.curveUniform.value = 0; g.hillUniform.value = 0; g.squash = 0;
+                                                      g.combo = 0; g.comboTimer = 0; setCombo(0); g.magnetTimer = 0;
+                                                      setMagnetActive(false); g.boostTimer = 0; g.timeWarpTimer = 0;
+                                                      g.shieldTimer = 5.0;
+
+                                                      [g.traffic, g.scenery, g.obstacles, g.powerups, g.particles,
+                                                      g.cubes].forEach(arr => { arr.forEach(item =>
+                                                      g.scene.remove(item.mesh || item)); arr.length = 0; });
+
+                                                      // Pre-populado inmediato
+                                                      for (let z = -300; z >= -1800; z -= 200) {
+                                                      spawnBuilding(z); spawnBuilding(z);
+                                                      if (Math.random() > 0.3) spawnTraffic(z);
+                                                      if (Math.random() > 0.6) spawnCubeLine(z);
+                                                      }
+                                                      spawnPowerup(-600);
+
+                                                      const now = Date.now();
+                                                      g.lastTimes = { traffic: now, building: now, obstacle: now + 2000,
+                                                      powerup: now, arch: now, zoneChange: now, cube: now, curve: now };
+                                                      };
+
+                                                      useEffect(() => {
+                                                      const handleKD = (e) => g.keys[e.key] = true; const handleKU = (e)
+                                                      => g.keys[e.key] = false;
+                                                      window.addEventListener('keydown', handleKD);
+                                                      window.addEventListener('keyup', handleKU);
+                                                      initGame(); return () => { window.removeEventListener('keydown',
+                                                      handleKD); window.removeEventListener('keyup', handleKU); };
+                                                      }, [initGame, g]);
+
+                                                      useEffect(() => {
+                                                      if (gameState === 'PLAYING') requestRef.current =
+                                                      requestAnimationFrame(update);
+                                                      return () => cancelAnimationFrame(requestRef.current);
+                                                      }, [gameState, update]);
+
+                                                      // --- COMPONENTES UI ---
+                                                      const GarageUI = () => (
+                                                      <div
+                                                        className="absolute inset-0 z-30 flex items-center justify-center bg-black/90 backdrop-blur-2xl animate-in fade-in duration-500 p-8 crt-overlay">
+                                                        <div className="max-w-4xl w-full relative z-10">
+                                                          <div
+                                                            className="flex justify-between items-end border-b-2 border-fuchsia-500/30 pb-6 mb-8">
+                                                            <div>
+                                                              <h2
+                                                                className="text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-500 glitch-text"
+                                                                data-text="TALLER CYBER">TALLER CYBER</h2>
+                                                              <p
+                                                                className="text-cyan-400 uppercase tracking-[0.4em] text-xs font-bold mt-2">
+                                                                Instalación de Mejoras de Chasis</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                              <div
+                                                                className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-1">
+                                                                Créditos Disp.</div>
+                                                              <div
+                                                                className="text-4xl font-black tabular-nums text-yellow-400 drop-shadow-[0_0_10px_#ffaa00]">
+                                                                {credits} <span className="text-lg">CR</span></div>
+                                                            </div>
+                                                          </div>
+
+                                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                                                            {[
+                                                            { id: 'motor', icon: Cpu, color: 'text-orange-400', bg:
+                                                            'bg-orange-500/20', border: 'border-orange-500/50', name:
+                                                            'Motor Fusión', desc: 'Sube vel. base y aceleración.' },
+                                                            { id: 'chasis', icon: Wrench, color: 'text-cyan-400', bg:
+                                                            'bg-cyan-500/20', border: 'border-cyan-500/50', name:
+                                                            'Chasis Aero', desc: 'Mejora giro lateral y salto.' },
+                                                            { id: 'bateria', icon: Battery, color: 'text-fuchsia-400',
+                                                            bg: 'bg-fuchsia-500/20', border: 'border-fuchsia-500/50',
+                                                            name: 'Batería Plasma', desc: 'Aumenta cap. máxima Nitro.' }
+                                                            ].map((upg) => {
+                                                            const level = upgrades[upg.id]; const cost =
+                                                            getUpgradeCost(level); const isMax = level >= 5; const
+                                                            canBuy = credits >= cost && !isMax;
+                                                            return (
+                                                            <div key={upg.id} className={`p-6 rounded-2xl border
+                                                              ${upg.border} bg-black/50 backdrop-blur-md relative
+                                                              overflow-hidden group hover:scale-105
+                                                              transition-transform`}>
+                                                              <div className={`absolute top-0 left-0 w-full h-1
+                                                                ${upg.bg.replace('/20','')} opacity-80`} />
+                                                              <div className={`w-14 h-14 rounded-xl ${upg.bg}
+                                                                ${upg.color} flex items-center justify-center mb-4
+                                                                border border-white/10`}>
+                                                                <upg.icon size={28} />
+                                                              </div>
+                                                              <h3
+                                                                className="font-black italic text-2xl mb-1 text-white drop-shadow-md">
+                                                                {upg.name}</h3>
+                                                              <p className="text-xs text-white/60 mb-6 min-h-[32px]">
+                                                                {upg.desc}</p>
+                                                              <div className="flex gap-2 mb-6">{[1,2,3,4,5].map(l =>
+                                                                <div key={l} className={`h-3 flex-1 rounded-sm ${l
+                                                                  <=level ? upg.bg.replace('/20','') : 'bg-white/5' }
+                                                                  shadow-inner`} />)}
+                                                              </div>
+                                                              <button onClick={()=> buyUpgrade(upg.id)}
+                                                                disabled={!canBuy || isMax} className={`w-full py-4
+                                                                rounded-xl font-black uppercase text-sm tracking-widest
+                                                                transition-all ${isMax ? 'bg-white/5 text-white/30
+                                                                cursor-not-allowed' : canBuy ? `bg-white/10
+                                                                hover:${upg.bg} border border-white/20
+                                                                hover:border-white/80 text-white
+                                                                shadow-[0_0_15px_rgba(255,255,255,0.1)]` :
+                                                                'bg-red-950/40 text-red-500/50 border border-red-900/50
+                                                                cursor-not-allowed'}`}>
+                                                                {isMax ? 'MAX LEVEL' : `COMPRAR (-${cost} CR)`}
+                                                              </button>
+                                                            </div>
+                                                            );
+                                                            })}
+                                                          </div>
+
+                                                          <div className="flex justify-between items-center">
+                                                            <button onClick={()=> setGameState('START')}
+                                                              className="text-white/50 hover:text-white font-bold
+                                                              uppercase tracking-[0.4em] text-xs transition border-b
+                                                              border-transparent hover:border-white pb-1">Volver al
+                                                              Menú</button>
+                                                            <button onClick={startGame}
+                                                              className="cyber-btn !py-4 !px-10 text-lg"><span
+                                                                className="relative z-10 flex items-center gap-2">Desplegar
+                                                                <Play fill="currentColor" size={20} />
+                                                              </span></button>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                      );
+
+                                                      return (
+                                                      <div
+                                                        className="relative w-full h-screen overflow-hidden bg-[#020005] text-white font-sans select-none crt-container">
+                                                        <div ref={containerRef} className="absolute inset-0 z-0" />
+
+                                                        {/* Efectos Globales */}
+                                                        <div className={`absolute inset-0 pointer-events-none
+                                                          transition-opacity duration-300 z-10 ${isHyper ? 'opacity-100'
+                                                          : 'opacity-0' }`}>
+                                                          <div
+                                                            className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,rgba(0,255,255,0.1)_100%)] mix-blend-screen" />
+                                                          <div className="speed-lines" />
+                                                        </div>
+                                                        <div className={`absolute inset-0 pointer-events-none
+                                                          transition-all duration-500 z-15 ${timeWarpActive
+                                                          ? 'bg-blue-600/30 mix-blend-color-dodge opacity-100 backdrop-saturate-150'
+                                                          : 'opacity-0' }`} />
+
+                                                        {/* Textos de Acción */}
+                                                        <div
+                                                          className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center overflow-hidden">
+                                                          {actionTexts.map(t => <div key={t.id} className={`absolute
+                                                            animate-float-up text-5xl sm:text-7xl font-black italic
+                                                            tracking-tighter ${t.colorClass}
+                                                            drop-shadow-[0_0_25px_currentColor] glitch-text`}
+                                                            data-text={t.text}>{t.text}</div>)}
+                                                        </div>
+
+                                                        {zoneAlert && (
+                                                        <div
+                                                          className="absolute top-1/4 left-0 w-full text-center z-20 animate-pulse pointer-events-none">
+                                                          <div
+                                                            className="inline-block bg-red-600/90 text-white px-12 py-3 font-black italic tracking-[0.6em] text-3xl shadow-[0_0_60px_#ff0000] border-y-4 border-red-400 backdrop-blur-md">
+                                                            {zoneAlert}
+                                                          </div>
+                                                        </div>
+                                                        )}
+
+                                                        {inSlipstream && (
+                                                        <div
+                                                          className="absolute top-1/3 left-0 w-full text-center z-20 animate-pulse pointer-events-none opacity-70">
+                                                          <div
+                                                            className="inline-block text-cyan-300 font-black italic tracking-[1em] text-2xl drop-shadow-[0_0_15px_#00ffff]">
+                                                            /// REBUFO ///</div>
+                                                        </div>
+                                                        )}
+
+                                                        {/* --- HUD --- */}
+                                                        {gameState === 'PLAYING' && (
+                                                        <div
+                                                          className="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between z-10 ui-enter">
+                                                          <div className="flex justify-between items-start">
+                                                            <div className={`cyber-panel pl-6 pr-10 py-4 relative
+                                                              border-l-4 border-fuchsia-500`}>
+                                                              <div
+                                                                className="text-[10px] font-black uppercase tracking-[0.5em] text-fuchsia-400 mb-1">
+                                                                Score Log</div>
+                                                              <div
+                                                                className="text-4xl font-black italic text-white drop-shadow-[0_0_10px_rgba(255,0,255,0.6)]">
+                                                                {score}</div>
+                                                              {multiplier > 1 && <div
+                                                                className="text-xs font-bold text-fuchsia-400 mt-1 animate-pulse">
+                                                                x{multiplier} OVERRIDE</div>}
+
+                                                              {/* Barra de progreso de Combo */}
+                                                              <div
+                                                                className="absolute -bottom-2 left-0 w-full h-2 bg-black/50 overflow-hidden">
+                                                                <div
+                                                                  className="h-full bg-gradient-to-r from-orange-500 to-fuchsia-500 transition-all"
+                                                                  style={{width: `${Math.min(100,
+                                                                  (combo/15)*100)}%`}} />
+                                                              </div>
+                                                              {combo > 0 && <div
+                                                                className="absolute -bottom-8 left-6 bg-gradient-to-r from-orange-500 to-red-600 text-white text-[12px] font-black px-4 py-1.5 rounded-sm shadow-[0_0_20px_rgba(255,0,0,0.8)] animate-bounce">
+                                                                {combo} COMBO!</div>}
+                                                            </div>
+                                                            <div
+                                                              className="cyber-panel pr-6 pl-10 py-4 text-right border-r-4 border-cyan-400">
+                                                              <div
+                                                                className="text-[10px] font-black uppercase tracking-[0.5em] text-cyan-400 mb-1">
+                                                                CRÉDITOS</div>
+                                                              <div
+                                                                className="text-3xl font-black italic text-white drop-shadow-[0_0_10px_rgba(0,255,255,0.6)] tabular-nums">
+                                                                {credits}</div>
+                                                            </div>
+                                                          </div>
+
+                                                          <div
+                                                            className="self-end cyber-panel p-6 rounded-2xl flex items-center gap-6 backdrop-blur-xl shadow-[0_15px_50px_rgba(0,0,0,0.9)] border border-white/10">
+                                                            <div className="flex flex-col items-end">
+                                                              <div className="flex items-baseline gap-1">
+                                                                <span className={`text-6xl font-black italic
+                                                                  tracking-tighter tabular-nums transition-all ${isHyper
+                                                                  ? 'text-white drop-shadow-[0_0_15px_#fff] scale-110'
+                                                                  : 'text-white/90' }`}>{speed}</span>
+                                                                <span
+                                                                  className="text-sm font-bold text-cyan-400">KM/H</span>
+                                                              </div>
+                                                              <div
+                                                                className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-2">
+                                                                Sector: <span
+                                                                  className="text-white/80">{distance}m</span></div>
+                                                            </div>
+                                                            <div
+                                                              className="w-1 h-20 bg-gradient-to-b from-transparent via-white/20 to-transparent mx-2 rounded-full" />
+                                                            <div className="flex flex-col gap-4 w-48">
+                                                              <div className="flex flex-col gap-2">
+                                                                <div
+                                                                  className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                                                                  <span
+                                                                    className="text-orange-400 flex items-center gap-1">
+                                                                    <Flame size={12} /> Nitro
+                                                                  </span><span>{`${Math.floor(nitro)}/${getMaxNitro()}`}</span>
+                                                                </div>
+                                                                <div
+                                                                  className="h-3 bg-black/80 rounded-full border border-white/10 p-[2px] shadow-inner">
+                                                                  <div className={`h-full rounded-full transition-all
+                                                                    duration-100 ease-out ${nitro < 25
+                                                                    ? 'bg-red-500 shadow-[0_0_10px_#ff0000]'
+                                                                    : 'bg-gradient-to-r from-orange-600 via-yellow-400 to-white shadow-[0_0_10px_#ffaa00]'
+                                                                    }`} style={{ width: `${(nitro/getMaxNitro())*100}%`
+                                                                    }} />
+                                                                </div>
+                                                              </div>
+                                                              <div
+                                                                className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                                                <span className={magnetActive ? 'text-purple-400' :
+                                                                  (timeWarpActive ? 'text-blue-400' : 'text-white/30'
+                                                                  )}>
+                                                                  {timeWarpActive ? 'Time Warp' : 'Magneto'}
+                                                                </span>
+                                                                {timeWarpActive ?
+                                                                <Clock size={16}
+                                                                  className="text-blue-400 drop-shadow-[0_0_8px_#00aaff] animate-pulse" />
+                                                                :
+                                                                <Magnet size={16} className={magnetActive
+                                                                  ? "text-purple-400 drop-shadow-[0_0_8px_#aa00ff] animate-pulse"
+                                                                  : "text-white/20" } />}
+                                                              </div>
+                                                              <div
+                                                                className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                                                                <span className={hasShield ? 'text-cyan-400'
+                                                                  : 'text-red-500' }>Escudo</span>
+                                                                {hasShield ?
+                                                                <Shield size={16}
+                                                                  className="text-cyan-400 drop-shadow-[0_0_8px_#00ffff]" />
+                                                                :
+                                                                <ZapOff size={16}
+                                                                  className="text-red-500 drop-shadow-[0_0_8px_#ff0000]" />
+                                                                }
+                                                              </div>
+                                                            </div>
+                                                          </div>
+                                                        </div>
+                                                        )}
+
+                                                        {/* --- INICIO --- */}
+                                                        {gameState === 'START' && (
+                                                        <div
+                                                          className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#020005]/80 backdrop-blur-2xl crt-overlay">
+                                                          <div className="text-center mb-16 hero-enter relative z-10">
+                                                            <div
+                                                              className="absolute -inset-20 bg-[radial-gradient(ellipse_at_center,rgba(255,0,255,0.15)_0%,transparent_70%)]" />
+                                                            <h1
+                                                              className="relative text-[18vw] md:text-[12vw] leading-none font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-pink-400 to-purple-900 drop-shadow-[0_10px_50px_rgba(255,0,255,0.6)] glitch-text"
+                                                              data-text="NEON DRIFTER">
+                                                              NEON<br /><span
+                                                                className="text-cyan-400 drop-shadow-[0_0_20px_rgba(0,255,255,0.5)]">DRIFTER</span>
+                                                            </h1>
+                                                          </div>
+
+                                                          <div className="flex gap-8 hero-enter relative z-10"
+                                                            style={{animationDelay: '0.1s' }}>
+                                                            <button onClick={startGame}
+                                                              className="cyber-btn !py-5 !px-12 text-xl shadow-[0_0_30px_rgba(0,255,255,0.3)]">
+                                                              <span
+                                                                className="relative z-10 flex items-center gap-3">JUGAR
+                                                                <Play fill="currentColor" size={24} />
+                                                              </span>
+                                                            </button>
+                                                            <button onClick={()=> setGameState('GARAGE')}
+                                                              className="cyber-btn !py-5 !px-10 text-xl
+                                                              !border-fuchsia-500 before:!from-fuchsia-500
+                                                              before:!to-orange-500
+                                                              shadow-[0_0_30px_rgba(255,0,255,0.3)]">
+                                                              <span
+                                                                className="relative z-10 flex items-center gap-3">GARAJE
+                                                                <Wrench size={24} />
+                                                              </span>
+                                                            </button>
+                                                          </div>
+
+                                                          <div
+                                                            className="mt-20 flex gap-12 text-[10px] sm:text-xs font-black tracking-[0.4em] uppercase opacity-80 hero-enter relative z-10"
+                                                            style={{animationDelay: '0.2s' }}>
+                                                            <div className="flex flex-col items-center gap-4">
+                                                              <div className="flex gap-3"><kbd
+                                                                  className="kbd">A</kbd><kbd className="kbd">D</kbd>
+                                                              </div><span className="text-cyan-300">Dirección</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-center gap-4"><kbd
+                                                                className="kbd !border-fuchsia-500/50 text-fuchsia-400 !px-6">
+                                                                <ChevronUp size={18} strokeWidth={4} /> / W
+                                                              </kbd><span className="text-fuchsia-400">Acrobacia</span>
+                                                            </div>
+                                                            <div className="flex flex-col items-center gap-4"><kbd
+                                                                className="kbd !border-orange-500/50 text-orange-400 !px-10">Espacio</kbd><span
+                                                                className="text-orange-400">Hyper-Nitro</span></div>
+                                                          </div>
+                                                        </div>
+                                                        )}
+
+                                                        {/* --- GAME OVER --- */}
+                                                        {gameState === 'GAMEOVER' && (
+                                                        <div
+                                                          className="absolute inset-0 z-30 flex items-center justify-center bg-black/90 backdrop-blur-2xl crt-overlay">
+                                                          <div
+                                                            className="game-over-panel max-w-2xl w-full p-12 bg-[#0a0103] border-2 border-red-500/50 text-center relative shadow-[0_0_150px_rgba(255,0,0,0.3)]">
+                                                            <h2
+                                                              className="text-7xl font-black italic text-white tracking-tighter mt-4 mb-2 glitch-text"
+                                                              data-text="TERMINAL">TERMINAL</h2>
+                                                            <p
+                                                              className="text-red-500 font-bold uppercase tracking-[0.5em] text-xs mb-10">
+                                                              Fallo Crítico de Sistema</p>
+                                                            <div className="flex gap-6 mb-10">
+                                                              <div
+                                                                className="flex-1 bg-red-950/30 p-6 border border-red-500/20 rounded-2xl">
+                                                                <div
+                                                                  className="text-[10px] font-black text-cyan-400 uppercase mb-2 tracking-widest">
+                                                                  Sector Final</div>
+                                                                <div className="text-4xl font-black text-white">
+                                                                  {distance}</div>
+                                                              </div>
+                                                              <div
+                                                                className="flex-1 bg-red-950/30 p-6 border border-red-500/20 rounded-2xl">
+                                                                <div
+                                                                  className="text-[10px] font-black text-fuchsia-400 uppercase mb-2 tracking-widest">
+                                                                  Score Final</div>
+                                                                <div className="text-4xl font-black text-white">{score}
+                                                                </div>
+                                                              </div>
+                                                              <div
+                                                                className="flex-1 bg-red-950/30 p-6 border border-red-500/20 rounded-2xl flex flex-col justify-center items-center">
+                                                                <div
+                                                                  className="text-[10px] font-black text-yellow-400 uppercase mb-2 tracking-widest">
+                                                                  Recompensa</div>
+                                                                <div className="text-3xl font-black text-white">
+                                                                  +{Math.floor(score/100)} CR</div>
+                                                              </div>
+                                                            </div>
+                                                            <div className="flex gap-6">
+                                                              <button onClick={startGame}
+                                                                className="cyber-btn flex-1 !py-5 text-lg !border-red-500 before:!from-red-600 before:!to-orange-500 shadow-[0_0_30px_rgba(255,0,0,0.3)]"><span
+                                                                  className="relative z-10 flex justify-center items-center gap-3">
+                                                                  <RotateCcw size={20} /> REINTENTAR
+                                                                </span></button>
+                                                              <button onClick={()=> setGameState('GARAGE')}
+                                                                className="cyber-btn flex-1 !py-5 text-lg"><span
+                                                                  className="relative z-10 flex justify-center items-center gap-3">GARAJE
+                                                                  <Wrench size={20} />
+                                                                </span></button>
+                                                            </div>
+                                                          </div>
+                                                        </div>
+                                                        )}
+
+                                                        {/* --- ESTILOS CSS AVANZADOS --- */}
+                                                        <style>
+                                                          {
+                                                            `
+
+                                                            /* Animaciones base UI */
+                                                            @keyframes cyberEnter {
+                                                              0% {
+                                                                transform: scale(0.9) translateY(40px);
+                                                                opacity: 0;
+                                                                filter: blur(10px);
+                                                              }
+
+                                                              100% {
+                                                                transform: scale(1) translateY(0);
+                                                                opacity: 1;
+                                                                filter: blur(0);
+                                                              }
+                                                            }
+
+                                                            @keyframes slideInDown {
+                                                              0% {
+                                                                transform: translateY(-40px);
+                                                                opacity: 0;
+                                                              }
+
+                                                              100% {
+                                                                transform: translateY(0);
+                                                                opacity: 1;
+                                                              }
+                                                            }
+
+                                                            @keyframes floatUp {
+                                                              0% {
+                                                                transform: translateY(20px) scale(0.8);
+                                                                opacity: 1;
+                                                              }
+
+                                                              100% {
+                                                                transform: translateY(-150px) scale(1.5);
+                                                                opacity: 0;
+                                                                filter: blur(4px);
+                                                              }
+                                                            }
+
+                                                            .hero-enter {
+                                                              animation: cyberEnter 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                                                              opacity: 0;
+                                                            }
+
+                                                            .ui-enter {
+                                                              animation: slideInDown 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                                                            }
+
+                                                            .animate-float-up {
+                                                              animation: floatUp 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+                                                            }
+
+                                                            .game-over-panel {
+                                                              animation: cyberEnter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                                                              clip-path: polygon(5% 0, 100% 0, 100% 95%, 95% 100%, 0 100%, 0 5%);
+                                                            }
+
+                                                            .cyber-panel {
+                                                              background: rgba(2, 0, 8, 0.7);
+                                                              backdrop-filter: blur(16px);
+                                                            }
+
+                                                            .kbd {
+                                                              @apply px-5 py-3 bg-white/5 border border-white/20 rounded-xl shadow-inner flex items-center justify-center font-sans italic;
+                                                            }
+
+                                                            /* Botón Cyber */
+                                                            .cyber-btn {
+                                                              position: relative;
+                                                              padding: 1.2rem 2.5rem;
+                                                              background: rgba(0, 0, 0, 0.5);
+                                                              border: 2px solid rgba(0, 255, 255, 0.5);
+                                                              color: white;
+                                                              font-weight: 900;
+                                                              text-transform: uppercase;
+                                                              font-style: italic;
+                                                              letter-spacing: 0.15em;
+                                                              cursor: pointer;
+                                                              transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                                                              clip-path: polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%);
+                                                              overflow: hidden;
+                                                              backdrop-filter: blur(10px);
+                                                            }
+
+                                                            .cyber-btn::before {
+                                                              content: '';
+                                                              position: absolute;
+                                                              inset: 0;
+                                                              background: linear-gradient(90deg, #00ffff, #ff00ff);
+                                                              opacity: 0;
+                                                              transition: opacity 0.3s ease;
+                                                              z-index: 0;
+                                                            }
+
+                                                            .cyber-btn:hover {
+                                                              transform: scale(1.05) translateY(-5px);
+                                                              border-color: #fff;
+                                                              box-shadow: 0 15px 25px rgba(0, 255, 255, 0.4);
+                                                            }
+
+                                                            .cyber-btn:hover::before {
+                                                              opacity: 0.3;
+                                                            }
+
+                                                            .cyber-btn:active {
+                                                              transform: scale(0.95);
+                                                            }
+
+                                                            /* Efecto Glitch Text */
+                                                            .glitch-text {
+                                                              position: relative;
+                                                            }
+
+                                                            .glitch-text::before,
+                                                            .glitch-text::after {
+                                                              content: attr(data-text);
+                                                              position: absolute;
+                                                              top: 0;
+                                                              left: 0;
+                                                              width: 100%;
+                                                              height: 100%;
+                                                              opacity: 0.8;
+                                                            }
+
+                                                            .glitch-text::before {
+                                                              left: 2px;
+                                                              text-shadow: -2px 0 red;
+                                                              clip: rect(44px, 450px, 56px, 0);
+                                                              animation: glitch-anim 5s infinite linear alternate-reverse;
+                                                            }
+
+                                                            .glitch-text::after {
+                                                              left: -2px;
+                                                              text-shadow: -2px 0 blue;
+                                                              clip: rect(44px, 450px, 56px, 0);
+                                                              animation: glitch-anim2 5s infinite linear alternate-reverse;
+                                                            }
+
+                                                            @keyframes glitch-anim {
+                                                              0% {
+                                                                clip: rect(10px, 9999px, 44px, 0);
+                                                              }
+
+                                                              20% {
+                                                                clip: rect(85px, 9999px, 140px, 0);
+                                                              }
+
+                                                              40% {
+                                                                clip: rect(20px, 9999px, 80px, 0);
+                                                              }
+
+                                                              60% {
+                                                                clip: rect(100px, 9999px, 10px, 0);
+                                                              }
+
+                                                              80% {
+                                                                clip: rect(60px, 9999px, 90px, 0);
+                                                              }
+
+                                                              100% {
+                                                                clip: rect(10px, 9999px, 44px, 0);
+                                                              }
+                                                            }
+
+                                                            @keyframes glitch-anim2 {
+                                                              0% {
+                                                                clip: rect(65px, 9999px, 100px, 0);
+                                                              }
+
+                                                              20% {
+                                                                clip: rect(10px, 9999px, 60px, 0);
+                                                              }
+
+                                                              40% {
+                                                                clip: rect(80px, 9999px, 110px, 0);
+                                                              }
+
+                                                              60% {
+                                                                clip: rect(30px, 9999px, 50px, 0);
+                                                              }
+
+                                                              80% {
+                                                                clip: rect(120px, 9999px, 150px, 0);
+                                                              }
+
+                                                              100% {
+                                                                clip: rect(65px, 9999px, 100px, 0);
+                                                              }
+                                                            }
+
+                                                            /* Postprocesado CRT Curvo + Vignette */
+                                                            .crt-container {
+                                                              perspective: 1000px;
+                                                            }
+
+                                                            .crt-overlay::after {
+                                                              content: " ";
+                                                              display: block;
+                                                              position: absolute;
+                                                              top: 0;
+                                                              left: 0;
+                                                              bottom: 0;
+                                                              right: 0;
+                                                              background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+                                                              z-index: 2;
+                                                              background-size: 100% 2px, 3px 100%;
+                                                              pointer-events: none;
+                                                            }
+
+                                                            /* Hipervelocidad "Speed Lines" (CSS Only) */
+                                                            .speed-lines {
+                                                              position: absolute;
+                                                              inset: 0;
+                                                              background-image: repeating-linear-gradient(90deg, transparent 0%, transparent 2%, rgba(0, 255, 255, 0.1) 2.5%, transparent 3%);
+                                                              background-size: 200% 100%;
+                                                              animation: speed-move 0.2s linear infinite;
+                                                              mask-image: radial-gradient(ellipse at center, transparent 40%, black 100%);
+                                                              -webkit-mask-image: radial-gradient(ellipse at center, transparent 40%, black 100%);
+                                                              opacity: 0.6;
+                                                            }
+
+                                                            @keyframes speed-move {
+                                                              0% {
+                                                                background-position: 0 0;
+                                                              }
+
+                                                              100% {
+                                                                background-position: -200% 0;
+                                                              }
+                                                            }
+
+                                                            `
+                                                          }
+                                                        </style>
+
+                                                        {/* Sombras y Curvatura de Pantalla CRT */}
+                                                        <div
+                                                          className="absolute inset-0 pointer-events-none z-[100] opacity-15 mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+                                                        <div
+                                                          className="absolute inset-0 pointer-events-none z-[102] shadow-[inset_0_0_200px_rgba(0,0,0,1)]" />
+                                                      </div>
+                                                      );
+                                                      };
+
+                                                      export default App;

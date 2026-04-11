@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
   /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
-  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls {
+  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls, #screen-anomalia, #screen-turbo-drift {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -22,7 +22,7 @@
     overflow: auto !important;
     border: none !important;
   }
-  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active {
+  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active, #screen-anomalia.active, #screen-turbo-drift.active {
     display: block !important;
   }
 </style>
@@ -1011,7 +1011,130 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   background: rgba(56,189,248,.07); border: 1px solid rgba(56,189,248,.18);
 }
 .apk-dl a { color:var(--sky); text-decoration:none; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; }
+
+/* ============================================================
+   REMOTE CONTROL UI (PRO)
+   ============================================================ */
+.remote-modal {
+  position: fixed; inset: 0; 
+  background: rgba(2,6,23,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  display: none; align-items: center; justify-content: center; z-index: 10000;
+  padding: 1.5rem;
+}
+.remote-modal.show { display: flex !important; animation: t-fadeIn 0.3s ease; }
+
+.remote-card {
+  background: #0f172a; border: 1px solid rgba(56,189,248,0.25); 
+  border-radius: 32px; padding: 2.5rem; width: 100%; max-width: 440px;
+  text-align: center; box-shadow: 0 40px 100px rgba(0,0,0,0.7);
+  position: relative; overflow: hidden;
+}
+.qr-container { 
+  background: white; padding: 1.2rem; border-radius: 20px; margin: 1.5rem auto; 
+  width: 220px; height: 220px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 40px rgba(56,189,248,0.15);
+}
+.qr-container img { width: 100%; height: 100%; }
+
+#screen-remote-controller {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  background: #020617; z-index: 11000;
+  display: none; flex-direction: column; align-items: center;
+  justify-content: space-between; padding: 3rem 1rem;
+  overflow: hidden; font-family: 'Outfit', sans-serif;
+}
+.controller-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 1rem; }
+.mode-toggle {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(56,189,248,0.3);
+  color: var(--sky); padding: 8px 16px; border-radius: 99px; font-size: 0.75rem;
+  font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+}
+
+.controller-layout { display: none; width: 100%; flex: 1; align-items: center; justify-content: center; }
+.controller-layout.active { display: flex !important; animation: t-fadeIn 0.4s ease; }
+
+.nav-ring, .dpad-container {
+  position: relative; width: 280px; height: 280px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+.ring-btn {
+  position: absolute; width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(15,23,42,0.85); border: 2px solid rgba(255,255,255,0.12);
+  color: white; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+  user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.btn-up { top: 5px; } .btn-down { bottom: 5px; } .btn-left { left: 5px; } .btn-right { right: 5px; }
+.btn-ok { width: 100px; height: 100px; background: var(--sky); color: #020617; border: none; font-weight: 900; font-size: 1.2rem; }
+
+.gaming-ctrl { flex-direction: row; gap: 40px; }
+.action-container { display: flex; gap: 20px; align-items: center; }
+.game-btn {
+  width: 95px; height: 95px; border-radius: 50%; border: 4px solid var(--sky);
+  background: rgba(56,189,248,0.05); color: var(--sky); font-size: 2.2rem; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; 
+  user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.btn-b { border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.05); transform: translateY(25px); }
+.btn-a { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.05); transform: translateY(-25px); }
+
+.ring-btn:active, .game-btn:active, .mode-toggle:active { transform: scale(0.92); transition: transform 0.05s; }
+
+@keyframes t-fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+/* ============================================================
+   PROFILE PROGRESS (PRO)
+   ============================================================ */
+.xp-wrapper {
+  width: 100%; max-width: 500px; margin: 1.5rem auto 0;
+  background: rgba(255,255,255,0.05); height: 10px; border-radius: 99px;
+  overflow: hidden; border: 1px solid rgba(255,255,255,0.12);
+  position: relative;
+}
+.xp-fill {
+  height: 100%; width: 0%; 
+  background: linear-gradient(90deg, var(--sky), var(--indigo));
+  box-shadow: 0 0 15px var(--sky); transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.xp-info {
+  display: flex; justify-content: space-between; width: 100%; max-width: 500px; 
+  margin: 0.6rem auto 0; font-family: 'Outfit', sans-serif; font-weight: 700;
+  font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px;
+}
+
+.prof-badge-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 15px; margin-top: 1rem;
+}
+.prof-badge-item {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0.2; filter: grayscale(1); transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.prof-badge-item.unlocked { opacity: 1; filter: none; transform: scale(1); }
+.badge-circle {
+  width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,0.03);
+  border: 2px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  transition: all 0.3s;
+}
+.prof-badge-item.unlocked .badge-circle { border-color: var(--sky); background: rgba(56,189,248,0.12); box-shadow: 0 0 20px rgba(56,189,248,0.25); }
+.badge-label { font-size: 0.58rem; font-weight: 800; color: var(--muted); text-align: center; text-transform: uppercase; letter-spacing: 0.5px; }
+.prof-badge-item.unlocked .badge-label { color: var(--sky); }
+
 </style>
+
+
+
+<style>
+/* REMOTE CONTROL STYLES */
+.remote-focus {
+  border-color: var(--sky) !important;
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.4) !important;
+  transform: scale(1.05) translateY(-5px) !important;
+  z-index: 100;
+}
+.remote-active .hub-card { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+#screen-remote-controller button { -webkit-tap-highlight-color: transparent; user-select: none; }
+</style>
+
 </head>
 <!-- Ambient Background -->
 <canvas id="bg-canvas"></canvas>
@@ -1089,6 +1212,9 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   </button>
   <button class="nav-btn" onclick="showScreen('social')" id="nav-social">
     <span class="icon">👥</span>SOCIAL
+  </button>
+  <button class="nav-btn" onclick="openRemoteModal()" id="nav-remote">
+    <span class="icon">📡</span>ENLACE MANDO
   </button>
   <a href="https://drive.google.com/file/d/1tdaixmzbIuKbwp2s6U5TgPasxLrG7bdj/view?usp=sharing"
      target="_blank" class="nav-btn" id="nav-download">
@@ -1184,6 +1310,24 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
           <p class="card-desc">Acción multijugador frenética. Esquiva obstáculos, sobrevive a la lava y sé el último frijol en pie.</p>
           <button class="card-action" style="background:#f472b6; color:white;">¡Correr! →</button>
         </div>
+
+        <!-- Anomalía (Shooter) -->
+        <div class="hub-card btn-juicy card-anomalia" onclick="showAnomaliaScreen()" id="hub-card-anomalia">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #ef4444, transparent 70%);"></div>
+          <span class="card-emoji">🛸</span>
+          <h3 class="card-name">Anomalía</h3>
+          <p class="card-desc">Shooter arcade de alta intensidad. Sobrevive a oleadas infinitas, recolecta XP y evoluciona tu nave.</p>
+          <button class="card-action" style="background:#ef4444; color:white;">¡Batallar! →</button>
+        </div>
+
+        <!-- Turbo Drift -->
+        <div class="hub-card btn-juicy card-turbo-drift" onclick="showTurboDriftScreen()" id="hub-card-turbo-drift">
+          <div class="card-glow" style="background:radial-gradient(circle at center, #10b981, transparent 70%);"></div>
+          <span class="card-emoji">🏎️</span>
+          <h3 class="card-name">Turbo Drift</h3>
+          <p class="card-desc">Simulador de drift retro. Domina las curvas, quema goma y consigue la mejor puntuación en pista.</p>
+          <button class="card-action" style="background:#10b981; color:white;">¡Conducir! →</button>
+        </div>
       </div>
     </div>
 
@@ -1267,6 +1411,16 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
        ====================================================== -->
   <div id="screen-logicmaster" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020202 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
     <iframe id="logicmaster-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- Anomalía (Shooter) -->
+  <div id="screen-anomalia" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="anomalia-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- Turbo Drift -->
+  <div id="screen-turbo-drift" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="turbo-drift-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
 
@@ -1756,6 +1910,13 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
       </div>
       <p id="profile-email" style="color:var(--muted);font-size:.88rem;margin-top:10px;"></p>
       
+      <!-- PROGRESS BAR (XP) -->
+      <div class="xp-wrapper"><div id="prof-xp-fill" class="xp-fill"></div></div>
+      <div class="xp-info">
+        <span id="prof-xp-rank-cur">BRONCE I</span>
+        <span id="prof-xp-rank-next">PLATA II</span>
+      </div>
+      
       <div style="display:flex; justify-content:center; gap:10px; margin-top:2rem;">
         <button class="btn btn-glass" style="width:auto; padding:10px 25px; font-size:0.9rem;" onclick="startEditUser()">✏️ Ajustes de Cuenta</button>
         <button class="btn btn-danger" onclick="signOut()" style="width:auto; padding:10px 25px; font-size:0.9rem;">🚪 Cerrar Sesión</button>
@@ -1786,7 +1947,44 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
         </div>
       </div>
 
-      <!-- DASHBOARD: ARCADE & MINI-GAMES -->
+      <!-- DASHBOARD: GLOBAL PROGRESS -->
+      <div class="profile-stat-card" style="border-left: 4px solid var(--amber);">
+        <div class="card-icon">🌎</div>
+        <h4>PROGRESO GLOBAL</h4>
+        <div class="mini-stats-row">
+          <div class="mini-stat">
+            <div id="prof-total-xp" class="mini-stat-val" style="color:var(--amber);">0</div>
+            <div class="mini-stat-lbl">XP Total</div>
+          </div>
+          <div id="prof-fav-sect" class="mini-stat">
+            <div id="prof-fav-game" class="mini-stat-val" style="font-size:1.1rem; margin-top:0.4rem;">--</div>
+            <div class="mini-stat-lbl">Favorito</div>
+          </div>
+        </div>
+      </div>
+      </div> <!-- End Grid -->
+
+      <div class="glass-panel" style="margin-top:2.5rem; border-radius:30px;">
+        <h4 style="font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:2px; margin-bottom:1.5rem; text-align:center;">Colección de Medallas</h4>
+        <div class="prof-badge-grid">
+          <div id="badge-first-win" class="prof-badge-item">
+            <div class="badge-circle">🥇</div>
+            <div class="badge-label">Veterano</div>
+          </div>
+          <div id="badge-arcade-pro" class="prof-badge-item">
+            <div class="badge-circle">🔥</div>
+            <div class="badge-label">Arcade Pro</div>
+          </div>
+          <div id="badge-puzzle-king" class="prof-badge-item">
+            <div class="badge-circle">👑</div>
+            <div class="badge-label">Puzzle King</div>
+          </div>
+          <div id="badge-social" class="prof-badge-item">
+            <div class="badge-circle">🤝</div>
+            <div class="badge-label">Sociable</div>
+          </div>
+        </div>
+      </div>
       <div class="profile-stat-card" style="border-left: 4px solid var(--purple);">
         <div class="card-icon">🕹️</div>
         <h4>RÉCORDS ARCADE</h4>
@@ -2837,6 +3035,98 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+
+<!-- ============================================================
+     REMOTE CONTROL UI (PRO)
+     ============================================================ -->
+
+<div id="remote-modal" class="remote-modal" onclick="closeRemoteModal()">
+  <div class="remote-card" onclick="event.stopPropagation()">
+    <h2 style="font-size:2rem; font-weight:900; margin-bottom:1rem; italic; color:var(--sky)">VINCULAR MANDO</h2>
+    <p style="color:rgba(255,255,255,0.7); font-size:0.9rem;">Escanea el código con tu móvil para convertirlo en un mando inalámbrico de Tosito Games.</p>
+    
+    <div style="margin-top:1.2rem; text-align:left; background:rgba(255,255,255,0.03); padding:1rem; border-radius:16px; border:1px solid rgba(255,255,255,0.05);">
+      <label style="font-size:0.75rem; color:var(--sky); font-weight:900; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px;">Host de Conexión (IP Local)</label>
+      <input type="text" id="remote-host-input" style="background:rgba(255,255,255,0.05); border:1px solid var(--sky-o); color:white; width:calc(100% - 24px); height:40px; border-radius:8px; padding:0 12px; font-family:monospace;" placeholder="ej: 192.168.1.15" oninput="updateRemoteQR()">
+      <p style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:8px; line-height:1.4;">⚠️ Si usas <b>localhost</b>, cámbialo por tu IP (ej. 192.168.1.50) para que el móvil pueda conectar.</p>
+    </div>
+
+    <div class="qr-container">
+      <img id="remote-qr" src="" alt="QR Code">
+    </div>
+
+    <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:12px; font-size:0.8rem; color:var(--sky); text-align:left;">
+      <p>• No cierres esta ventana hasta conectar.</p>
+      <p>• Funciona mejor en modo horizontal.</p>
+    </div>
+    
+    <button class="btn btn-primary" onclick="closeRemoteModal()" style="margin-top:1.5rem; width:100%;">Cerrar</button>
+  </div>
+</div>
+
+<!-- Controller Screen for Mobile -->
+<div id="screen-remote-controller">
+  <div class="controller-header">
+    <div style="display:flex; flex-direction:column;">
+      <div style="font-weight:900; italic; letter-spacing:2px; font-size:1.1rem; color:var(--sky)">TOSITO REMOTE</div>
+      <div id="remote-user-name" style="font-size:0.65rem; color:rgba(255,255,255,0.5); font-weight:bold; text-transform:uppercase;">CONECTANDO...</div>
+    </div>
+    <button class="mode-toggle" id="btn-toggle-layout" onclick="toggleRemoteLayout()">MODO: NAVEGACIÓN</button>
+  </div>
+
+  <div id="layout-simple" class="controller-layout simple-ctrl active">
+    <div class="nav-ring">
+      <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
+      <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
+      <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
+      <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+      <button class="ring-btn btn-ok" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">OK</button>
+    </div>
+    <div style="margin-top:3rem; display:flex; gap:20px;">
+      <button class="btn btn-glass" style="width:90px; height:50px; border-radius:100px; border-color:var(--red); color:var(--red);" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">VOLVER</button>
+    </div>
+  </div>
+
+  <div id="layout-gaming" class="controller-layout gaming-ctrl">
+    <div class="dpad-container">
+       <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
+       <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
+       <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
+       <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+    </div>
+    <div class="action-container">
+        <button class="game-btn btn-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
+        <button class="game-btn btn-a" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">A</button>
+    </div>
+  </div>
+
+  <div id="remote-status-label" style="position:absolute; bottom:15px; font-size:0.6rem; color:rgba(255,255,255,0.3); letter-spacing:1px;">CONECTADO A LA SESIÓN</div>
+</div>
+
+<script>
+  // AUTO-LAYOUT LISTENER (MOBILE SIDE)
+  let _currentLayoutSig = 'simple';
+  function initLayoutSignalListener(uid) {
+    db.collection('remotes').doc(uid).onSnapshot(doc => {
+      if (doc.exists) {
+        const layout = doc.data().layout;
+        if (layout && layout !== _currentLayoutSig) {
+          _currentLayoutSig = layout;
+          applyRemoteLayout(layout);
+        }
+      }
+    });
+  }
+
+  function applyRemoteLayout(mode) {
+    const s = document.getElementById('layout-simple');
+    const g = document.getElementById('layout-gaming');
+    const btn = document.getElementById('btn-toggle-layout');
+    if (mode === 'gaming') { s.classList.remove('active'); g.classList.add('active'); btn.textContent = "MODO: JUEGO"; }
+    else { g.classList.remove('active'); s.classList.add('active'); btn.textContent = "MODO: NAVEGACIÓN"; }
+    if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 10]);
+  }
+</script>
 
 </body>
 </html>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Slither Neo Evolved | Tosito Games</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/gsap/dist/gsap.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
@@ -12,6 +13,10 @@
         canvas { display: block; }
         ::-webkit-scrollbar { display: none; }
         * { -webkit-tap-highlight-color: transparent; outline: none !important; }
+        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin-slow 8s linear infinite; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px) saturate(180%); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .neon-text { text-shadow: 0 0 10px currentColor; }
     </style>
     <script type="importmap">
     {
@@ -34,12 +39,12 @@
         import ReactDOM from 'react-dom';
         import { initializeApp } from 'firebase/app';
         import { 
-          getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp 
+          getFirestore, collection, doc, getDoc, setDoc, onSnapshot, deleteDoc, updateDoc, serverTimestamp 
         } from 'firebase/firestore';
         import { 
           getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
         } from 'firebase/auth';
-        import { Trophy, Users, Zap, Skull, Map as MapIcon, ChevronRight, RotateCcw } from 'lucide-react';
+        import { Trophy, Users, Zap, Skull, Map as MapIcon, ChevronRight, RotateCcw, Aperture } from 'lucide-react';
 
         // --- BRIDGE FIREBASE ---
         window.process = { env: { NODE_ENV: 'production' } };
@@ -58,14 +63,57 @@
         const db = app ? getFirestore(app) : null;
         const appId = appIdParam || (typeof __app_id !== 'undefined' ? __app_id : 'slither-neo-evolved');
 
+        // --- SFX ENGINE ---
+        class SFXEngine {
+            constructor() { this.ctx = null; this.masterGain = null; }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return;
+                    this.ctx = new AudioCtx();
+                    this.masterGain = this.ctx.createGain();
+                    this.masterGain.gain.value = 0.15;
+                    this.masterGain.connect(this.ctx.destination);
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playTone(freq, type, duration, slideFreq, vol = 1) {
+                if (!this.ctx || !this.masterGain) return;
+                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                if (slideFreq) osc.frequency.exponentialRampToValueAtTime(slideFreq, this.ctx.currentTime + duration);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.connect(gain); gain.connect(this.masterGain); osc.start(); osc.stop(this.ctx.currentTime + duration);
+            }
+            playNoise(duration, isExplosion = false, vol = 1) {
+                if (!this.ctx || !this.masterGain) return;
+                const bufferSize = this.ctx.sampleRate * duration; const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate); const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noiseSource = this.ctx.createBufferSource(); noiseSource.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter(); filter.type = isExplosion ? 'lowpass' : 'bandpass';
+                filter.frequency.setValueAtTime(isExplosion ? 1000 : 600, this.ctx.currentTime);
+                if (isExplosion) filter.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + duration);
+                const gain = this.ctx.createGain(); gain.gain.setValueAtTime(isExplosion ? vol * 1.5 : vol, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                noiseSource.connect(filter); filter.connect(gain); gain.connect(this.masterGain); noiseSource.start(); noiseSource.stop(this.ctx.currentTime + duration);
+            }
+            eat() { this.playTone(800 + Math.random() * 200, 'sine', 0.08, 1200, 0.4); }
+            boost() { if (Math.random() > 0.8) this.playNoise(0.1, false, 0.2); }
+            explosion() { this.playNoise(0.5, true, 1.2); }
+            uiClick() { this.playTone(1000, 'square', 0.1, 500, 0.3); }
+        }
+        const sfx = new SFXEngine();
+
         // --- CONSTANTES DEL JUEGO ---
         const MAP_SIZE = 4000;
         const INITIAL_LENGTH = 15;
         const BASE_SPEED = 2.8;
         const BOOST_SPEED = 5.5;
         const TURN_SPEED = 0.07;
-        const FOOD_COUNT = 250;
-        const TICK_RATE = 80;
+        const FOOD_COUNT = 50; // REDUCCIÓN RADICAL para salvar cuota diaria de Firestore
+        const TICK_RATE = 2500; // REDUCCIÓN RADICAL DE SYNC PARA MODO LOCAL-FIRST
+        const LOCAL_FOOD_TARGET = 400; // Restaurada densidad mejorada
+        const DECAY_MULTIPLIER = 0.005; 
+        const INITIAL_FOOD_BURST = 200; // Burst inicial para mundo vivo
 
         // --- CLASE DE PARTÍCULAS ---
         class Particle {
@@ -88,7 +136,109 @@
           }
         }
 
+        // --- CLASE DE BOT ---
+        const BOT_TYPES = ['AGRESSIVE', 'SCAVENGER', 'BALANCED'];
+        class Bot {
+          constructor(id) {
+            this.id = id;
+            this.type = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
+            this.name = `${this.type}_${id.split('_')[2]}`;
+            this.color = this.type === 'AGRESSIVE' ? '#f43f5e' : this.type === 'SCAVENGER' ? '#10b981' : '#f59e0b';
+            this.points = [];
+            const startX = Math.random() * MAP_SIZE;
+            const startY = Math.random() * MAP_SIZE;
+            for(let i=0; i<INITIAL_LENGTH; i++) this.points.push({ x: startX, y: startY });
+            this.angle = Math.random() * Math.PI * 2;
+            this.length = INITIAL_LENGTH;
+            this.isDead = false;
+            this.boost = false;
+            this.speed = BASE_SPEED;
+            this.targetAngle = this.angle;
+            this.logicTimer = 0;
+            this.turnSpeedMult = this.type === 'AGRESSIVE' ? 1.2 : 1.0;
+          }
+
+          update(playerPos, otherSkins, food) {
+            if (this.isDead) return;
+
+            this.logicTimer--;
+            if (this.logicTimer <= 0) {
+              this.logicTimer = this.type === 'AGRESSIVE' ? 15 : 40;
+              
+              // 1. Combat & Evasion (Priority)
+              let nearestHead = playerPos;
+              let minDist = Math.hypot(this.points[0].x - playerPos.x, this.points[0].y - playerPos.y);
+
+              otherSkins.forEach(oc => {
+                 if (oc.id === this.id) return;
+                 const d = Math.hypot(this.points[0].x - oc.points[0].x, this.points[0].y - oc.points[0].y);
+                 if (d < minDist) { minDist = d; nearestHead = oc.points[0]; }
+              });
+
+              if (minDist < 300) {
+                if (this.type === 'AGRESSIVE' && this.length > 50) {
+                   // Try to cut off
+                   this.targetAngle = Math.atan2(nearestHead.y - this.points[0].y, nearestHead.x - this.points[0].x) + 0.3;
+                   this.boost = true;
+                } else {
+                   // Evade
+                   this.targetAngle = Math.atan2(this.points[0].y - nearestHead.y, this.points[0].x - nearestHead.x);
+                   this.boost = minDist < 150;
+                }
+              } else {
+                // 2. Resource Gathering
+                let closestFood = null;
+                let fDist = 600;
+                food.slice(0, 100).forEach(f => {
+                  const d = Math.hypot(this.points[0].x - f.x, this.points[0].y - f.y);
+                  if (d < fDist) { fDist = d; closestFood = f; }
+                });
+
+                if (closestFood) {
+                  this.targetAngle = Math.atan2(closestFood.y - this.points[0].y, closestFood.x - this.points[0].x);
+                  this.boost = this.type === 'SCAVENGER' && fDist < 200;
+                } else {
+                  this.targetAngle += (Math.random() - 0.5) * 1;
+                  this.boost = false;
+                }
+              }
+            }
+
+            // Smoother angle interpolation
+            const diff = this.targetAngle - this.angle;
+            this.angle += Math.atan2(Math.sin(diff), Math.cos(diff)) * (TURN_SPEED * this.turnSpeedMult);
+
+            const curSpeed = this.boost ? BOOST_SPEED : BASE_SPEED;
+            if (this.boost) this.length -= 0.05;
+            if (this.length < INITIAL_LENGTH) this.boost = false;
+
+            const head = {
+              x: this.points[0].x + Math.cos(this.angle) * curSpeed,
+              y: this.points[0].y + Math.sin(this.angle) * curSpeed,
+              vel: { x: Math.cos(this.angle) * curSpeed, y: Math.sin(this.angle) * curSpeed }
+            };
+
+            // Boundary Bounce
+            if (head.x < 50 || head.x > MAP_SIZE-50 || head.y < 50 || head.y > MAP_SIZE-50) {
+               this.targetAngle = Math.atan2(MAP_SIZE/2 - head.y, MAP_SIZE/2 - head.x);
+            }
+
+            this.points.unshift(head);
+            if (this.points.length > Math.floor(this.length)) this.points.pop();
+          }
+        }
+
         function App() {
+    // --- FIREBASE SYNC ---
+    useEffect(() => {
+        if (gameState === 'GAMEOVER' && score > 0) {
+            try {
+                if (window.parent && window.parent.saveArcadeScore) {
+                    window.parent.saveArcadeScore('slither', score);
+                }
+            } catch(e) {}
+        }
+    }, [gameState]);
           const [user, setUser] = useState(null);
           const [gameState, setGameState] = useState('START'); 
           const [playerName, setPlayerName] = useState(urlParams.get('playerName') || '');
@@ -100,7 +250,21 @@
 
           const canvasRef = useRef(null);
           const requestRef = useRef();
+          const frameCount = useRef(0);
           const particles = useRef([]);
+          const bots = useRef([]);
+          const foodRef = useRef([]); // Ref para lógica ultra-rápida (60 FPS)
+          const anomaliesRef = useRef([]); // Agujeros negros y zonas gravitatorias
+          const [toasts, setToasts] = useState([]);
+          const powerups = useRef([]);
+
+          const addToast = (text, type = 'kill') => {
+            const id = Date.now();
+            setToasts(prev => [...prev, { id, text, type }]);
+            setTimeout(() => {
+              setToasts(prev => prev.filter(t => t.id !== id));
+            }, 3000);
+          };
           
           const mySnake = useRef({
             id: null,
@@ -111,6 +275,7 @@
             length: INITIAL_LENGTH,
             isDead: false,
             boost: false,
+            dashEnabled: false,
             zoom: 1.0
           });
 
@@ -140,7 +305,7 @@
           useEffect(() => {
             if (!user) return;
 
-            const playersCol = collection(db, 'artifacts', appId, 'public', 'data', 'players');
+            const playersCol = collection(db, 'slither_players');
             const unsubPlayers = onSnapshot(playersCol, (snapshot) => {
               const pData = {};
               snapshot.forEach(doc => {
@@ -151,40 +316,81 @@
               setLeaderboard(all.sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10));
             });
 
-            const foodCol = collection(db, 'artifacts', appId, 'public', 'data', 'food');
-            const unsubFood = onSnapshot(foodCol, (snapshot) => {
-              setFood(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
+             const foodCol = collection(db, 'slither_food');
+             // Ya NO nos suscribimos a la comida de firestore para salvar cuota
+             // const unsubFood = onSnapshot(foodCol, (snapshot) => {
+             //   setFood(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+             // });
 
-            return () => { unsubPlayers(); unsubFood(); };
+             // Cargar mejor puntuación
+             const statsRef = doc(db, 'slither_stats', user.uid);
+             onSnapshot(statsRef, (snap) => {
+                 if (snap.exists()) {
+                     localStorage.setItem('tosito_slither_best', snap.data().score || 0);
+                 }
+             });
+
+             return () => { unsubPlayers(); };
           }, [user, appId]);
 
-          // 3. Motor de Generación de Comida (Mantenimiento Automático)
+          // 3. Motor de Comida LOCAL (Sin Firestore - Usando Refs para Velocidad)
           useEffect(() => {
-            if (!db || !user || food.length > FOOD_COUNT * 0.7) return;
+            if (gameState !== 'PLAYING') return;
 
-            const maintainFood = async () => {
-              const amountToSpawn = FOOD_COUNT - food.length;
-              if (amountToSpawn <= 0) return;
+            const maintainLocalFood = () => {
+              if (foodRef.current.length < LOCAL_FOOD_TARGET) {
+                 const newBatch = [];
+                 const amount = Math.min(LOCAL_FOOD_TARGET - foodRef.current.length, 20);
+                 for(let i=0; i<amount; i++) {
+                    const rand = Math.random();
+                    let type = 'NORMAL';
+                    let value = 1;
+                    let color = `hsl(${Math.random() * 360}, 80%, 60%)`;
+                    
+                    if (rand > 0.98) { type = 'SNITCH'; value = 25; color = '#fbbf24'; }
+                    else if (rand > 0.94) { type = 'MEGA'; value = 8; }
 
-              console.log(`[🌱] Sembrando ${amountToSpawn} puntos de vida...`);
-              for (let i = 0; i < Math.min(amountToSpawn, 50); i++) {
-                const fId = `food_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-                setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
-                  x: Math.random() * MAP_SIZE,
-                  y: Math.random() * MAP_SIZE,
-                  color: `hsl(${Math.random() * 360}, 80%, 60%)`,
-                  value: Math.random() > 0.9 ? 3 : 1
-                }).catch(() => {});
+                    newBatch.push({
+                        id: `${type}_${Date.now()}_${Math.random()}`,
+                        x: Math.random() * MAP_SIZE,
+                        y: Math.random() * MAP_SIZE,
+                        color,
+                        value,
+                        type,
+                        vx: (Math.random()-0.5)*2,
+                        vy: (Math.random()-0.5)*2
+                    });
+                 }
+                 foodRef.current = [...foodRef.current, ...newBatch];
+              }
+
+              // Spawner de Anomalías
+              if (anomaliesRef.current.length < 3 && Math.random() > 0.99) {
+                 anomaliesRef.current.push({
+                    id: `anomaly_${Date.now()}`,
+                    x: Math.random() * MAP_SIZE,
+                    y: Math.random() * MAP_SIZE,
+                    radius: 300 + Math.random() * 200,
+                    force: 0.15
+                 });
               }
             };
 
-            const timer = setTimeout(maintainFood, 1000 + Math.random() * 3000);
-            return () => clearTimeout(timer);
-          }, [food.length, user, db, appId]);
+            const timer = setInterval(maintainLocalFood, 1000);
+            return () => clearInterval(timer);
+          }, [gameState]);
 
           const startGame = async () => {
             if (!playerName.trim()) return;
+            sfx.init(); sfx.uiClick();
+            
+            // Load best score
+            const statsRef = doc(db, 'slither_stats', user.uid);
+            const snap = await getDoc(statsRef);
+            if (snap.exists()) {
+                localStorage.setItem('tosito_slither_best', snap.data().score || 0);
+            }
+
             const startX = Math.random() * (MAP_SIZE - 400) + 200;
             const startY = Math.random() * (MAP_SIZE - 400) + 200;
             
@@ -196,20 +402,36 @@
               length: INITIAL_LENGTH,
               isDead: false,
               boost: false,
+              dashEnabled: false,
               zoom: 1.0
             };
 
             setScore(0);
-            setGameState('PLAYING');
+            try {
+                // Notificar inicio a Firestore (Si falla por cuota, ignoramos y seguimos local)
+                await setDoc(doc(db, 'slither_players', user.uid), {
+                  name: playerName,
+                  color: mySnake.current.color,
+                  points: mySnake.current.points,
+                  score: 0,
+                  isBoosting: false,
+                  lastUpdate: serverTimestamp()
+                }).catch(e => console.warn("Firestore Quota exceeded, playing in local mode."));
+            } catch(e) {}
 
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid), {
-              name: playerName,
-              color: mySnake.current.color,
-              points: mySnake.current.points,
-              score: 0,
-              isBoosting: false,
-              lastUpdate: serverTimestamp()
-            });
+            setGameState('PLAYING');
+            
+            // Burst inicial de comida LOCAL
+            foodRef.current = Array.from({ length: INITIAL_FOOD_BURST }, () => ({
+                id: `init_${Date.now()}_${Math.random()}`,
+                x: Math.random() * MAP_SIZE,
+                y: Math.random() * MAP_SIZE,
+                color: `hsl(${Math.random() * 360}, 80%, 60%)`,
+                value: 1
+            }));
+
+            // Initialize Bots locally for this session
+            bots.current = Array.from({ length: 15 }, (_, i) => new Bot(`bot_${Date.now()}_${i}`));
           };
 
           const die = async () => {
@@ -221,21 +443,30 @@
             for(let i=0; i<30; i++) {
                 particles.current.push(new Particle(mySnake.current.points[0].x, mySnake.current.points[0].y, mySnake.current.color));
             }
+            sfx.explosion();
 
-            // Convertir cuerpo en comida (Mecánica de Restos)
+            // Convertir todo el cuerpo en comida (Mecánica de Restos LOCAL)
+            const remainsFood = [];
             mySnake.current.points.forEach((p, i) => {
-              if (i % 4 === 0) { // Mayor densidad de comida al morir
-                const fId = `remains_${user.uid}_${i}_${Date.now()}`;
-                setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
-                  x: p.x + (Math.random()-0.5)*40,
-                  y: p.y + (Math.random()-0.5)*40,
-                  color: mySnake.current.color,
-                  value: 2
-                }).catch(() => {});
+              if (i % 2 === 0) { // Mayor densidad (cada 2 segmentos)
+                remainsFood.push({
+                   id: `remains_${user.uid}_${i}_${Date.now()}`,
+                   x: p.x + (Math.random()-0.5)*30,
+                   y: p.y + (Math.random()-0.5)*30,
+                   color: mySnake.current.color,
+                   value: 2
+                });
               }
             });
+            foodRef.current = [...foodRef.current, ...remainsFood];
 
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid));
+            // Save score
+            const currentBest = parseInt(localStorage.getItem('tosito_slither_best') || '0');
+            if (score > currentBest) {
+                setDoc(doc(db, 'slither_stats', user.uid), { score: score, timestamp: serverTimestamp() }).catch(() => {});
+            }
+
+            await deleteDoc(doc(db, 'slither_players', user.uid));
           };
 
           const update = () => {
@@ -244,23 +475,46 @@
             const s = mySnake.current;
             const head = { ...s.points[0] };
 
-            // Lógica de Boost
-            const boosting = (keys.current[' '] || keys.current['mousedown']) && s.length > 20;
+            // Gravedad de Anomalías
+            anomaliesRef.current.forEach(anom => {
+                const dist = Math.hypot(head.x - anom.x, head.y - anom.y);
+                if (dist < anom.radius) {
+                    const angleToCenter = Math.atan2(anom.y - head.y, anom.x - head.x);
+                    const pull = (1 - dist/anom.radius) * anom.force;
+                    head.x += Math.cos(angleToCenter) * pull;
+                    head.y += Math.sin(angleToCenter) * pull;
+                    // También afecta al ángulo sutilmente
+                    s.angle += Math.sin(angleToCenter - s.angle) * 0.02;
+                }
+            });
+
+            // Lógica de Velocidad Progresiva (Más grande = Más lento)
+            const speedFactor = Math.max(0.4, 1 - (s.length / 2500));
+            const baseSpeedWithScale = BASE_SPEED * speedFactor;
+            const boostSpeedWithScale = BOOST_SPEED * speedFactor;
+
+            // Dash Toggle (ÚNICAMENTE con Espacio y tamaño mínimo)
+            const boosting = s.dashEnabled && s.length > 60;
             s.boost = boosting;
             setIsBoosting(boosting);
-            const currentSpeed = boosting ? BOOST_SPEED : BASE_SPEED;
+            const currentSpeed = boosting ? boostSpeedWithScale : baseSpeedWithScale;
 
             if (boosting) {
-                s.length -= 0.05; // Consume masa
-                if (Math.random() > 0.8) { // Deja rastro de comida
-                    const fId = `boost_trail_${Date.now()}_${Math.random()}`;
-                    setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', fId), {
-                        x: s.points[s.points.length-1].x,
-                        y: s.points[s.points.length-1].y,
-                        color: s.color,
-                        value: 1
-                    });
+                // Hiper-Consumo: El dash ahora es extremadamente caro
+                const boostCost = 0.2 + (s.length / 1500);
+                s.length -= boostCost; 
+                
+                if (frameCount.current % 10 === 0) { // Deja rastro de comida (LOCAL SOLO)
+                   particles.current.push(new Particle(s.points[s.points.length-1].x, s.points[s.points.length-1].y, s.color));
                 }
+            }
+
+            // Hiper-Metabolismo Agresivo
+            if (s.length > 50) {
+                const decayBase = DECAY_MULTIPLIER;
+                // Escala cuadrática para penalizar fuertemente a las serpientes grandes
+                const decayFactor = Math.pow(s.length / 100, 1.8);
+                s.length -= decayBase * decayFactor;
             }
 
             // Controles
@@ -284,23 +538,174 @@
               });
             });
 
-            // Colisión con comida
-            food.forEach(f => {
+            // Colisión con uno mismo (Cola propia)
+            if (s.points.length > 20) {
+              for (let i = 20; i < s.points.length; i++) {
+                const pt = s.points[i];
+                const dist = Math.hypot(head.x - pt.x, head.y - pt.y);
+                if (dist < 12) { die(); return; }
+              }
+            }
+
+            // Colisión con comida (USANDO foodRef para instantaneidad)
+            const currentFood = foodRef.current;
+            const remainingFood = [];
+            let eaten = false;
+            
+            for (let i = 0; i < currentFood.length; i++) {
+              const f = currentFood[i];
               const dist = Math.hypot(head.x - f.x, head.y - f.y);
-              if (dist < 25) {
-                s.length += f.value;
-                setScore(prev => prev + f.value * 15);
-                deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'food', f.id)).catch(()=>{});
-                // Partículas al comer
-                for(let i=0; i<5; i++) particles.current.push(new Particle(f.x, f.y, f.color));
+              const magnetRadius = mySnake.current.powerups?.magnet ? 150 : 25;
+              
+              // Movimiento de Comida Especial (SNITCH huye)
+              if (f.type === 'SNITCH') {
+                  if (dist < 400) {
+                      const escapeAngle = Math.atan2(f.y - head.y, f.x - head.x);
+                      f.x += Math.cos(escapeAngle) * 4.5;
+                      f.y += Math.sin(escapeAngle) * 4.5;
+                  } else {
+                      f.x += f.vx || 0;
+                      f.y += f.vy || 0;
+                  }
+                  // Mantener en límites (Clamping y Rebote)
+                  if(f.x < 50) { f.x = 50; if(f.vx < 0) f.vx *= -1; }
+                  if(f.x > MAP_SIZE-50) { f.x = MAP_SIZE-50; if(f.vx > 0) f.vx *= -1; }
+                  if(f.y < 50) { f.y = 50; if(f.vy < 0) f.vy *= -1; }
+                  if(f.y > MAP_SIZE-50) { f.y = MAP_SIZE-50; if(f.vy > 0) f.vy *= -1; }
+              }
+
+              if (dist < 28) { // Radio de colisión mayor para comodidad
+                const nutritionFactor = Math.max(0.05, 1 - (s.length / 1500));
+                s.length += f.value * nutritionFactor;
+                sfx.eat();
+                if (f.type === 'SNITCH') addToast("¡SNITCH DORADA CAPTURADA!", 'powerup');
+                eaten = true;
+                for(let j=0; j< (f.type === 'MEGA' ? 10 : 2); j++) 
+                    particles.current.push(new Particle(f.x, f.y, f.color));
+              } else if (dist < magnetRadius) {
+                f.x += (head.x - f.x) * 0.1;
+                f.y += (head.y - f.y) * 0.1;
+                remainingFood.push(f);
+              } else {
+                remainingFood.push(f);
+              }
+            }
+            if (eaten) foodRef.current = remainingFood;
+
+            // Actualizar Power-ups
+            if (frameCount.current % 200 === 0 && powerups.current.length < 3) {
+                const types = ['MAGNET', 'NITRO', 'GHOST'];
+                const type = types[Math.floor(Math.random() * types.length)];
+                powerups.current.push({
+                    id: Date.now(),
+                    x: Math.random() * MAP_SIZE,
+                    y: Math.random() * MAP_SIZE,
+                    type,
+                    color: type === 'MAGNET' ? '#38bdf8' : type === 'NITRO' ? '#f59e0b' : '#a855f7'
+                });
+            }
+
+            powerups.current.forEach((p, i) => {
+                if (Math.hypot(head.x - p.x, head.y - p.y) < 40) {
+                    const type = p.type;
+                    sfx.uiClick();
+                    addToast(`¡PODER ADQUIRIDO: ${type}!`, 'powerup');
+                    mySnake.current.powerups = { ...mySnake.current.powerups, [type.toLowerCase()]: true };
+                    setTimeout(() => {
+                        mySnake.current.powerups = { ...mySnake.current.powerups, [type.toLowerCase()]: false };
+                    }, 8000);
+                    powerups.current.splice(i, 1);
+                }
+            });
+
+            // Actualizar Bots
+            const allBots = bots.current;
+            allBots.forEach((bot, bIdx) => {
+              if (bot.isDead) return;
+              bot.update(head, allBots, food);
+
+               // 1. Player vs Bot collision (Optimized)
+               if (!mySnake.current.powerups?.ghost) {
+                   const botPoints = bot.points;
+                   const bpLen = botPoints.length;
+                   // Broad Phase
+                   if (Math.hypot(head.x - botPoints[0].x, head.y - botPoints[0].y) < 800) {
+                      for (let idx = 0; idx < bpLen; idx += 4) {
+                        const pt = botPoints[idx];
+                        if (Math.hypot(head.x - pt.x, head.y - pt.y) < 18) { die(); return; }
+                      }
+                   }
+               }
+
+              // 2. Bot vs Player collision
+              s.points.forEach(pt => {
+                const d = Math.hypot(bot.points[0].x - pt.x, bot.points[0].y - pt.y);
+                if (d < 18) {
+                  bot.isDead = true;
+                  sfx.explosion();
+                  addToast(`¡${bot.name} ELIMINADO!`, 'kill');
+                  setScore(prev => prev + 500);
+                  // Drop todo el cuerpo del bot (LOCAL ONLY - USANDO foodRef)
+                  const remains = [];
+                  bot.points.forEach((p, i) => {
+                    if (i % 2 === 0) {
+                      remains.push({ 
+                        id: `bot_remains_${bot.id}_${i}_${Date.now()}`,
+                        x: p.x + (Math.random()-0.5)*20, y: p.y + (Math.random()-0.5)*20, 
+                        color: bot.color, 
+                        value: Math.floor(bot.length/25) + 1 
+                      });
+                    }
+                  });
+                  foodRef.current = [...foodRef.current, ...remains];
+                }
+              });
+
+              // 3. Bot vs OTHER Bot collision (High Optimization + LOCAL ONLY FOOD)
+              allBots.forEach((other, oIdx) => {
+                 if (bIdx === oIdx || other.isDead) return;
+                 const oHead = other.points[0];
+                 const bHead = bot.points[0];
+                 const distBetweenHeads = Math.hypot(bHead.x - oHead.x, bHead.y - oHead.y);
+                 if (distBetweenHeads < 800) {
+                    const otherPoints = other.points;
+                    const opLen = otherPoints.length;
+                    for (let pIdx = 0; pIdx < opLen; pIdx += 5) {
+                        const opt = otherPoints[pIdx];
+                        if (Math.hypot(bHead.x - opt.x, bHead.y - opt.y) < 16) {
+                            bot.isDead = true;
+                            sfx.explosion();
+                            // Food is NOT synced to firestore for bot-vs-bot to save quota
+                            for(let j=0; j<10; j++) particles.current.push(new Particle(bot.points[0].x, bot.points[0].y, bot.color));
+                            break;
+                        }
+                    }
+                 }
+              });
+
+              // Bot vs Food
+              for (let i = food.length - 1; i >= 0; i--) {
+                const f = food[i];
+                if (Math.hypot(bot.points[0].x - f.x, bot.points[0].y - f.y) < 25) {
+                  bot.length += f.value;
+                  setFood(prev => prev.filter(item => item.id !== f.id));
+                }
               }
             });
+            bots.current = allBots.filter(b => !b.isDead);
+            while(bots.current.length < 10) bots.current.push(new Bot(`bot_${Date.now()}_${bots.current.length}`));
 
             // Actualizar puntos del cuerpo
             const newPoints = [head, ...s.points];
-            const targetLength = Math.floor(s.length);
-            if (newPoints.length > targetLength) newPoints.pop();
+            const targetPoints = Math.floor(s.length);
+            // Recorte agresivo en tiempo real: quitamos todos los puntos sobrantes de golpe
+            while (newPoints.length > targetPoints && newPoints.length > 2) {
+                newPoints.pop();
+            }
             s.points = newPoints;
+            
+            // PUNTUACIÓN = TAMAÑO (Actualizamos una vez por frame)
+            setScore(Math.floor(s.length * 10));
 
             // Ajustar Zoom basado en puntuación
             const targetZoom = Math.max(0.4, 1.0 - (s.length / 500));
@@ -309,10 +714,11 @@
             // Actualizar Partículas
             particles.current.forEach((p, i) => {
               p.update();
-              if (p.life <= 0) particles.current.splice(i, 1);
+              if (p.life <= 0 || particles.current.length > 100) particles.current.splice(i, 1);
             });
 
             draw();
+            frameCount.current++;
             requestRef.current = requestAnimationFrame(update);
           };
 
@@ -330,19 +736,34 @@
             const offX = w / 2 - head.x * zoom;
             const offY = h / 2 - head.y * zoom;
 
-            // Fondo: Espacio Profundo
+            // Background Parallax Grid
             ctx.fillStyle = '#020617';
             ctx.fillRect(0, 0, w, h);
 
-            // Grid con Paralaje
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             const gSize = 100 * zoom;
-            for (let x = offX % gSize; x < w; x += gSize) {
-              ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-            }
-            for (let y = offY % gSize; y < h; y += gSize) {
-              ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            const pX = (offX * 0.5) % gSize;
+            const pY = (offY * 0.5) % gSize;
+            
+            ctx.beginPath();
+            for (let x = pX; x < w; x += gSize) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+            for (let y = pY; y < h; y += gSize) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+            ctx.stroke();
+
+            // Near Grid
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1.5;
+            for (let x = offX % gSize; x < w; x += gSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+            for (let y = offY % gSize; y < h; y += gSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+            // Reactivo: Boost Glow
+            if (mySnake.current.boost) {
+                const glow = ctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, 400);
+                glow.addColorStop(0, 'rgba(99, 102, 241, 0.15)');
+                glow.addColorStop(1, 'transparent');
+                ctx.fillStyle = glow;
+                ctx.fillRect(0,0,w,h);
             }
 
             // Límites
@@ -350,20 +771,61 @@
             ctx.lineWidth = 10 * zoom;
             ctx.strokeRect(offX, offY, MAP_SIZE * zoom, MAP_SIZE * zoom);
 
-            // Dibujar Comida con Resplandor
-            food.forEach(f => {
-              ctx.shadowBlur = 15 * zoom;
-              ctx.shadowColor = f.color;
-              ctx.fillStyle = f.color;
-              ctx.beginPath();
-              ctx.arc(f.x * zoom + offX, f.y * zoom + offY, (6 + f.value) * zoom, 0, Math.PI * 2);
-              ctx.fill();
+            // Dibujar Anomalías
+            anomaliesRef.current.forEach(anom => {
+                const ax = anom.x * zoom + offX;
+                const ay = anom.y * zoom + offY;
+                const ar = anom.radius * zoom;
+                const g = ctx.createRadialGradient(ax, ay, 0, ax, ay, ar);
+                g.addColorStop(0, 'rgba(0,0,0,0.5)');
+                g.addColorStop(0.5, 'rgba(63, 63, 70, 0.1)');
+                g.addColorStop(1, 'transparent');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+                ctx.fill();
+                // Core
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath();
+                ctx.arc(ax, ay, 20 * zoom, 0, Math.PI * 2);
+                ctx.stroke();
             });
-            ctx.shadowBlur = 0;
+
+            // Dibujar Comida (SÓLIDA PARA VELOCIDAD Y DESDE REF)
+            foodRef.current.forEach(f => {
+              const baseSize = (7 + f.value) * zoom;
+              ctx.fillStyle = f.color;
+              
+              if (f.type === 'SNITCH') {
+                ctx.shadowBlur = 15 * zoom;
+                ctx.shadowColor = f.color;
+                ctx.beginPath();
+                ctx.arc(f.x * zoom + offX, f.y * zoom + offY, baseSize * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+              } else if (f.type === 'MEGA') {
+                ctx.beginPath();
+                ctx.arc(f.x * zoom + offX, f.y * zoom + offY, baseSize, 0, Math.PI * 2);
+                ctx.fill();
+                // Borde brillo
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              } else {
+                ctx.beginPath();
+                ctx.arc(f.x * zoom + offX, f.y * zoom + offY, baseSize, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            });
 
             // Otros Jugadores
             Object.values(players).forEach(p => {
               drawSnake(ctx, p.points, p.color, p.name, offX, offY, zoom, p.isBoosting);
+            });
+
+            // Dibujar Bots
+            bots.current.forEach(bot => {
+              drawSnake(ctx, bot.points, bot.color, bot.name, offX, offY, zoom, bot.boost);
             });
 
             // Mi Serpiente
@@ -377,6 +839,22 @@
               ctx.arc(p.x * zoom + offX, p.y * zoom + offY, 3 * zoom, 0, Math.PI * 2);
               ctx.fill();
             });
+
+            // Dibujar Power-ups
+            powerups.current.forEach(p => {
+                ctx.save();
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.translate(p.x * zoom + offX, p.y * zoom + offY);
+                ctx.rotate(frameCount.current * 0.05);
+                // Triangle
+                ctx.moveTo(0, -15 * zoom);
+                ctx.lineTo(13 * zoom, 10 * zoom);
+                ctx.lineTo(-13 * zoom, 10 * zoom);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            });
             ctx.globalAlpha = 1;
           };
 
@@ -388,15 +866,24 @@
               ctx.shadowColor = 'white';
             }
 
-            const radius = 12 * zoom;
+            const radius = (12 + (points.length / 80)) * zoom;
             points.forEach((p, i) => {
               if (i % 2 !== 0) return; 
               const alpha = 1 - (i / points.length) * 0.6;
               ctx.globalAlpha = alpha;
               ctx.fillStyle = color;
+              
               ctx.beginPath();
-              ctx.arc(p.x * zoom + offX, p.y * zoom + offY, radius * (1 - i/points.length * 0.3), 0, Math.PI * 2);
+              ctx.arc(p.x * zoom + offX, p.y * zoom + offY, radius * (1 - (i/points.length) * 0.3), 0, Math.PI * 2);
               ctx.fill();
+
+              // Shine layer
+              if (i === 0 || i % 10 === 0) {
+                 ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                 ctx.beginPath();
+                 ctx.arc(p.x * zoom + offX - radius*0.3, p.y * zoom + offY - radius*0.3, radius*0.4, 0, Math.PI * 2);
+                 ctx.fill();
+              }
             });
 
             // Cabeza
@@ -414,7 +901,6 @@
             ctx.fill();
 
             // Nombre
-            ctx.shadowBlur = 0;
             ctx.fillStyle = 'rgba(0,0,0,0.5)';
             const textWidth = ctx.measureText(name).width;
             ctx.roundRect(headP.x * zoom + offX - textWidth/2 - 5, headP.y * zoom + offY - 45 * zoom, textWidth + 10, 20 * zoom, 5);
@@ -429,8 +915,9 @@
           useEffect(() => {
             const interval = setInterval(() => {
               if (gameState === 'PLAYING' && user) {
-                updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid), {
-                  points: mySnake.current.points.filter((_, i) => i % 2 === 0), 
+                // COMPRESIÓN DE DATOS: Solo enviamos los primeros 40 puntos para el minimap
+                updateDoc(doc(db, 'slither_players', user.uid), {
+                  points: mySnake.current.points.slice(0, 40).filter((_, i) => i % 2 === 0), 
                   score: score,
                   isBoosting: mySnake.current.boost,
                   lastUpdate: serverTimestamp()
@@ -440,23 +927,36 @@
             return () => clearInterval(interval);
           }, [gameState, user, score]);
 
+          // GSAP Score Animation
+          useEffect(() => {
+            const el = document.getElementById('score-display');
+            if (el) {
+                window.gsap.fromTo(el, { scale: 1.2, color: '#6366f1' }, { scale: 1, color: '#fff', duration: 0.3 });
+            }
+          }, [score]);
+
           // Eventos
           useEffect(() => {
-            const down = (e) => keys.current[e.key] = true;
-            const up = (e) => keys.current[e.key] = false;
+            const onKeyDown = (e) => {
+              keys.current[e.key] = true;
+              if (e.key === ' ') {
+                mySnake.current.dashEnabled = !mySnake.current.dashEnabled;
+              }
+            };
+            const onKeyUp = (e) => keys.current[e.key] = false;
             const mDown = () => keys.current['mousedown'] = true;
             const mUp = () => keys.current['mouseup'] = false;
             
-            window.addEventListener('keydown', down);
-            window.addEventListener('keyup', up);
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
             window.addEventListener('mousedown', mDown);
             window.addEventListener('mouseup', mUp);
             
             if (gameState === 'PLAYING') requestRef.current = requestAnimationFrame(update);
 
             return () => {
-              window.removeEventListener('keydown', down);
-              window.removeEventListener('keyup', up);
+              window.removeEventListener('keydown', onKeyDown);
+              window.removeEventListener('keyup', onKeyUp);
               window.removeEventListener('mousedown', mDown);
               window.removeEventListener('mouseup', mUp);
               cancelAnimationFrame(requestRef.current);
@@ -466,6 +966,10 @@
           return (
             <div className="relative w-full h-screen bg-slate-950 overflow-hidden font-sans text-white select-none">
               <canvas ref={canvasRef} className="block w-full h-full" />
+              
+              {/* Scanlines Overlay */}
+              <div className="absolute inset-0 pointer-events-none z-10 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+              <div className="absolute inset-0 pointer-events-none z-10 bg-gradient-to-b from-transparent via-transparent to-black/20"></div>
 
               <button onClick={(e) => { e.stopPropagation(); if(window.parent && window.parent.showScreen) window.parent.showScreen('hub'); }}
                   className="absolute top-6 left-6 z-50 p-3 rounded-full bg-white/5 backdrop-blur-md border border-white/10 hover:bg-white/10 transition-colors group flex items-center gap-2 pr-6">
@@ -535,16 +1039,41 @@
                         <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Masa Total</p>
                       </div>
-                      <p className="text-5xl font-black tabular-nums tracking-tighter italic">
+                      <p className="text-5xl font-black tabular-nums tracking-tighter italic" id="score-display">
                         {score}
                       </p>
                     </div>
                     
                     {isBoosting && (
-                        <div className="bg-indigo-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest animate-bounce flex items-center gap-2 w-fit">
-                            <Zap className="w-3 h-3 fill-current" /> NITRO ACTIVADO
+                        <div className="bg-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse flex items-center gap-2 w-fit shadow-[0_0_20px_rgba(220,38,38,0.5)]">
+                            <Zap className="w-3 h-3 fill-current" /> NITRO ACTIVADO (HIPER-CONSUMO)
                         </div>
                     )}
+
+                    {mySnake.current.powerups?.ghost && (
+                        <div className="bg-purple-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit shadow-[0_0_20px_purple]">
+                            <RotateCcw className="w-3 h-3" /> MODO FANTASMA
+                        </div>
+                    )}
+
+                    {mySnake.current.length > 200 && (
+                        <div className="flex flex-col gap-1">
+                            <div className="bg-red-500/20 border border-red-500/40 px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-3 w-fit">
+                                <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Hiper-Metabolismo: -{Math.floor(Math.pow(mySnake.current.length/100, 1.8)*DECAY_MULTIPLIER*60*10)/10} m/s</span>
+                            </div>
+                        </div>
+                    )}
+                  </div>
+
+                  {/* Kill Feed Toasts */}
+                  <div className="absolute top-8 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-50 pointer-events-none">
+                    {toasts.map(t => (
+                        <div key={t.id} className={`px-6 py-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center gap-3 animate-in slide-in-from-top duration-300 ${t.type === 'kill' ? 'text-red-400' : 'text-sky-400'}`}>
+                            {t.type === 'kill' ? <Skull className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                            <span className="text-xs font-black uppercase tracking-widest">{t.text}</span>
+                        </div>
+                    ))}
                   </div>
 
                   <div className="absolute top-8 right-8 w-64 group pointer-events-none">
@@ -573,22 +1102,28 @@
                     </div>
                   </div>
 
-                  <div className="absolute bottom-8 right-8 group pointer-events-none">
-                    <div className="bg-black/40 backdrop-blur-xl p-3 rounded-3xl border border-white/10 shadow-2xl">
-                      <div className="relative w-36 h-36 bg-slate-900/50 rounded-2xl overflow-hidden ring-1 ring-white/5">
+                  <div className="absolute bottom-10 right-10 group pointer-events-none z-50">
+                    <div className="bg-black/80 backdrop-blur-2xl p-4 rounded-full border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10">
+                      <div className="relative w-40 h-40 rounded-full overflow-hidden bg-slate-900/80">
+                        {/* Radar Scan Line */}
+                        <div className="absolute inset-0 z-0 opacity-20 bg-[conic-gradient(from_0deg,transparent_90%,#38bdf8)] animate-spin-slow" />
+                        
+                        {/* Center Indicator */}
                         <div 
-                          className="absolute w-2.5 h-2.5 bg-white rounded-full z-10 shadow-[0_0_12px_#fff] border-2 border-indigo-500"
+                          className="absolute w-3 h-3 bg-white rounded-full z-10 shadow-[0_0_15px_#fff] border-2 border-indigo-500"
                           style={{
                             left: `${(mySnake.current.points[0]?.x / MAP_SIZE) * 100}%`,
                             top: `${(mySnake.current.points[0]?.y / MAP_SIZE) * 100}%`,
                             transform: 'translate(-50%, -50%)'
                           }}
                         />
+                        {/* Players */}
                         {Object.values(players).map((p, i) => (
                           <div 
                             key={i}
-                            className="absolute w-1.5 h-1.5 rounded-full opacity-40"
+                            className="absolute w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]"
                             style={{
+                              color: p.color,
                               backgroundColor: p.color,
                               left: `${(p.points[0]?.x / MAP_SIZE) * 100}%`,
                               top: `${(p.points[0]?.y / MAP_SIZE) * 100}%`,
@@ -596,9 +1131,21 @@
                             }}
                           />
                         ))}
+                        {/* Bots */}
+                        {bots.current.map((b, i) => (
+                           <div key={`bot-${i}`}
+                            className="absolute w-1.5 h-1.5 rounded-full opacity-40"
+                            style={{
+                              backgroundColor: b.color,
+                              left: `${(b.points[0]?.x / MAP_SIZE) * 100}%`,
+                              top: `${(b.points[0]?.y / MAP_SIZE) * 100}%`,
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                           />
+                        ))}
                       </div>
-                      <div className="mt-2 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2">
-                        <MapIcon className="w-3 h-3" /> ARENA GLOBAL
+                      <div className="mt-3 text-center text-[9px] font-black text-sky-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
+                        <Aperture className="w-3 h-3 animate-spin-slow" /> RADAR TÁCTICO
                       </div>
                     </div>
                   </div>

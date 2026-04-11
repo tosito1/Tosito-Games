@@ -261,8 +261,8 @@
 
           useEffect(() => {
             if (!user || !roomId || screen === 'home') return;
-            const roomRef = doc(db, 'rooms', roomId);
-            const playersRef = collection(db, 'rooms', roomId, 'players');
+            const roomRef = doc(db, 'hexa_falls_rooms', roomId);
+            const playersRef = collection(db, 'hexa_falls_rooms', roomId, 'players');
 
             const unsubscribeRoom = onSnapshot(roomRef, (snapshot) => {
               if (snapshot.exists()) {
@@ -298,10 +298,10 @@
           useEffect(() => {
             if (screen !== 'game' || !user || !roomId) return;
             const interval = setInterval(async () => {
-              const myRef = doc(db, 'rooms', roomId, 'players', user.uid);
+              const pRef = doc(db, 'hexa_falls_rooms', roomId, 'players', user.uid);
               try {
                 const s = gameStateRef.current;
-                await setDoc(myRef, {
+                await setDoc(pRef, {
                   x: s.x, y: s.y, vx: s.vx, vy: s.vy,
                   isDead: s.isDead, facingRight: s.facingRight, isDiving: s.isDiving,
                   emote: s.emote, emoteTime: s.emoteTime,
@@ -323,7 +323,7 @@
               else if (Math.random() > 0.88) type = 2; 
               grid.push({ id: i, state: 'normal', type, hasBox: Math.random() > 0.95 });
             }
-            const roomRef = doc(db, 'rooms', id);
+            const roomRef = doc(db, 'hexa_falls_rooms', id);
             await setDoc(roomRef, { id, status: 'lobby', grid, host: user.uid, createdAt: serverTimestamp() });
             await joinRoom(id);
           };
@@ -331,14 +331,14 @@
           const joinRoom = async (id) => {
             initAudio();
             const target = id.toUpperCase();
-            const pRef = doc(db, 'rooms', target, 'players', user.uid);
+            const pRef = doc(db, 'hexa_falls_rooms', target, 'players', user.uid);
             await setDoc(pRef, { id: user.uid, name: playerName, color: gameStateRef.current.color, x: MAP_MARGIN_X + MAP_WIDTH / 2, y: 100, isDead: false });
             setRoomId(target); setScreen('lobby');
           };
 
           const startGame = async () => {
             if (!roomId) return;
-            await updateDoc(doc(db, 'rooms', roomId), { status: 'playing' });
+            await updateDoc(doc(db, 'hexa_falls_rooms', roomId), { status: 'playing' });
           };
 
           const handleTileStepped = async (idx) => {
@@ -346,7 +346,7 @@
             tileTimersRef.current[idx] = Date.now();
             try {
               await runTransaction(db, async (t) => {
-                const snap = await t.get(doc(db, 'rooms', roomId));
+                const snap = await t.get(doc(db, 'hexa_falls_rooms', roomId));
                 const grid = snap.data().grid;
                 if (grid[idx].state === 'normal') { grid[idx].state = 'stepping'; t.update(snap.ref, { grid }); }
               });
@@ -354,7 +354,7 @@
             setTimeout(async () => {
               try {
                 await runTransaction(db, async (t) => {
-                  const snap = await t.get(doc(db, 'rooms', roomId));
+                  const snap = await t.get(doc(db, 'hexa_falls_rooms', roomId));
                   const grid = snap.data().grid;
                   if (grid[idx].state !== 'broken') { grid[idx].state = 'broken'; t.update(snap.ref, { grid }); }
                 });
@@ -366,10 +366,24 @@
             if (roomDataRef.current?.status !== 'playing') return;
             const alive = Object.values(playersRefState.current).filter(p => !p.isDead && p.id !== user.uid);
             if (alive.length === 0) {
-              await updateDoc(doc(db, 'rooms', roomId), { 
+              await updateDoc(doc(db, 'hexa_falls_rooms', roomId), { 
                 status: 'finished', 
                 winner: { name: playerName, color: gameStateRef.current.color } 
               });
+              
+              // SYNC TO HUB
+              try {
+                if (window.parent && window.parent.saveArcadeScore) {
+                    window.parent.saveArcadeScore('hexa', 1); // Simple win counter or static value
+                }
+              } catch(e) {}
+
+              // Save to root stats
+              setDoc(doc(db, 'hexa_falls_stats', user.uid), { 
+                name: playerName,
+                total_wins: (roomDataRef.current?.winner === user.uid ? (roomDataRef.current?.winCount || 0) + 1 : 1),
+                last_win: serverTimestamp()
+              }, { merge: true }).catch(() => {});
             }
           };
 

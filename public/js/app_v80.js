@@ -48,416 +48,12 @@ const safeToggleDisplay = (id, displayStyle) => { const el = getEl(id); if (isRe
 //  STATE
 // ============================================================
 let currentUser = null;
-let userProfile = { elo: 1200, wins: 0, losses: 0, username: '', isAdmin: false };
-let currentRoom = null;
-let unsubRoom = null;
-let playerColor = null; // 'white'|'black'|null(spectator)
-let isGameMode = false;
-let currentGameType = 'chess';
-
-// Board state
-let board = [];
-let selectedSq = null;
-let validMoves = [];
-let lastMove = null;
-let premove = null;
-let isGodMode = false;
-let isHintEnabled = false;
-let hintEngine = 'level_7';
-let isClassicBoard = false;
-let gameWinner = null;
-let isCheck = false;
-let aiLevel = 'level_3';
-let isAiGame = false;
-let isAiThinking = false;
-let currentHint = null;
+let userProfile = { 
+  elo: 1200, wins: 0, losses: 0, username: '', displayName: '', isAdmin: false, friends: [], solved_puzzles: [], arcade_records: {} 
+};
 let remoteBackendUrl = localStorage.getItem('tosito_manual_backend') || null; 
 let isManualBackend = !!localStorage.getItem('tosito_manual_backend');
-
-// Timers
-let whiteMs = 600000, blackMs = 600000;
-let timerInterval = null;
-let turn = 'white';
-let gameStatus = 'waiting'; // waiting|playing|finished
-let mainBoard = null; // Backup local engine board for simulation
-let isLocalSim = false; 
-let isFirstRender = true; // For staggered entrance
-
-// Exercise state
-let exercises = [];
-let selectedEx = null;
-let exBoard = [];
-let exSel = null;
-let exValid = [];
-let exLastMove = null;
-let currentLichessPuzzle = null;
-let exStartTurn = 'white';
-
-// Openings state
-let openings = [];
-let selectedOp = null;
-let opBoard = [];
-let opMoveIdx = 0;
-let opSel = null;
-let opValid = [];
-
-// Social state
-let friends = [];
-let friendRequests = [];
-let challenges = [];
-
-// Helper for APIs that might not be in production
-async function safeFetchJson(url, options={}) {
-  try {
-    let targetUrl = url;
-    const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
-    
-    if (url.startsWith('/api/') && !isLocal) {
-      const isCloudLevel = (aiLevel === 'level_7' || aiLevel === 'level_8' || aiLevel === 'level_1' || aiLevel === 'level_2' || aiLevel === 'level_3');
-      
-      if (isCloudLevel) {
-        console.log(`[🤖] Autonomous Level detected (${aiLevel}). URL: ${url}. Skipping discovery wait.`);
-      } else {
-        if (!remoteBackendUrl && !isManualBackend) {
-          console.log(`[🕵️] Discovery needed for ${url} (Lvl: ${aiLevel}). Checking remoteBackendUrl...`);
-          let attempts = 0;
-          while (!remoteBackendUrl && attempts < 10) {
-            console.log(`[⏳] Discovery Wait ${attempts+1}/10 for: ${url}...`);
-            await new Promise(r => setTimeout(r, 500));
-            attempts++;
-          }
-        }
-      }
-
-      if (!remoteBackendUrl && !isManualBackend) {
-          if (isCloudLevel) return { success: false, error: 'BACKEND_MISSING' };
-          console.warn(`[⚠️] Backend missing for ${url}. level was ${aiLevel}`);
-          return { success: false, error: 'BACKEND_MISSING' };
-      }
-      const base = remoteBackendUrl.endsWith('/') ? remoteBackendUrl.slice(0, -1) : remoteBackendUrl;
-      targetUrl = base + url;
-    }
-
-    const fetchOptions = {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        'ngrok-skip-browser-warning': 'true'
-      }
-    };
-
-    const res = await fetch(targetUrl, fetchOptions);
-    const text = await res.text();
-    
-    if (text.trim().startsWith('<!DOCTYPE')) {
-      if (url.includes('api/')) return { success: false, error: 'BACKEND_MISSING' };
-    }
-    return JSON.parse(text);
-  } catch(e) {
-    console.error(`Fetch error ${url}:`, e);
-    return { success: false, error: e.message };
-  }
-}
-
-/**
- * Permite configurar manualmente la URL del PC (Ngrok).
- * Se guarda en localStorage para persistencia.
- */
-function setManualBackend(url) {
-  if (!url) {
-    localStorage.removeItem('tosito_manual_backend');
-    isManualBackend = false;
-    toast("📦 Autodescubrimiento activado (Cloud)");
-    syncRemoteBackend();
-  } else {
-    if (!url.startsWith('http')) url = 'https://' + url;
-    localStorage.setItem('tosito_manual_backend', url);
-    remoteBackendUrl = url;
-    isManualBackend = true;
-    toast("🚀 Backend manual configurado");
-  }
-  updateBackendStatusUI();
-}
-
-function updateBackendStatusUI() {
-  const el = getEl('backend-status');
-  const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
-  
-  let statusHTML = '';
-  if (isLocal) {
-    statusHTML = '<span class="badge badge-green">🏠 MODO LOCAL (PC)</span>';
-  } else if (isManualBackend) {
-    statusHTML = `<span class="badge badge-amber" onclick="promptNewBackend()">🔗 MANUAL: ${remoteBackendUrl.replace('https://','')}</span>`;
-  } else if (remoteBackendUrl) {
-    statusHTML = '<span class="badge badge-sky">🌐 CLOUD SYNC (OK)</span>';
-  } else {
-    statusHTML = '<span class="badge badge-red" onclick="promptNewBackend()">❌ DESCONECTADO (Click para Manual)</span>';
-  }
-  
-  if (el) el.innerHTML = statusHTML;
-  
-  // Also update App Loader if visible
-  const loaderStatus = getEl('app-loader-status');
-  if (loaderStatus && !isAppReady) {
-    loaderStatus.textContent = remoteBackendUrl ? "Motor encontrado. Finalizando..." : "Buscando motor en la nube...";
-  }
-}
-
-let isAppReady = false;
-function hideAppLoader() {
-  const loader = document.getElementById('app-loader');
-  if (!loader) return;
-  isAppReady = true;
-  console.log("[🌀] Hiding App Loader");
-  loader.classList.add('is-hidden'); 
-  loader.style.display = 'none';
-  loader.style.opacity = '0';
-  loader.style.pointerEvents = 'none';
-}
-
-// Global Safety Timer: Remove loader after 6s no matter what
-setTimeout(() => { if (!isAppReady) hideAppLoader(); }, 6000);
-
-function showBoardLoader() {
-  const bl = document.getElementById('board-loader');
-  if (isRealEl(bl) && typeof gsap !== 'undefined') {
-    bl.style.display = 'flex';
-    gsap.fromTo(bl, { opacity: 0 }, { opacity: 1, duration: 0.3 });
-    const pawn = bl.querySelector(".board-loader-pawn");
-    if (pawn) gsap.to(pawn, { y: -10, repeat: -1, yoyo: true, duration: 0.6, ease: "power1.inOut" });
-  }
-}
-function hideBoardLoader() {
-  const bl = document.getElementById('board-loader');
-  if (isRealEl(bl) && typeof gsap !== 'undefined') {
-    gsap.to(bl, { opacity: 0, duration: 0.3, onComplete: () => {
-      bl.style.display = 'none';
-      const pawn = bl.querySelector(".board-loader-pawn");
-      if (pawn) gsap.killTweensOf(pawn);
-    }});
-  }
-}
-
-function promptNewBackend() {
-  const current = isManualBackend ? remoteBackendUrl : '';
-  const url = prompt("Introduce la URL de tu Ngrok (ej: https://abcd.ngrok-free.dev) o deja vacío para Auto-Discovery:", current);
-  if (url !== null) setManualBackend(url.trim());
-}
-
-function toast(msg) {
-  const el = document.getElementById('toast');
-  if (!isRealEl(el) || typeof gsap === 'undefined') return;
-  el.textContent = msg;
-  gsap.killTweensOf(el);
-  gsap.fromTo(el, 
-    { y: -100, opacity: 0, x: "-50%", scale: 0.8 }, 
-    { y: 20, opacity: 1, x: "-50%", scale: 1, duration: 0.5, ease: "back.out(1.7)" }
-  );
-  setTimeout(() => {
-    if (isRealEl(el)) gsap.to(el, { y: -100, opacity: 0, duration: 0.4, ease: "power2.in" });
-  }, 3000);
-}
-
-/**
- * Escucha la configuración global en Firestore para descubrir la URL de Ngrok.
- */
-function syncRemoteBackend() {
-  if (isManualBackend) {
-    console.log("[ℹ️] Usando backend manual, saltando Firestore.");
-    updateBackendStatusUI();
-    return;
-  }
-  console.log("[📡] Iniciando escucha de backend remoto en Firestore (globals/ai_config)...");
-  db.collection('globals').doc('ai_config').onSnapshot(doc => {
-    if (isManualBackend) return; // Prioridad manual
-    if (doc.exists) {
-      const data = doc.data();
-      if (data.active && data.remote_url) {
-        remoteBackendUrl = data.remote_url;
-        console.log("[🚀] Backend remoto detectado:", remoteBackendUrl);
-      } else {
-        remoteBackendUrl = null;
-      }
-    } else {
-      remoteBackendUrl = null;
-    }
-    updateBackendStatusUI();
-    
-    // If we've been waiting too long at startup, show the manual button
-    if (!remoteBackendUrl && !isAppReady) {
-      setTimeout(() => {
-        if (!remoteBackendUrl && !isAppReady) {
-          const btn = getEl('app-loader-btn');
-          if (btn) btn.style.display = 'block';
-          const msg = getEl('app-loader-msg');
-          if (msg) msg.textContent = "El motor tarda en responder...";
-        }
-      }, 8000);
-    }
-    
-    // Auto-hide loader is now handled by auth state
-    // if (remoteBackendUrl && currentUser) hideAppLoader();
-    
-  }, err => {
-    console.error("[❌] Error Firestore backend:", err);
-    updateBackendStatusUI();
-  });
-}
-
-// ============================================================
-//  DRAWER & SIDE NAVIGATION
-// ============================================================
-function openDrawer() {
-  getEl('side-drawer').classList.add('show');
-}
-function closeDrawer() {
-  getEl('side-drawer').classList.remove('show');
-}
-function showAdminSection() {
-  closeDrawer();
-  switchLobbyTab('tab-admin');
-}
-function showMasterGallery() {
-  closeDrawer();
-  switchLobbyTab('tab-masters');
-}
-
-// Initial Init sequence handled by onAuthStateChanged directly
-
-
-// ============================================================
-//  NAV LAYOUT SYNC — uses body.nav-open class (CSS handles padding)
-// ============================================================
-function syncNavOpen(navVisible) {
-  if (navVisible && window.innerWidth >= 768) {
-    document.body.classList.add('nav-open');
-  } else {
-    document.body.classList.remove('nav-open');
-  }
-}
-window.addEventListener('resize', () => {
-  const navVisible = !document.getElementById('bottom-nav')?.classList.contains('hidden');
-  syncNavOpen(navVisible);
-});
-
-// ============================================================
-//  INIT — Nuclear bulletproof auth state handler
-// ============================================================
-auth.onAuthStateChanged(user => {
-  console.log("[🔐] Auth State Changed:", user ? "USER DETECTED" : "NO USER");
-
-  const authWall = document.getElementById('auth-wall');
-  const nav      = document.getElementById('bottom-nav');
-  const loader   = document.getElementById('app-loader');
-
-  // Always hide the loader immediately
-  if (loader) { loader.style.display = 'none'; isAppReady = true; }
-
-  if (user) {
-    currentUser = user;
-
-    // 1. Hide auth wall completely
-    if (authWall) {
-      authWall.style.cssText = 'display:none !important; opacity:0 !important; pointer-events:none !important;';
-      console.log("[✓] AuthWall hidden");
-    }
-
-    // 2. Navigation visibility (Hidden on Hub)
-    if (nav) {
-      nav.classList.add('hidden');
-      console.log("[✓] Nav hidden on Hub");
-    }
-
-    // 3. Sync layout (No side padding on Hub)
-    syncNavOpen(false);
-
-    // 4. Show hub screen — DIRECT DOM manipulation, NO GSAP
-    document.querySelectorAll('.screen').forEach(s => {
-      s.classList.remove('active');
-      s.removeAttribute('style');
-    });
-
-    const hub = document.getElementById('screen-hub');
-    if (hub) {
-      hub.classList.add('active');
-      hub.removeAttribute('style'); // Let CSS handle it fully
-      console.log("[🚀] screen-hub active");
-    }
-
-    // 5. Nav button highlight
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    const navHub = document.getElementById('nav-hub');
-    if (navHub) navHub.classList.add('active');
-
-    // 6. Load data in background — never blocks UI
-    (async () => {
-      try {
-        await loadUserProfile();
-        if (window.updateHubUsername) window.updateHubUsername();
-        const safe = (fn, name) => { try { fn(); } catch(e) { console.warn(`[⚠️] Module "${name}" failed:`, e); }};
-        safe(() => updateLobbyUI(), "LobbyUI");
-        safe(() => loadExercises(), "Exercises");
-        safe(() => loadOpenings(), "Openings");
-        safe(() => loadSocial(), "Social");
-        safe(() => fetchRooms(), "Rooms");
-        safe(() => loadHistoryGames(), "History");
-        safe(() => loadHistoricalGames(), "Historical");
-        safe(() => checkMigrationStatus(), "Migration");
-        safe(() => syncRemoteBackend(), "BackendSync");
-        if (userProfile.isAdmin) {
-          document.querySelectorAll('.admin-tab').forEach(e => e.style.display = '');
-          safeToggleDisplay('lobby-admin-badge', '');
-          safeToggleDisplay('prof-admin-btn', '');
-        }
-      } catch(e) { console.error("[❌] Data loading error:", e); }
-    })();
-
-  } else {
-    console.log("[🚪] No user. Showing login wall.");
-
-    // Hide nav
-    if (nav) {
-      nav.classList.add('hidden');
-    }
-    syncNavOpen(false);
-
-    // Hide all screens
-    document.querySelectorAll('.screen').forEach(s => {
-      s.classList.remove('active');
-      s.removeAttribute('style');
-    });
-
-    // Show auth wall
-    if (authWall) {
-      authWall.style.cssText = 'display:flex !important; opacity:1 !important; pointer-events:auto !important;';
-      console.log("[🚪] AuthWall shown");
-    }
-  }
-});
-
-// ============================================================
-//  AUTH
-// ============================================================
-function loginWithGoogle() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch(e => showAuthError(e.message));
-}
-function loginWithApple() {
-  const provider = new firebase.auth.OAuthProvider('apple.com');
-  auth.signInWithPopup(provider).catch(e => showAuthError(e.message));
-}
-function loginWithEmail() {
-  const email = getEl('auth-email').value;
-  const pw = getEl('auth-password').value;
-  auth.signInWithEmailAndPassword(email, pw).catch(e => showAuthError(e.message));
-}
-function registerWithEmail() {
-  const email = getEl('auth-email').value;
-  const pw = getEl('auth-password').value;
-  auth.createUserWithEmailAndPassword(email, pw).catch(e => showAuthError(e.message));
-}
-function signOut() { auth.signOut(); }
-function showAuthError(msg) { getEl('auth-error').textContent = msg; }
+let aiLevel = 'level_3';
 
 async function loadUserProfile() {
   if (!currentUser) return;
@@ -473,15 +69,30 @@ async function loadUserProfile() {
         displayName: d.displayName || '',
         isAdmin: d.role === 'admin',
         friends: d.friends || [],
-        solved_puzzles: d.solved_puzzles || [] 
+        solved_puzzles: d.solved_puzzles || [],
+        arcade_records: d.arcade_records || {}
       };
     } else {
-      // New user init
       const initialData = { elo: 1200, wins: 0, losses: 0, username: '', role: 'player', friends: [], solved_puzzles: [], uid: currentUser.uid };
       await db.collection('users').doc(currentUser.uid).set(initialData);
       userProfile = { ...initialData, isAdmin: false };
     }
+    await checkLegacyMigration();
+    updateLobbyUI();
   } catch(e) { console.error("Error loading profile:", e); }
+}
+
+
+
+async function checkLegacyMigration() {
+  if (!currentUser) return;
+  console.log("[📦] Checking for legacy arcade data migration...");
+  const stackBest = parseInt(localStorage.getItem('tosito_stack_best') || 0);
+  if (stackBest > 0) {
+    console.log("[📦] Migrating legacy Cyber Stack score:", stackBest);
+    if (window.saveArcadeScore) await window.saveArcadeScore('stack', stackBest);
+    localStorage.removeItem('tosito_stack_best'); // Once synced, we can move on
+  }
 }
 
 function updateLobbyUI() {
@@ -501,20 +112,58 @@ function updateLobbyUI() {
   safeSetText('prof-wins', userProfile.wins);
   safeSetText('prof-losses', userProfile.losses);
 
-  // Arcade Card (Retrieving from local records)
-  const stackBest = localStorage.getItem('tosito_stack_best') || 0;
-  safeSetText('prof-stack-best', `${stackBest}m`);
+  // Arcade Records (Retrieving from Firestore)
+  const arcade = userProfile.arcade_records || {};
+  safeSetText('prof-stack-best', `${arcade.stack || 0}m`);
   
-  // Rank Calculation Logic
+  // Rank & XP Calculation Logic (Integrated with Arcade)
   const totalSolved = (userProfile.solved_puzzles || []).length;
-  const rankScore = (userProfile.elo - 1000) + (userProfile.wins * 10) + (totalSolved * 5);
-  let rankLabel = "Bronce I";
-  if (rankScore > 1000) rankLabel = "Platino V";
-  else if (rankScore > 500) rankLabel = "Oro I";
-  else if (rankScore > 200) rankLabel = "Plata II";
+  // Calculate total points including arcade bonus
+  const arcadeBonus = Object.values(arcade).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0) / 10;
+  const xpValue = Math.max(0, (userProfile.elo - 800)) + (userProfile.wins * 30) + (totalSolved * 20) + Math.floor(arcadeBonus);
   
-  safeSetText('prof-global-rank', `Rango Plataforma: ${rankLabel}`);
-  
+  safeSetText('prof-total-xp', xpValue);
+
+  let rankCur = "BRONCE I";
+  let rankNext = "PLATA II";
+  let progress = 0;
+
+  if (xpValue > 8000) { rankCur = "DIAMANTE IV"; rankNext = "MÁXIMO"; progress = 100; }
+  else if (xpValue > 4000) { rankCur = "PLATINO V"; rankNext = "DIAMANTE IV"; progress = ((xpValue-4000)*100)/4000; }
+  else if (xpValue > 1800) { rankCur = "ORO III"; rankNext = "PLATINO V"; progress = ((xpValue-1800)*100)/2200; }
+  else if (xpValue > 600) { rankCur = "PLATA II"; rankNext = "ORO III"; progress = ((xpValue-600)*100)/1200; }
+  else { rankCur = "BRONCE I"; rankNext = "PLATA II"; progress = (xpValue*100)/600; }
+
+  safeSetText('prof-xp-rank-cur', rankCur);
+  safeSetText('prof-xp-rank-next', rankNext);
+  safeSetText('prof-global-rank', `Rango Global: ${rankCur}`);
+
+  const fill = document.getElementById('prof-xp-fill');
+  if (fill) fill.style.width = `${Math.min(100, progress)}%`;
+
+  // Favorite Game Detection
+  let favorite = "Ajedrez";
+  if ((arcade.stack || 0) > 50) favorite = "Cyber Stack";
+  if ((arcade.anomalia || 0) > 5000) favorite = "Anomalía";
+  if ((arcade.turbo || 0) > 1000) favorite = "Neon Drifter";
+  if (totalSolved > 30) favorite = "Puzzles";
+  safeSetText('prof-fav-game', favorite);
+
+  // Badge Unlocks
+  const badges = {
+    'badge-first-win': userProfile.wins > 0,
+    'badge-arcade-pro': (arcade.stack > 100 || arcade.anomalia > 10000 || arcade.turbo > 2000),
+    'badge-puzzle-king': totalSolved > 15,
+    'badge-social': (userProfile.friends || []).length > 0
+  };
+  Object.keys(badges).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (badges[id]) el.classList.add('unlocked');
+      else el.classList.remove('unlocked');
+    }
+  });
+
   if (currentUser?.photoURL) {
     safeSetSrc('profile-avatar', currentUser.photoURL);
     safeToggleDisplay('profile-avatar', '');
@@ -525,6 +174,281 @@ function updateLobbyUI() {
   renderLevelButtons();
 }
 
+window.saveArcadeScore = async function(gameId, score) {
+  if (!currentUser) return;
+  console.log(`[Firebase] Checking record for ${gameId}: ${score}`);
+  if (!userProfile.arcade_records) userProfile.arcade_records = {};
+  const arcade = userProfile.arcade_records;
+  const oldBest = arcade[gameId] || 0;
+  
+  if (score > oldBest) {
+    arcade[gameId] = score;
+    try {
+      await db.collection('users').doc(currentUser.uid).set({
+        arcade_records: arcade
+      }, { merge: true });
+      updateLobbyUI();
+      if (typeof toast === 'function') toast(`¡Nuevo récord en ${gameId}! 🏆`);
+    } catch(e) { console.error("Error saving score:", e); }
+  }
+};
+
+
+// ============================================================
+//  INIT & AUTH LIFECYCLE
+// ============================================================
+let isAppReady = false;
+
+function hideAppLoader() {
+  const loader = document.getElementById('app-loader');
+  if (!loader) return;
+  isAppReady = true;
+  loader.style.display = 'none';
+  console.log("[🚀] App Revealed");
+}
+
+// Global Safety Timer: Remove loader after 12s no matter what
+setTimeout(() => { if (!isAppReady) hideAppLoader(); }, 12000);
+
+auth.onAuthStateChanged(async user => {
+  try {
+    const authWall = document.getElementById('auth-wall');
+    const appContainer = document.getElementById('app-container');
+    const nav = document.getElementById('bottom-nav');
+
+    if (user) {
+      currentUser = user;
+      
+      // BOMB-PROOF REVEAL: Forget animations, just show it.
+      if (authWall) authWall.style.display = 'none';
+      if (appContainer) {
+        appContainer.style.display = 'block';
+        appContainer.style.opacity = '1';
+        appContainer.classList.remove('is-hidden');
+      }
+      if (nav) nav.classList.remove('hidden');
+      
+      hideAppLoader();
+
+      await loadUserProfile();
+      updateLobbyUI();
+      syncRemoteBackend();
+      
+      showScreen('hub');
+
+      // Module Inits
+      if (window.checkRemoteMode) checkRemoteMode();
+    } else {
+      // Show Auth login screen
+      if (appContainer) appContainer.style.display = 'none';
+      if (authWall) {
+        authWall.style.display = 'flex';
+        authWall.style.opacity = '1';
+      }
+      if (nav) nav.classList.add('hidden');
+      hideAppLoader(); 
+    }
+  } catch (e) {
+    console.error("FATAL INIT ERROR:", e);
+    hideAppLoader();
+  }
+});
+
+// ============================================================
+//  AUTH HELPERS
+// ============================================================
+window.loginWithGoogle = function() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => {
+    const err = document.getElementById('auth-error');
+    if (err) err.textContent = e.message;
+  });
+};
+window.loginWithApple = function() {
+  const provider = new firebase.auth.OAuthProvider('apple.com');
+  auth.signInWithPopup(provider).catch(e => {
+    const err = document.getElementById('auth-error');
+    if (err) err.textContent = e.message;
+  });
+};
+window.loginWithEmail = function() {
+  const email = document.getElementById('auth-email').value;
+  const pw = document.getElementById('auth-password').value;
+  auth.signInWithEmailAndPassword(email, pw).catch(e => {
+    const err = document.getElementById('auth-error');
+    if (err) err.textContent = e.message;
+  });
+};
+window.registerWithEmail = function() {
+  const email = document.getElementById('auth-email').value;
+  const pw = document.getElementById('auth-password').value;
+  auth.createUserWithEmailAndPassword(email, pw).catch(e => {
+    const err = document.getElementById('auth-error');
+    if (err) err.textContent = e.message;
+  });
+};
+window.signOut = function() { auth.signOut(); };
+
+function showAuthError(msg) { 
+  const el = document.getElementById('auth-error');
+  if (el) el.textContent = msg; 
+}
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+function showScreen(id) {
+  const target = document.getElementById('screen-' + id);
+  if (!isRealEl(target) || target.classList.contains('active')) return;
+
+  const current = document.querySelector('.screen.active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const navBtn = document.getElementById('nav-' + id);
+  if (navBtn) navBtn.classList.add('active');
+
+  if (typeof gsap !== 'undefined') {
+    if (current) {
+      gsap.to(current, { 
+        opacity: 0, 
+        scale: 0.95, 
+        y: 20, 
+        duration: 0.4, 
+        ease: "power2.in",
+        onComplete: () => {
+          current.classList.remove('active');
+          target.classList.add('active');
+          gsap.fromTo(target, { opacity: 0, scale: 1.05, y: -20 }, { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "back.out(1.2)" });
+        }
+      });
+    } else {
+      target.classList.add('active');
+      gsap.fromTo(target, { opacity: 0, scale: 1.05 }, { opacity: 1, scale: 1, duration: 0.6 });
+    }
+  } else {
+    if (current) current.classList.remove('active');
+    target.classList.add('active');
+  }
+}
+
+function switchLobbyTab(tabId) {
+  const target = document.getElementById(tabId);
+  if (!isRealEl(target) || target.classList.contains('active')) return;
+
+  const current = document.querySelector('#screen-lobby .tab-pane.active');
+  document.querySelectorAll('#screen-lobby .tab-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick')?.includes(tabId));
+  });
+
+  if (typeof gsap !== 'undefined') {
+    if (current) {
+      gsap.to(current, { opacity: 0, x: -20, duration: 0.2, onComplete: () => {
+        current.classList.remove('active');
+        target.classList.add('active');
+        gsap.fromTo(target, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.3 });
+      }});
+    } else {
+      target.classList.add('active');
+      gsap.fromTo(target, { opacity: 0 }, { opacity: 1, duration: 0.3 });
+    }
+  } else {
+    if (current) current.classList.remove('active');
+    target.classList.add('active');
+  }
+}
+
+// ============================================================
+//  BACKEND DISCOVERY & STATUS
+// ============================================================
+function updateBackendStatusUI() {
+  const el = document.getElementById('backend-status');
+  const isLocal = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
+  
+  let statusHTML = '';
+  if (isLocal) {
+    statusHTML = '<span class="badge badge-green">🏠 MODO LOCAL (PC)</span>';
+  } else if (isManualBackend) {
+    statusHTML = `<span class="badge badge-amber" onclick="promptNewBackend()">🔗 MANUAL: ${remoteBackendUrl.replace('https://','')}</span>`;
+  } else if (remoteBackendUrl) {
+    statusHTML = '<span class="badge badge-sky">🌐 CLOUD SYNC (OK)</span>';
+  } else {
+    statusHTML = '<span class="badge badge-red" onclick="promptNewBackend()">❌ DESCONECTADO (Click para Manual)</span>';
+  }
+  
+  if (el) el.innerHTML = statusHTML;
+  
+  const loaderStatus = document.getElementById('app-loader-status');
+  if (loaderStatus && !isAppReady) {
+    loaderStatus.textContent = remoteBackendUrl ? "Motor encontrado. Finalizando..." : "Buscando motor en la nube...";
+  }
+}
+
+function promptNewBackend() {
+  const current = isManualBackend ? remoteBackendUrl : '';
+  const url = prompt("Introduce la URL de tu Ngrok (ej: https://abcd.ngrok-free.dev) o deja vacío para Auto-Discovery:", current);
+  if (url !== null) setManualBackend(url.trim());
+}
+
+function setManualBackend(url) {
+  if (!url) {
+    localStorage.removeItem('tosito_manual_backend');
+    isManualBackend = false;
+    toast("📦 Autodescubrimiento activado (Cloud)");
+    syncRemoteBackend();
+  } else {
+    if (!url.startsWith('http')) url = 'https://' + url;
+    localStorage.setItem('tosito_manual_backend', url);
+    remoteBackendUrl = url;
+    isManualBackend = true;
+    toast("🚀 Backend manual configurado");
+  }
+  updateBackendStatusUI();
+}
+
+function syncRemoteBackend() {
+  if (isManualBackend) {
+    updateBackendStatusUI();
+    return;
+  }
+  console.log("[📡] Iniciando escucha de backend remoto en Firestore (globals/ai_config)...");
+  db.collection('globals').doc('ai_config').onSnapshot(doc => {
+    if (isManualBackend) return;
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.active && data.remote_url) {
+        remoteBackendUrl = data.remote_url;
+        console.log("[🚀] Backend remoto detectado:", remoteBackendUrl);
+      } else {
+        remoteBackendUrl = null;
+      }
+    } else {
+      remoteBackendUrl = null;
+    }
+    updateBackendStatusUI();
+  }, err => {
+    console.error("[❌] Error Firestore backend:", err);
+    updateBackendStatusUI();
+  });
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  if (typeof gsap !== 'undefined') {
+    gsap.killTweensOf(el);
+    gsap.fromTo(el, 
+      { y: -100, opacity: 0, x: "-50%", scale: 0.8 }, 
+      { y: 0, opacity: 1, x: "-50%", scale: 1, duration: 0.5, ease: "back.out(1.7)" }
+    );
+    setTimeout(() => {
+      gsap.to(el, { y: -100, opacity: 0, duration: 0.4, ease: "power2.in" });
+    }, 3000);
+  }
+}
+
+// ============================================================
+//  UI HELPERS
+// ============================================================
 function renderLevelButtons() {
   const levels = [
     ['level_1','Nivel 1 — Novato 🐣'],['level_2','Nivel 2 — Principiante'],
@@ -2921,6 +2845,7 @@ window.addEventListener('message', (event) => {
     updateArcadeRecord('stack', score);
   }
   if (event.data === 'exit_game') {
+    if(typeof signalRemoteLayout==='function') signalRemoteLayout('simple');
     showScreen('hub');
     // Clear frame to stop game logic/audio
     const frame = document.getElementById('hexa-falls-frame');
@@ -2936,6 +2861,7 @@ window.addEventListener('message', (event) => {
  * CYBER STACK INTEGRATION
  */
 window.showStackScreen = function() {
+  if(typeof signalRemoteLayout==='function') signalRemoteLayout('gaming');
   showScreen('stack');
   
   const frame = document.getElementById('stack-frame');
@@ -2955,6 +2881,7 @@ window.showStackScreen = function() {
  * HEXA FALLS INTEGRATION
  */
 window.showHexaFallsScreen = function() {
+  if(typeof signalRemoteLayout==='function') signalRemoteLayout('gaming');
   showScreen('hexa-falls');
   
   const frame = document.getElementById('hexa-falls-frame');
@@ -3013,6 +2940,89 @@ window.updateArcadeRecord = function(gameId, score) {
       }
       
       updateLobbyUI();
+// ============================================================
+//  INIT & AUTH LIFECYCLE
+// ============================================================
+let isAppReady = false;
+
+function hideAppLoader() {
+  const loader = document.getElementById('app-loader');
+  if (!loader) return;
+  isAppReady = true;
+  loader.style.display = 'none';
+  console.log("[🚀] App Revealed");
+}
+
+// Global Safety Timer
+setTimeout(() => { if (!isAppReady) hideAppLoader(); }, 10000);
+
+auth.onAuthStateChanged(async user => {
+  try {
+    const authWall = document.getElementById('auth-wall');
+    const appContainer = document.getElementById('app-container');
+    const nav = document.getElementById('bottom-nav');
+
+    if (user) {
+      currentUser = user;
+      
+      // Reveal App
+      if (authWall) authWall.style.display = 'none';
+      if (appContainer) {
+        appContainer.style.display = 'block';
+        appContainer.style.opacity = '1';
+        appContainer.classList.remove('is-hidden');
+      }
+      if (nav) nav.classList.remove('hidden');
+      
+      hideAppLoader();
+
+      await loadUserProfile();
+      updateLobbyUI();
+      
+      // Module Inits
+      if (window.checkRemoteMode) checkRemoteMode();
+    } else {
+      // Show Auth login screen
+      if (appContainer) appContainer.style.display = 'none';
+      if (authWall) {
+        authWall.style.display = 'flex';
+        authWall.style.opacity = '1';
+      }
+      if (nav) nav.classList.add('hidden');
+      hideAppLoader(); 
+    }
+  } catch (e) {
+    console.error("FATAL INIT ERROR:", e);
+    hideAppLoader();
+  }
+});
+
+// ============================================================
+//  AUTH HELPERS
+// ============================================================
+window.loginWithGoogle = function() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => showAuthError(e.message));
+};
+window.loginWithApple = function() {
+  const provider = new firebase.auth.OAuthProvider('apple.com');
+  auth.signInWithPopup(provider).catch(e => showAuthError(e.message));
+};
+window.loginWithEmail = function() {
+  const email = document.getElementById('auth-email').value;
+  const pw = document.getElementById('auth-password').value;
+  auth.signInWithEmailAndPassword(email, pw).catch(e => showAuthError(e.message));
+};
+window.registerWithEmail = function() {
+  const email = document.getElementById('auth-email').value;
+  const pw = document.getElementById('auth-password').value;
+  auth.createUserWithEmailAndPassword(email, pw).catch(e => showAuthError(e.message));
+};
+window.signOut = function() { auth.signOut(); };
+function showAuthError(msg) { 
+  const el = document.getElementById('auth-error');
+  if (el) el.textContent = msg; 
+}
     }
   }
 };
@@ -3040,6 +3050,7 @@ window.showSlitherScreen = function() {
  * LOGIC MASTER INTEGRATION
  */
 window.showLogicGame = function(gameId = null) {
+  if(typeof signalRemoteLayout==='function') signalRemoteLayout('gaming');
   // Hide main sidebar/nav
   syncNavOpen(false);
   const nav = document.getElementById('bottom-nav');
@@ -3060,8 +3071,226 @@ window.showLogicGame = function(gameId = null) {
 };
 
 window.exitLogicMaster = function() {
+  if(typeof signalRemoteLayout==='function') signalRemoteLayout('simple');
   showScreen('hub');
   // Clear src to save memory/resources
   const frame = document.getElementById('logicmaster-frame');
   if (frame) frame.src = 'about:blank';
 };
+
+/**
+ * Signaling for Mobile Remote: Tells phone to change layout
+ */
+function signalRemoteLayout(mode) {
+  const user = firebase.auth().currentUser;
+  if (!user || !db) return;
+  db.collection('remotes').doc(user.uid).set({ layout: mode }, { merge: true })
+    .catch(e => console.error("Signal error:", e));
+}
+
+/**
+ * ANOMALÍA INTEGRATION
+ */
+window.showAnomaliaScreen = function() {
+  showScreen('anomalia');
+  signalRemoteLayout('gaming');
+  
+  const frame = document.getElementById('anomalia-frame');
+// ... rest of function ...
+  if (frame) {
+    const appId = 'anomalia-shooter-v2';
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig || {}));
+    const authUser = firebase.auth().currentUser;
+    const playerName = (userProfile.username && userProfile.username.trim()) || 
+                       (userProfile.displayName && userProfile.displayName.trim()) || 
+                       (authUser && authUser.displayName && authUser.displayName.trim()) || 
+                       (authUser && authUser.email && authUser.email.trim()) || 
+                       'Piloto';
+
+    console.log("[🕹️] Launching Anomalía as: " + playerName);
+    const v = Date.now();
+    const src = "/anomalia_game.html?v=" + v + "&appId=" + appId + "&config=" + config + "&playerName=" + encodeURIComponent(playerName);
+    
+    frame.src = src;
+  }
+};
+
+/**
+ * TURBO DRIFT INTEGRATION
+ */
+window.showTurboDriftScreen = function() {
+  showScreen('turbo-drift');
+  signalRemoteLayout('gaming');
+  
+  const frame = document.getElementById('turbo-drift-frame');
+  if (frame) {
+    const v = Date.now();
+    const src = "/turbo-drift.html?v=" + v;
+    frame.src = src;
+  }
+};
+
+// ============================================================
+//  MODULE: WIRELESS REMOTE CONTROL
+// ============================================================
+let _remoteUnsub = null;
+let _remoteLayout = 'simple';
+let _hubFocusIndex = -1;
+
+function checkRemoteMode() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  const uid = params.get('uid');
+  if (mode === 'remote' && uid) {
+    const ctrl = document.getElementById('screen-remote-controller');
+    if (ctrl) ctrl.style.display = 'flex';
+    window._remoteTargetUid = uid;
+    
+    // START AUTO-LAYOUT LISTENER
+    if (typeof initLayoutSignalListener === 'function') {
+      initLayoutSignalListener(uid);
+    }
+
+    db.collection('users').doc(uid).get().then(doc => {
+      if (doc.exists) {
+        const name = doc.data().username || doc.data().displayName || "Jugador";
+        const label = document.getElementById('remote-user-name');
+        if (label) label.textContent = "MANDO DE " + name.toUpperCase();
+      }
+    });
+  }
+}
+
+window.toggleRemoteLayout = function() {
+  const s = document.getElementById('layout-simple');
+  const g = document.getElementById('layout-gaming');
+  const btn = document.getElementById('btn-toggle-layout');
+  if (_remoteLayout === 'simple') {
+    _remoteLayout = 'gaming';
+    if (s) s.classList.remove('active');
+    if (g) g.classList.add('active');
+    if (btn) btn.textContent = "MODO: JUEGO";
+  } else {
+    _remoteLayout = 'simple';
+    if (g) g.classList.remove('active');
+    if (s) s.classList.add('active');
+    if (btn) btn.textContent = "MODO: NAVEGACIÓN";
+  }
+};
+
+window.openRemoteModal = function() {
+  const modal = document.getElementById('remote-modal');
+  if (modal) modal.classList.add('show');
+  updateRemoteQR();
+  initRemoteListener();
+};
+
+window.updateRemoteQR = function() {
+  const hostInput = document.getElementById('remote-host-input');
+  const host = (hostInput && hostInput.value) || window.location.hostname;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent("http://" + host + ":5000/?mode=remote&uid=" + user.uid);
+  const qrImg = document.getElementById('remote-qr');
+  if (qrImg) qrImg.src = qrUrl;
+};
+
+window.closeRemoteModal = function() {
+  const modal = document.getElementById('remote-modal');
+  if (modal) modal.classList.remove('show');
+};
+
+function initRemoteListener() {
+  if (_remoteUnsub) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  _remoteUnsub = db.collection('remotes').doc(user.uid).onSnapshot(doc => {
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.type === 'input' && data.key && (Date.now() - data.timestamp < 3000)) {
+        simulateRemoteKey(data.key, data.isDown);
+      }
+    }
+  });
+}
+
+function activateRemoteConsoleMode() {
+  if (!document.body.classList.contains('remote-active')) {
+    document.body.classList.add('remote-active');
+  }
+}
+
+window.addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) > 2 || Math.abs(e.movementY) > 2) {
+    if (document.body.classList.contains('remote-active')) {
+      document.body.classList.remove('remote-active');
+    }
+  }
+}, { passive: true });
+
+function simulateRemoteKey(key, isDown) {
+  if (isDown) activateRemoteConsoleMode();
+  const hub = document.getElementById('screen-hub');
+  const isHubActive = hub && hub.style.display !== 'none';
+  
+  if (isHubActive && isDown) {
+    if (key.startsWith('Arrow')) {
+      handleHubRemoteNavigation(key);
+      return;
+    }
+    if (key === 'Enter') {
+      triggerFocusedCard();
+      return;
+    }
+  }
+
+  const type = isDown ? 'keydown' : 'keyup';
+  const event = new KeyboardEvent(type, { key: key, bubbles: true, code: key });
+  document.dispatchEvent(event);
+  document.querySelectorAll('iframe').forEach(f => {
+    try {
+      if (f.contentWindow) {
+        f.contentWindow.document.dispatchEvent(new KeyboardEvent(type, { key: key, bubbles: true }));
+        f.contentWindow.dispatchEvent(new KeyboardEvent(type, { key: key, bubbles: true }));
+      }
+    } catch(e) {}
+  });
+}
+
+function handleHubRemoteNavigation(key) {
+  const cards = Array.from(document.querySelectorAll('.hub-card'));
+  if (cards.length === 0) return;
+  
+  if (_hubFocusIndex === -1) {
+    _hubFocusIndex = 0;
+  } else {
+    if (key === 'ArrowRight') _hubFocusIndex++;
+    if (key === 'ArrowLeft') _hubFocusIndex--;
+    if (key === 'ArrowDown') _hubFocusIndex += 3;
+    if (key === 'ArrowUp') _hubFocusIndex -= 3;
+  }
+  
+  _hubFocusIndex = Math.max(0, Math.min(cards.length - 1, _hubFocusIndex));
+  cards.forEach(c => c.classList.remove('remote-focus'));
+  cards[_hubFocusIndex].classList.add('remote-focus');
+  cards[_hubFocusIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function triggerFocusedCard() {
+  const card = document.querySelector('.hub-card.remote-focus');
+  if (card) card.click();
+}
+
+window.remoteKey = function(key, isDown) {
+  const uid = window._remoteTargetUid;
+  if (!uid) return;
+  if (isDown && window.navigator.vibrate) window.navigator.vibrate(15);
+  db.collection('remotes').doc(uid).set({
+    type: 'input', key: key, isDown: isDown, timestamp: Date.now()
+  });
+};
+
+// Initial state check
+window.addEventListener('load', () => {
+  checkRemoteMode();
+});

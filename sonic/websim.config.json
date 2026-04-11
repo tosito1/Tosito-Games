@@ -1,0 +1,25 @@
+{
+  "database": {
+    "schema": {
+      "requests": {
+        "type": { "type": "text", "description": "The type of request, e.g., 'game' or 'system'." },
+        "system": { "type": "text", "description": "The console/system for a game request." },
+        "name": { "type": "text", "description": "The name of the requested game or system." },
+        "link": { "type": "text", "description": "An optional link for the request." },
+        "requester": { "type": "text", "description": "The username of the person making the request." },
+        "timestamp": { "type": "text", "description": "The ISO timestamp of when the request was made." }
+      },
+      "bug_reports": {
+        "description": { "type": "text", "description": "A detailed description of the bug." },
+        "reporter": { "type": "text", "description": "The username of the person reporting the bug." },
+        "timestamp": { "type": "text", "description": "The ISO timestamp of when the report was made." }
+      },
+      "faqs": {
+        "title": { "type": "text", "description": "The question or title of the FAQ entry." },
+        "content": { "type": "text", "description": "The answer or content of the FAQ entry." },
+        "order": { "type": "integer", "description": "A number used for sorting the FAQ entries." }
+      }
+    }
+  }
+}
+

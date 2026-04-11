@@ -249,14 +249,14 @@
                 if (!user || !db) return;
                 const fetchPersonalScore = async () => {
                     try {
-                        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'highscore');
+                        const docRef = doc(db, 'cyberstack_stats', user.uid);
                         const docSnap = await getDoc(docRef);
                         if (docSnap.exists()) setHighScore(docSnap.data().score || 0);
                     } catch (e) { console.error("Error score", e); }
                 };
                 fetchPersonalScore();
 
-                const leaderboardRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+                const leaderboardRef = collection(db, 'cyberstack_leaderboard');
                 const unsubscribe = onSnapshot(leaderboardRef, (snapshot) => {
                     const s = [];
                     snapshot.forEach((d) => s.push({ id: d.id, ...d.data() }));
@@ -271,16 +271,20 @@
                 if (!user || !db || finalScore <= 0 || gameMode.includes('LOCAL_MULTI')) return;
                 
                 // NOTIFICAR AL PADRE (Plataforma)
-                window.parent.postMessage({ type: 'SAVE_SCORE', score: finalScore }, '*');
+                try {
+                    if (window.parent && window.parent.saveArcadeScore) {
+                        window.parent.saveArcadeScore('stack', finalScore);
+                    }
+                } catch(e) { console.warn("Parent bridge failed"); }
 
                 try {
                     if (finalScore > highScore) {
                         setHighScore(finalScore);
                         setIsNewRecord(true);
-                        const personalRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'highscore');
+                        const personalRef = doc(db, 'cyberstack_stats', user.uid);
                         await setDoc(personalRef, { score: finalScore, date: new Date().toISOString() });
-                        const publicRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid);
-                        await setDoc(publicRef, { score: finalScore, uid: user.uid, date: new Date().toISOString() });
+                        const lbRef = doc(db, 'cyberstack_leaderboard', user.uid);
+                        await setDoc(lbRef, { score: finalScore, uid: user.uid, date: new Date().toISOString() });
                     }
                 } catch (e) { console.error("Save error", e); }
             }, [user, db, gameMode, highScore]);

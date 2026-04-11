@@ -27,6 +27,10 @@
       }
     }
     </script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -52,14 +56,16 @@
         const PLATFORM_PLAYER_NAME = urlParams.get('playerName') || 'Jugador';
         const INITIAL_GAME = urlParams.get('game');
 
-        const GAMES = [
-          { id: 'match3', name: 'Gem Match Pro', icon: <Zap />, color: 'from-purple-500 to-pink-600', difficulty: 'Bajo', desc: 'Sube de nivel alcanzando objetivos de puntuación.' },
-          { id: '2048', name: '2048 Ultra', icon: <Hash />, color: 'from-orange-500 to-red-600', difficulty: 'Medio', desc: 'Fichas objetivo más altas en cada nuevo nivel.' },
-          { id: 'wordle', name: 'Word Quest', icon: <Type />, color: 'from-yellow-500 to-orange-600', difficulty: 'Medio', desc: 'Racha de palabras infinita con dificultad creciente.' },
-          { id: 'sudoku', name: 'Zen Sudoku', icon: <Layout />, color: 'from-blue-500 to-indigo-600', difficulty: 'Alto', desc: 'Menos pistas iniciales a medida que progresas.' },
-          { id: 'memory', name: 'Mind Flip', icon: <Layout />, color: 'from-green-500 to-teal-600', difficulty: 'Bajo', desc: 'Tableros más grandes y más parejas que memorizar.' },
-          { id: 'pipes', name: 'Logic Flow', icon: <Brain />, color: 'from-cyan-500 to-blue-600', difficulty: 'Alto', desc: 'Laberintos de energía que crecen en tamaño.' },
         ];
+        
+        // --- FIREBASE SETUP ---
+        const firebaseConfig = configRaw ? JSON.parse(decodeURIComponent(configRaw)) : {};
+        let db = null; let auth = null;
+        if (firebaseConfig.apiKey) {
+           firebase.initializeApp(firebaseConfig);
+           db = firebase.firestore();
+           auth = firebase.auth();
+        }
 
         // --- CARGADOR DE GSAP ---
         const useGSAPLoader = () => {
@@ -1076,6 +1082,28 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) setStats(JSON.parse(saved));
             
+            if (auth) {
+               auth.onAuthStateChanged(async (user) => {
+                  if (user && db) {
+                     const docRef = db.collection('logic_master_stats').doc(user.uid);
+                     const snap = await docRef.get();
+                     if (snap.exists) {
+                        const cloudStats = snap.data();
+                        setStats(prev => {
+                           const merged = { ...prev, ...cloudStats };
+                           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+                           return merged;
+                        });
+                     } else if (saved) {
+                        // Migration to cloud
+                        docRef.set(JSON.parse(saved)).catch(e => console.error(e));
+                     }
+                  } else if (!user && auth.signInAnonymously) {
+                      auth.signInAnonymously().catch(e => console.error(e));
+                  }
+               });
+            }
+
             // Deep Linking
             if (INITIAL_GAME) {
               const game = GAMES.find(g => g.id === INITIAL_GAME);
@@ -1086,11 +1114,24 @@
             }
           }, []);
 
+          const saveStats = (newStats) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(newStats));
+            if (db && auth.currentUser) {
+                db.collection('logic_master_stats').doc(auth.currentUser.uid).set(newStats, { merge: true }).catch(e => console.error(e));
+            }
+            // SYNC TO HUB
+            try {
+                if (window.parent && window.parent.saveArcadeScore) {
+                    window.parent.saveArcadeScore('puzzles', newStats.totalScore);
+                }
+            } catch(e) {}
+          };
+
           const updateScore = (add) => setStats(p => {
             const newScore = p.totalScore + add;
             const nextLevel = Math.floor(newScore / 5000) + 1;
             const n = { ...p, totalScore: newScore, level: nextLevel };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(n));
+            saveStats(n);
             return n;
           });
 
@@ -1099,7 +1140,7 @@
             setStats(p => {
               const currentLevel = p.gameLevels[activeGame.id] || 1;
               const n = { ...p, gameLevels: { ...p.gameLevels, [activeGame.id]: currentLevel + 1 } };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(n));
+              saveStats(n);
               return n;
             });
             if (window.gsap) {

@@ -1,0 +1,655 @@
+<html>
+<head>
+    <title>Super Mario 64</title>
+    <style>
+        @font-face {
+            font-family: 'Mario64';
+            src: url('/Mario64.ttf') format('truetype');
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: #fff;
+            font-family: 'Mario64', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #gameContainer {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .loading img {
+            width: 300px;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(255, 85, 85, 0.5);
+        }
+
+        .loading-text {
+            font-size: 24px;
+            color: #ff5555;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        #infoBar, #aiCommentary, .credits {
+            display: none;
+        }
+
+        #mobileControls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+
+        #actionButtons {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        #mobileToggle {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            color: white;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        #mobileToggle label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+
+        #mobileControls.hidden, #actionButtons.hidden {
+            display: none !important;
+        }
+
+        #dpad {
+            position: relative;
+            width: var(--dpad-size, 150px);
+            height: var(--dpad-size, 150px);
+        }
+
+        .dpad-button {
+            position: absolute;
+            width: calc(var(--dpad-size, 150px) / 3);
+            height: calc(var(--dpad-size, 150px) / 3);
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        #dpad-up { top: 0; left: calc((var(--dpad-size, 150px) - (var(--dpad-size, 150px) / 3)) / 2); }
+        #dpad-down { bottom: 0; left: calc((var(--dpad-size, 150px) - (var(--dpad-size, 150px) / 3)) / 2); }
+        #dpad-left { left: 0; top: calc((var(--dpad-size, 150px) - (var(--dpad-size, 150px) / 3)) / 2); }
+        #dpad-right { right: 0; top: calc((var(--dpad-size, 150px) - (var(--dpad-size, 150px) / 3)) / 2); }
+
+        .action-button {
+            width: var(--button-size, 60px);
+            height: var(--button-size, 60px);
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            color: white;
+            font-family: 'Mario64', Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        #buttonA { background: rgba(255, 0, 0, 0.4); }
+        #buttonB { background: rgba(0, 255, 0, 0.4); }
+        #buttonCrouch { background: rgba(255, 255, 0, 0.4); }
+        #buttonStart { background: rgba(128, 128, 128, 0.4); }
+
+        /* Add new styles for fullscreen and collapsible controls */
+        #fullscreenPrompt {
+            display: none; /* Change from display: none to this full block */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 3001;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: 'Mario64', Arial, sans-serif;
+        }
+
+        #fullscreenPrompt.show {
+            display: flex;
+        }
+
+        #fullscreenButton {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #ff5555;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            font-family: 'Mario64', Arial, sans-serif;
+            margin-top: 20px;
+            animation: pulse 1.5s infinite;
+        }
+
+        #controlsPanel {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            color: white;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            min-width: 160px;
+        }
+
+        #controlsPanel.collapsed .controls-content {
+            display: none;
+        }
+
+        #controlsHeader {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding-bottom: 10px;
+        }
+
+        #controlsHeader .arrow {
+            transform: rotate(0deg);
+        }
+
+        #controlsPanel.collapsed #controlsHeader .arrow {
+            transform: rotate(180deg);
+        }
+
+        .size-control {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .size-control label {
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+
+        .size-control input[type="range"] {
+            width: 100%;
+            margin: 2px 0;
+        }
+
+        .size-control.hidden {
+            display: none;
+        }
+
+        #resizeWarning {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 2000;
+            color: white;
+            font-size: 24px;
+            max-width: 80%;
+            min-width: 300px;
+        }
+
+        #resizeWarning button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            background: #ff5555;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            font-family: 'Mario64', Arial, sans-serif;
+            font-size: 20px;
+            animation: pulse 1.5s infinite;
+        }
+
+        #audioPrompt {
+            display: none;
+        }
+
+        #focusPrompt {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 0, 0, 0.5);
+            display: none; /* Initially hidden */
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            animation: pulse 1.5s infinite;
+            cursor: pointer;
+        }
+
+        #focusPrompt span {
+            font-size: 32px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        #chatContainer {
+            position: fixed;
+            right: 10px;
+            top: 50px;
+            width: 300px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 8px;
+            display: none;
+            flex-direction: column;
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+        }
+
+        #chatContainer.visible {
+            display: flex;
+        }
+
+        #chatMessages {
+            height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            color: white;
+            font-size: 14px;
+        }
+
+        #chatInput {
+            display: flex;
+            padding: 10px;
+            gap: 5px;
+        }
+
+        #messageInput {
+            flex-grow: 1;
+            padding: 5px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        #messageInput:focus {
+            outline: 2px solid #4CAF50;
+            background: white;
+        }
+
+        #sendMessage {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+
+        #toggleChat {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            color: white;
+            padding: 8px 16px;
+            font-family: 'Mario64', Arial, sans-serif;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        .chat-message {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+
+        .chat-username {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        body.chat-open .action-button,
+        body.chat-open .dpad-button,
+        body.chat-open #canvas {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        /* Add new styles for C-stick */
+        #dpad.c-stick .dpad-button {
+            background: rgba(255, 255, 0, 0.3);
+            border-color: rgba(255, 255, 0, 0.6);
+        }
+
+        #toggleC {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: calc(var(--dpad-size, 150px) / 3);
+            height: calc(var(--dpad-size, 150px) / 3);
+            background: rgba(255, 255, 0, 0.2);
+            border: 2px solid rgba(255, 255, 0, 0.4);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        #dpad.c-stick #toggleC {
+            background: rgba(255, 255, 0, 0.4);
+        }
+
+        .menu-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .menu-button {
+            font-size: 12px;
+            width: calc(var(--button-size, 60px) * 0.8);
+            height: calc(var(--button-size, 60px) * 0.6);
+            background: rgba(128, 128, 128, 0.4);
+            border-radius: 8px;
+        }
+
+        .action-buttons-row {
+            display: flex;
+            gap: 10px;
+        }
+        
+        #refocusButton {
+            display: none;
+        }
+
+        #titleScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('/supermario64.png');
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            cursor: none;
+        }
+
+        #titleScreen:active {
+            cursor: none;
+        }
+
+        #titleScreen img {
+            width: 80%;
+            max-width: 500px;
+            height: auto;
+            margin-bottom: 30px;
+        }
+
+        #titleScreen .buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
+
+        #titleScreen button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #ff5555;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: none;
+            font-family: 'Mario64', Arial, sans-serif;
+            transition: transform 0.2s;
+        }
+
+        #titleScreen button:hover {
+            transform: scale(1.1);
+        }
+
+        #titleScreen button:active {
+            cursor: none;
+        }
+
+        #game-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('/supermario64.png');
+            filter: blur(8px);
+            transform: scale(1.1); /* Avoid blurred edges */
+            z-index: -1;
+            display: none;
+        }
+
+        #fullscreenStartBtn {
+            display: none; /* Only show on mobile */
+        }
+
+        #customCursor {
+            position: fixed;
+            width: 144px;
+            height: 144px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            z-index: 9999;
+            display: none;
+            /* Adjust transform origin and values for better pointing accuracy */
+            transform-origin: top left;
+            transform: translate(-30px, -15px);
+        }
+
+        @media (min-width: 768px) {
+            #titleScreen {
+                background: radial-gradient(circle, #0066cc, #003366);
+            }
+            
+            #titleScreen img {
+                width: 60%;
+                max-width: 600px;
+                margin-bottom: 40px;
+            }
+            
+            #titleScreen .buttons {
+                flex-direction: row;
+                gap: 30px;
+            }
+            
+            #titleScreen button {
+                padding: 20px 50px;
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-background"></div>
+
+    <div id="fullscreenPrompt">
+        <button id="fullscreenButton">START IN FULLSCREEN</button>
+    </div>
+
+    <div id="titleScreen">
+        <img src="/Boxart.jpeg" alt="Super Mario 64 box art">
+        <div class="buttons">
+            <button id="startGameBtn">PLAY GAME</button>
+            <button id="fullscreenStartBtn">PLAY IN FULLSCREEN</button>
+        </div>
+    </div>
+    
+    <div id="customCursor"></div>
+
+    <div id="focusPrompt">
+        <span>CLICK TO FOCUS GAME!!</span>
+    </div>
+
+    <div id="resizeWarning">
+        <p>Window size changed too much!</p>
+        <p>The game will not display correctly until you refresh.</p>
+        <button onclick="location.reload()">Refresh to Fix</button>
+    </div>
+
+    <div id="controlsPanel">
+        <div id="controlsHeader">
+            <span>Controls Settings</span>
+            <span class="arrow">▼</span>
+        </div>
+        <div class="controls-content">
+            <label>
+                <input type="checkbox" id="controlsCheckbox">
+                Mobile Controls
+            </label>
+            <label>
+                <input type="checkbox" id="backgroundToggle">
+                Disable Background
+            </label>
+            <div class="size-control">
+                <label>D-Pad Size: <span id="dpadValue">150</span>px</label>
+                <input type="range" id="dpadSize" min="100" max="300" value="150">
+                
+                <label>Button Size: <span id="buttonValue">60</span>px</label>
+                <input type="range" id="buttonSize" min="40" max="120" value="60">
+            </div>
+        </div>
+    </div>
+    <button id="toggleChat">Toggle Chat</button>
+    <div id="chatContainer">
+        <div id="chatMessages"></div>
+        <div id="chatInput">
+            <input type="text" id="messageInput" placeholder="Type a message...">
+            <button id="sendMessage">Send</button>
+        </div>
+    </div>
+    <div id="container">
+        <div id="gameContainer">
+            <canvas id="canvas"></canvas>
+            <div id="loading" class="loading">
+                <img src="/Boxart.jpeg" alt="Super Mario 64 box art">
+                <div class="loading-text">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="mobileControls">
+        <div id="dpad">
+            <div id="dpad-up" class="dpad-button">⬆️</div>
+            <div id="dpad-down" class="dpad-button">⬇️</div>
+            <div id="dpad-left" class="dpad-button">⬅️</div>
+            <div id="dpad-right" class="dpad-button">➡️</div>
+            <div id="toggleC">C</div>
+        </div>
+    </div>
+
+    <div id="actionButtons">
+        <div class="menu-buttons">
+            <div id="buttonStart" class="action-button menu-button">START</div>
+            <div id="buttonSelect" class="action-button menu-button">SELECT</div>
+        </div>
+        <div class="action-buttons-row">
+            <div id="buttonA" class="action-button">A</div>
+            <div id="buttonB" class="action-button">B</div>
+            <div id="buttonCrouch" class="action-button">Z</div>
+        </div>
+    </div>
+
+    <script src="/controls.js"></script>
+</body>
+</html>
