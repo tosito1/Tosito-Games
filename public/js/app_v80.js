@@ -3394,6 +3394,9 @@ function applyRemoteLayout(mode) {
   const btn = document.getElementById('btn-toggle-layout');
   if (!s || !g || !btn) return;
 
+  // Sync internal layout state
+  _remoteLayout = mode;
+
   // Hide all
   s.classList.remove('active');
   g.classList.remove('active');
@@ -3416,8 +3419,12 @@ function applyRemoteLayout(mode) {
     btn.textContent = "MODO: NAVEGACIÓN";
   }
 
+  // Ensure locking is updated for the new layout
+  refreshControllerUI();
+
   if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 10]);
 }
+
 
 /**
  * Called on mobile to check if we are in remote mode.
@@ -3472,32 +3479,84 @@ window.joinRemoteSession = function () {
   if (window.navigator.vibrate) window.navigator.vibrate([50, 30, 50]);
 };
 
+let _remoteSlot = 1;
+
 function initRemoteController(guestName) {
   const uid = window._remoteTargetUid;
   const cid = getControllerId();
-  console.log("[📡] Initializing Controller for UID:", uid, "CID:", cid);
-  if (!uid) {
-    alert("Error: ID de Sesión no encontrado. Por favor, re-escanea el QR.");
-    return;
-  }
+  if (!uid) return;
 
-  // Register in Firestore
+  // Listen for our own slot assignment
+  db.collection('remotes').doc(uid).collection('controllers').doc(cid).onSnapshot(doc => {
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.playerSlot) {
+        const oldSlot = _remoteSlot;
+        _remoteSlot = data.playerSlot;
+
+        // Feedback if promoted to P1
+        if (oldSlot > 1 && _remoteSlot === 1) {
+          if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
+        }
+
+        const label = document.getElementById('remote-status-label');
+        if (label) label.textContent = "JUGADOR " + _remoteSlot + " · " + guestName.toUpperCase();
+        refreshControllerUI();
+      }
+    } else {
+
+      // Document deleted by host (stale or kicked)
+      alert("Sesión finalizada por el anfitrión.");
+      location.reload();
+    }
+  });
+
   db.collection('remotes').doc(uid).collection('controllers').doc(cid).set({
-    name: guestName,
-    status: 'online',
-    lastActive: Date.now()
+    name: guestName, status: 'online', lastActive: Date.now(),
+    playerSlot: null, timestamp: Date.now()
   }, { merge: true });
 
-  // Listen for assigned player slot
-  db.collection('remotes').doc(uid).collection('controllers').doc(cid).onSnapshot(doc => {
-    if (doc.exists && doc.data().playerSlot) {
-      const label = document.getElementById('remote-status-label');
-      if (label) label.textContent = "JUGADOR " + doc.data().playerSlot + " · " + guestName.toUpperCase();
+  startHeartbeat(uid, cid);
+  setupVisibilityListener(uid, cid);
+}
+
+function refreshControllerUI() {
+  const overlay = document.getElementById('wait-overlay-p1');
+  if (!overlay) return;
+  
+  // Show overlay if I'm not Player 1 AND we are in navigation mode
+  if (_remoteSlot > 1 && _remoteLayout === 'simple') {
+    overlay.classList.add('active');
+  } else {
+    overlay.classList.remove('active');
+  }
+}
+
+let _heartbeatInterval = null;
+function startHeartbeat(uid, cid) {
+  if (_heartbeatInterval) clearInterval(_heartbeatInterval);
+  _heartbeatInterval = setInterval(() => {
+    db.collection('remotes').doc(uid).collection('controllers').doc(cid).update({
+      lastActive: Date.now(),
+      playerSlot: _remoteSlot 
+    });
+  }, 5000); 
+}
+
+function setupVisibilityListener(uid, cid) {
+  document.addEventListener('visibilitychange', () => {
+    const uid = window._remoteTargetUid;
+    if (!uid) return;
+    if (document.visibilityState === 'hidden') {
+      db.collection('remotes').doc(uid).collection('controllers').doc(cid).update({ status: 'away' });
+    } else {
+      db.collection('remotes').doc(uid).collection('controllers').doc(cid).update({ status: 'online', lastActive: Date.now() });
     }
   });
 }
 
 window.editGuestName = function () {
+
   const current = localStorage.getItem('tosito_guest_name') || "Invitado";
   const name = prompt("Introduce tu nombre de jugador:", current);
   if (name && name.trim()) {
@@ -3535,9 +3594,123 @@ window.toggleRemoteLayout = function () {
   // Show new
   if (layouts[_remoteLayout]) layouts[_remoteLayout].classList.add('active');
   if (btn) btn.textContent = "MODO: " + names[_remoteLayout];
+  
+  // Refresh Input Method Visibility for new layout
+  refreshInputMethodVisibility();
 
   if (window.navigator.vibrate) window.navigator.vibrate(20);
 };
+
+/* VIRTUAL JOYSTICK LOGIC */
+let _inputMethod = localStorage.getItem('tosito_input_method') || 'dpad';
+
+window.toggleInputMethod = function() {
+  _inputMethod = (_inputMethod === 'dpad') ? 'joystick' : 'dpad';
+  localStorage.setItem('tosito_input_method', _inputMethod);
+  refreshInputMethodVisibility();
+  if (window.navigator.vibrate) window.navigator.vibrate(30);
+};
+
+function refreshInputMethodVisibility() {
+  const btn = document.getElementById('btn-toggle-input');
+  if (btn) btn.textContent = _inputMethod === 'dpad' ? 'D-PAD' : 'STICK';
+  
+  const dpadGaming = document.getElementById('gaming-dpad');
+  const joyGaming = document.getElementById('gaming-joystick');
+  const dpadPro = document.getElementById('pro-dpad-ring');
+  const joyPro = document.getElementById('pro-joystick');
+  
+  if (_inputMethod === 'dpad') {
+    if (dpadGaming) dpadGaming.style.display = 'flex';
+    if (joyGaming) joyGaming.style.display = 'none';
+    if (dpadPro) dpadPro.style.display = 'block';
+    if (joyPro) joyPro.style.display = 'none';
+  } else {
+    if (dpadGaming) dpadGaming.style.display = 'none';
+    if (joyGaming) joyGaming.style.display = 'flex';
+    if (dpadPro) dpadPro.style.display = 'none';
+    if (joyPro) joyPro.style.display = 'flex';
+  }
+}
+
+class VirtualJoystick {
+  constructor(containerId) {
+    this.container = document.getElementById(containerId);
+    if (!this.container) return;
+    this.thumb = this.container.querySelector('.joystick-thumb');
+    this.active = false;
+    this.rect = null;
+    this.currentKeys = { up: false, down: false, left: false, right: false };
+    
+    this.init();
+  }
+  
+  init() {
+    this.container.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
+    window.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
+    window.addEventListener('touchend', () => this.onEnd(), { passive: false });
+  }
+  
+  onStart(e) {
+    this.active = true;
+    this.rect = this.container.getBoundingClientRect();
+    this.onMove(e);
+  }
+  
+  onMove(e) {
+    if (!this.active) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const centerX = this.rect.left + this.rect.width / 2;
+    const centerY = this.rect.top + this.rect.height / 2;
+    
+    let deltaX = touch.clientX - centerX;
+    let deltaY = touch.clientY - centerY;
+    
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const maxRadius = this.rect.width / 2;
+    
+    if (distance > maxRadius) {
+      const ratio = maxRadius / distance;
+      deltaX *= ratio;
+      deltaY *= ratio;
+      if (window.navigator.vibrate) window.navigator.vibrate(5);
+    }
+    
+    if (this.thumb) {
+      this.thumb.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    }
+    
+    // Key translation setup
+    const normX = deltaX / maxRadius;
+    const normY = deltaY / maxRadius;
+    const threshold = 0.3;
+    
+    this.updateKeys('ArrowUp', normY < -threshold);
+    this.updateKeys('ArrowDown', normY > threshold);
+    this.updateKeys('ArrowLeft', normX < -threshold);
+    this.updateKeys('ArrowRight', normX > threshold);
+  }
+  
+  onEnd() {
+    this.active = false;
+    if (this.thumb) this.thumb.style.transform = `translate(0px, 0px)`;
+    
+    // Stop all directional keys
+    ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].forEach(k => {
+      this.updateKeys(k, false);
+    });
+  }
+  
+  updateKeys(key, isPressed) {
+    const internalKey = key.toLowerCase().replace('arrow', '');
+    if (this.currentKeys[internalKey] !== isPressed) {
+      this.currentKeys[internalKey] = isPressed;
+      window.remoteKey(key, isPressed);
+    }
+  }
+}
+
 
 window.openRemoteModal = function () {
   const modal = document.getElementById('remote-modal');
@@ -3616,13 +3789,104 @@ function showPlayerJoinedAnimation(name, slot) {
 
   container.appendChild(card);
 
-  // Audio cue (optional, using standard sound if available)
   if (window.playSuccessSound) window.playSuccessSound();
 
   setTimeout(() => {
     card.classList.add('join-exit');
     setTimeout(() => card.remove(), 600);
   }, 4000);
+}
+
+function pruneInactiveControllers() {
+  const now = Date.now();
+  const cleanupTimeout = 45000; // 45s for hard delete
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  let changed = false;
+
+  Object.keys(_activeControllers).forEach(cid => {
+    const ctrl = _activeControllers[cid];
+    const isVeryOld = (now - (ctrl.lastSeenLocal || 0)) > cleanupTimeout;
+
+    if (isVeryOld) {
+      console.log(`[📡] Hard Deleting Stale Session: ${ctrl.name} (${cid})`);
+      db.collection('remotes').doc(user.uid).collection('controllers').doc(cid).delete();
+      delete _activeControllers[cid];
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    syncPlayerSlots();
+    refreshRemotePlayersPanel();
+  } else {
+    refreshRemotePlayersPanel();
+  }
+}
+
+function syncPlayerSlots() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  const activeCids = Object.keys(_activeControllers).sort((a, b) => {
+    return _activeControllers[a].playerSlot - _activeControllers[b].playerSlot;
+  });
+
+  activeCids.forEach((cid, index) => {
+    const newSlot = index + 1;
+    if (_activeControllers[cid].playerSlot !== newSlot) {
+      _activeControllers[cid].playerSlot = newSlot;
+      db.collection('remotes').doc(user.uid).collection('controllers').doc(cid).update({
+        playerSlot: newSlot
+      });
+    }
+  });
+}
+
+
+function refreshRemotePlayersPanel() {
+  const panel = document.getElementById('host-remote-players-panel');
+  if (!panel) return;
+
+  const now = Date.now();
+  const timeout = 30000; 
+
+  const activeCids = Object.keys(_activeControllers).filter(cid => {
+    const ctrl = _activeControllers[cid];
+    const isRecentlySeen = (now - (ctrl.lastSeenLocal || 0)) < timeout;
+    const isOnline = ctrl.status === 'online';
+    return isRecentlySeen && isOnline;
+  });
+
+  if (activeCids.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'flex';
+  panel.innerHTML = ''; 
+
+  activeCids.forEach(cid => {
+    const ctrl = _activeControllers[cid];
+    const card = document.createElement('div');
+    card.className = 'remote-player-card';
+
+    const avatars = ['🎮', '🕹️', '👾', '🚀'];
+    const avatar = avatars[(ctrl.playerSlot - 1) % avatars.length];
+
+    const crown = ctrl.playerSlot === 1 ? '<span style="color:var(--amber);margin-left:5px;">👑</span>' : '';
+
+    card.innerHTML = `
+      <div class="remote-player-avatar">${avatar}</div>
+      <div class="remote-player-info">
+        <div class="remote-player-name">${ctrl.name}${crown}</div>
+        <div class="remote-player-status">EN LÍNEA</div>
+      </div>
+    `;
+
+    panel.appendChild(card);
+  });
 }
 
 function initRemoteListener() {
@@ -3637,7 +3901,6 @@ function initRemoteListener() {
       const data = change.doc.data();
 
       if (change.type === 'added') {
-        // Detect and Assign Player Slot
         if (!_activeControllers[cid]) {
           const usedSlots = Object.values(_activeControllers).map(c => c.playerSlot);
           let assignedSlot = 1;
@@ -3648,10 +3911,12 @@ function initRemoteListener() {
           _activeControllers[cid] = {
             playerSlot: assignedSlot,
             name: data.name || "Invitado",
-            lastInput: Date.now()
+            lastInput: Date.now(),
+            lastActive: data.lastActive || Date.now(),
+            lastSeenLocal: Date.now(),
+            status: data.status || 'online'
           };
 
-          // Update the controller doc with its assigned slot so the phone knows
           db.collection('remotes').doc(user.uid).collection('controllers').doc(cid).update({
             playerSlot: assignedSlot
           });
@@ -3663,30 +3928,37 @@ function initRemoteListener() {
 
       if (change.type === 'modified') {
         const ctrl = _activeControllers[cid];
-        // Handle name change from profile edit on mobile
-        if (ctrl && data.name && data.name !== ctrl.name) {
-          ctrl.name = data.name;
-        }
+        if (ctrl) {
+          ctrl.lastSeenLocal = Date.now();
+          if (data.name) ctrl.name = data.name;
+          if (data.lastActive) ctrl.lastActive = data.lastActive;
+          if (data.status) ctrl.status = data.status;
 
-        if (ctrl && data.type === 'input' && data.timestamp > (ctrl.lastInput || 0)) {
-          ctrl.lastInput = data.timestamp;
-          if (Date.now() - data.timestamp < 3000) {
-            simulateRemoteKey(data.key, data.isDown, ctrl.playerSlot);
+          if (data.type === 'input' && data.timestamp > (ctrl.lastInput || 0)) {
+            ctrl.lastInput = data.timestamp;
+            if (Date.now() - data.timestamp < 3000) {
+              simulateRemoteKey(data.key, data.isDown, ctrl.playerSlot);
+            }
           }
         }
       }
 
       if (change.type === 'removed') {
         if (_activeControllers[cid]) {
-          const slot = _activeControllers[cid].playerSlot;
           const name = _activeControllers[cid].name;
           delete _activeControllers[cid];
           toast(`🔌 ${name} desconectado`);
+          syncPlayerSlots();
         }
       }
+
     });
+
+    refreshRemotePlayersPanel();
   });
 }
+
+
 
 function activateRemoteConsoleMode() {
   if (!document.body.classList.contains('remote-active')) {
@@ -3787,7 +4059,16 @@ function triggerFocusedCard() {
 window.remoteKey = function (key, isDown) {
   const uid = window._remoteTargetUid;
   if (!uid) return;
+  
+  // Block non-P1 from hub navigation
+  if (_remoteSlot > 1 && _remoteLayout === 'simple') {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(key)) {
+      return; 
+    }
+  }
+
   if (isDown && window.navigator.vibrate) window.navigator.vibrate(15);
+
 
   // Handle C-Stick / Camera Mode translation
   let finalKey = key;
@@ -3812,4 +4093,14 @@ window.addEventListener('load', () => {
   checkRemoteMode();
   checkBackendHealth();
   setInterval(checkBackendHealth, 45000); // Check every 45s
+  
+  // Heartbeat & Pruning Initialization
+  new VirtualJoystick('gaming-joystick');
+  new VirtualJoystick('pro-joystick');
+  refreshInputMethodVisibility();
+  
+  // Pruning task (Host only, but safe to run)
+  setInterval(pruneInactiveControllers, 10000); 
 });
+
+
