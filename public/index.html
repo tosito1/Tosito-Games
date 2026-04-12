@@ -41,6 +41,15 @@
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;900&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
 
+<!-- MOBILE DEBUGGER (ERUDA) -->
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>
+  if (window.location.search.includes('debug=true') || window.location.hostname.startsWith('192.168.')) {
+    eruda.init();
+    console.log("[🛠️] Eruda Console Initialized");
+  }
+</script>
+
 <style>
 /* ============================================================
    RESET & BASE
@@ -1031,7 +1040,7 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
    ============================================================ */
 .remote-modal {
   position: fixed; inset: 0; 
-  background: rgba(2,6,23,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(2,6,23,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   display: none; align-items: center; justify-content: center; z-index: 10000;
   padding: 1.5rem;
 }
@@ -1054,13 +1063,13 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   position: fixed; inset: 0; width: 100vw; height: 100vh;
   background: #020617; z-index: 11000;
   display: none; flex-direction: column; align-items: center;
-  justify-content: space-between; padding: 3rem 1rem;
+  justify-content: space-between; padding: 2rem 1rem;
   overflow: hidden; font-family: 'Outfit', sans-serif;
 }
 .controller-header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 1rem; }
 .mode-toggle {
   background: rgba(255,255,255,0.05); border: 1px solid rgba(56,189,248,0.3);
-  color: var(--sky); padding: 8px 16px; border-radius: 99px; font-size: 0.75rem;
+  color: var(--sky); padding: 8px 16px; border-radius: 99px; font-size: 0.65rem;
   font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
 }
 
@@ -1068,32 +1077,95 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 .controller-layout.active { display: flex !important; animation: t-fadeIn 0.4s ease; }
 
 .nav-ring, .dpad-container {
-  position: relative; width: 280px; height: 280px;
-  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  position: relative; width: 260px; height: 260px;
+  background: rgba(255,255,255,0.02); border: 2px solid rgba(255,255,255,0.05);
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
 }
 .ring-btn {
-  position: absolute; width: 80px; height: 80px; border-radius: 50%;
-  background: rgba(15,23,42,0.85); border: 2px solid rgba(255,255,255,0.12);
-  color: white; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+  position: absolute; width: 70px; height: 70px; border-radius: 50%;
+  background: #0f172a; border: 2px solid rgba(255,255,255,0.1);
+  color: white; font-size: 1.4rem; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 15px rgba(0,0,0,0.5);
   user-select: none; -webkit-tap-highlight-color: transparent;
 }
-.btn-up { top: 5px; } .btn-down { bottom: 5px; } .btn-left { left: 5px; } .btn-right { right: 5px; }
+.btn-up { top: 0; } .btn-down { bottom: 0; } .btn-left { left: 0; } .btn-right { right: 0; }
 .btn-ok { width: 100px; height: 100px; background: var(--sky); color: #020617; border: none; font-weight: 900; font-size: 1.2rem; }
 
 .gaming-ctrl { flex-direction: row; gap: 40px; }
 .action-container { display: flex; gap: 20px; align-items: center; }
 .game-btn {
-  width: 95px; height: 95px; border-radius: 50%; border: 4px solid var(--sky);
-  background: rgba(56,189,248,0.05); color: var(--sky); font-size: 2.2rem; font-weight: 900;
+  width: 90px; height: 90px; border-radius: 50%; border: 4px solid var(--sky);
+  background: rgba(56,189,248,0.05); color: var(--sky); font-size: 2rem; font-weight: 900;
   display: flex; align-items: center; justify-content: center; 
   user-select: none; -webkit-tap-highlight-color: transparent;
 }
-.btn-b { border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.05); transform: translateY(25px); }
-.btn-a { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.05); transform: translateY(-25px); }
+.btn-b { border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.05); transform: translateY(20px); }
+.btn-a { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.05); transform: translateY(-20px); }
 
-.ring-btn:active, .game-btn:active, .mode-toggle:active { transform: scale(0.92); transition: transform 0.05s; }
+.pro-ctrl { display: none; flex-direction: column; gap: 2rem; width: 100%; height: 100%; justify-content: center; }
+.pro-row { display: flex; width: 100%; justify-content: space-between; align-items: center; padding: 0 1rem; }
+.pro-dpad { position: relative; width: 140px; height: 140px; }
+.pro-dpad button { position: absolute; width: 45px; height: 45px; background: #1e293b; border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 8px; font-size: 0.9rem; }
+.pro-actions { position: relative; width: 160px; height: 160px; }
+.pro-actions button { position: absolute; width: 55px; height: 55px; border-radius: 50%; font-weight: 900; font-size: 1.1rem; }
+.pro-a { right: 0; top: 50px; background: var(--green); color: #000; }
+.pro-b { left: 40px; bottom: 0; background: var(--red); color: #000; }
+.pro-z { left: 10px; top: 0; background: var(--purple); color: #fff; width: 50px !important; height: 50px !important; }
+.pro-shoulders { position: absolute; top: 15vh; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 2rem; }
+.pro-btn-s { background: #334155; border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px 25px; border-radius: 12px; font-weight: 900; font-size: 0.8rem; }
+.pro-aux-btns { display: flex; gap: 15px; }
+.pro-btn-aux { background: #0f172a; border: 1px solid var(--sky); color: var(--sky); padding: 6px 15px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; }
+
+@media (orientation: landscape) {
+  #screen-remote-controller { padding: 1rem 3rem; }
+  .pro-ctrl { flex-direction: row; justify-content: space-between; }
+  .pro-row { width: auto; flex-direction: row; padding: 0; }
+  .pro-shoulders { top: 2rem; }
+  .nav-ring, .dpad-container { width: 220px; height: 220px; }
+  .ring-btn { width: 60px; height: 60px; }
+  .btn-ok { width: 80px; height: 80px; }
+  .pro-dpad { transform: scale(1.3); }
+  .pro-actions { transform: scale(1.3); }
+}
+
+.ring-btn:active, .game-btn:active, .mode-toggle:active, .pro-dpad button:active, .pro-actions button:active, .pro-btn-s:active, .pro-btn-aux:active { transform: scale(0.92); transition: transform 0.05s; }
+
+/* JOIN NOTIFICATION ANIMATION */
+.player-join-notif {
+  position: fixed; top: 30px; right: 30px; z-index: 10000;
+  background: var(--bg3); border: 2px solid var(--sky); border-radius: 20px;
+  padding: 1rem 1.5rem; display: flex; align-items: center; gap: 15px;
+  box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+  animation: join-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+@keyframes join-in {
+  from { transform: translateX(120%) scale(0.8); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
+}
+.join-exit { animation: join-out 0.5s ease forwards; }
+@keyframes join-out {
+  to { transform: translateX(120%) opacity: 0; }
+}
+.join-avatar { font-size: 2.5rem; }
+.join-info { display: flex; flex-direction: column; }
+.join-name { font-weight: 800; font-size: 1.1rem; color: white; }
+.join-slot { font-size: 0.7rem; color: var(--sky); font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+
+/* REMOTE SETUP SCREEN */
+#screen-remote-setup { 
+  display: flex; flex-direction: column; align-items: center; justify-content: center; 
+  padding: 2rem; width: 100%; max-width: 400px; gap: 2rem;
+}
+.setup-card {
+  background: rgba(15,23,42,0.6); border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 24px; padding: 2rem; width: 100%; text-align: center;
+  backdrop-filter: blur(10px);
+}
+.setup-input {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(56,189,248,0.3);
+  color: white; width: 100%; height: 55px; border-radius: 12px;
+  text-align: center; font-size: 1.2rem; font-weight: 800; margin-bottom: 1.5rem;
+}
 
 @keyframes t-fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
@@ -2142,10 +2214,12 @@ body.game-mode #floating-remote-btn { display: flex; }
 <!-- GSAP -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Flip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
 
 <!-- App Scripts -->
 <script src="/js/chess_engine.js?v=9.0.0"></script>
-<script src="/js/app_v80.js?v=9.0.0"></script>
+<script src="/js/app_v80.js?v=9.1.0"></script>
 
 <!-- ============================================================
      TIC TAC TOE — Inline Logic
@@ -3128,91 +3202,123 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <div id="remote-modal" class="remote-modal" onclick="closeRemoteModal()">
   <div class="remote-card" onclick="event.stopPropagation()">
+    <div id="remote-api-warning" class="alert-box" style="display:none; background:rgba(239,68,68,0.15); border:1px solid var(--red); color:var(--red); margin-bottom:1.5rem; font-size:0.8rem; text-align:left;"></div>
     <h2 style="font-size:2rem; font-weight:900; margin-bottom:1rem; italic; color:var(--sky)">VINCULAR MANDO</h2>
     <p style="color:rgba(255,255,255,0.7); font-size:0.9rem;">Escanea el código con tu móvil para convertirlo en un mando inalámbrico de Tosito Games.</p>
     
+    <div id="remote-qr-alert" style="display:none; margin-top:1rem; padding:12px; border-radius:12px; background:rgba(239,68,68,0.1); border:1px solid var(--red); color:var(--red); font-size:0.8rem; text-align:left;"></div>
+
     <div style="margin-top:1.2rem; text-align:left; background:rgba(255,255,255,0.03); padding:1rem; border-radius:16px; border:1px solid rgba(255,255,255,0.05);">
-      <label style="font-size:0.75rem; color:var(--sky); font-weight:900; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px;">Host de Conexión (IP Local)</label>
-      <input type="text" id="remote-host-input" style="background:rgba(255,255,255,0.05); border:1px solid var(--sky-o); color:white; width:calc(100% - 24px); height:40px; border-radius:8px; padding:0 12px; font-family:monospace;" placeholder="ej: 192.168.1.15" oninput="updateRemoteQR()">
-      <p style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:8px; line-height:1.4;">⚠️ Si usas <b>localhost</b>, cámbialo por tu IP (ej. 192.168.1.50) para que el móvil pueda conectar.</p>
+      <label style="font-size:0.75rem; color:var(--sky); font-weight:900; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px;">Host de Conexión (IP PC)</label>
+      <input type="text" id="remote-host-input" style="background:rgba(255,255,255,0.05); border:1px solid rgba(56,189,248,0.3); color:white; width:100%; height:45px; border-radius:12px; padding:0 15px; font-family:monospace; font-weight:700;" placeholder="ej: 192.168.1.15" oninput="updateRemoteQR()">
+      <p style="font-size:0.65rem; color:rgba(255,255,255,0.4); margin-top:8px; line-height:1.4;">
+        💡 Tu IP detectada es: <b style="color:var(--amber)">192.168.18.9</b><br>
+        Introduce la IP arriba si el QR no funciona por defecto.
+      </p>
     </div>
 
-    <div class="qr-container">
-      <img id="remote-qr" src="" alt="QR Code">
+    <div class="qr-container" style="background:white; padding:15px; border-radius:20px; margin: 1.5rem auto; width: fit-content; box-shadow: 0 0 30px rgba(56,189,248,0.2);">
+      <img id="remote-qr" src="" alt="QR Code" style="width:180px; height:180px;">
     </div>
 
-    <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:12px; font-size:0.8rem; color:var(--sky); text-align:left;">
-      <p>• No cierres esta ventana hasta conectar.</p>
-      <p>• Funciona mejor en modo horizontal.</p>
+    <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:12px; font-size:0.8rem; text-align:left;">
+      <p style="color:var(--muted); margin-bottom:8px; font-weight:700;">Enlace Manual:</p>
+      <a id="remote-debug-link" href="#" target="_blank" style="color:var(--sky); word-break:break-all; font-family:monospace; font-size:0.7rem;">---</a>
     </div>
     
-    <button class="btn btn-primary" onclick="closeRemoteModal()" style="margin-top:1.5rem; width:100%;">Cerrar</button>
+    <button class="btn btn-primary" onclick="closeRemoteModal()" style="margin-top:1.5rem; width:100%; padding:15px; font-weight:900;">LISTO</button>
   </div>
 </div>
 
 <!-- Controller Screen for Mobile -->
 <div id="screen-remote-controller">
-  <div class="controller-header">
-    <div style="display:flex; flex-direction:column;">
-      <div style="font-weight:900; italic; letter-spacing:2px; font-size:1.1rem; color:var(--sky)">TOSITO REMOTE</div>
-      <div id="remote-user-name" style="font-size:0.65rem; color:rgba(255,255,255,0.5); font-weight:bold; text-transform:uppercase;">CONECTANDO...</div>
+  <!-- 1. SETUP / JOIN SCREEN (Visible by default on mobile) -->
+  <div id="screen-remote-setup">
+    <div class="setup-card">
+      <div style="font-size:3rem; margin-bottom:1rem;">🎮</div>
+      <h2 style="font-size:1.5rem; font-weight:900; color:var(--sky); margin-bottom:0.5rem;">TOSITO REMOTE</h2>
+      <p style="color:rgba(255,255,255,0.6); font-size:0.8rem; margin-bottom:2rem;">Introduce tu apodo para entrar en la arena.</p>
+      
+      <input type="text" id="setup-guest-name" class="setup-input" placeholder="Tu Apodo..." maxlength="15">
+      
+      <button class="btn btn-primary" onclick="joinRemoteSession()" style="width:100% !important; padding:1.2rem; font-weight:900; font-size:1.1rem; border-radius:15px; background:var(--sky); color:#000;">
+        UNIRSE A LA PARTIDA →
+      </button>
     </div>
-    <button class="mode-toggle" id="btn-toggle-layout" onclick="toggleRemoteLayout()">MODO: NAVEGACIÓN</button>
+    <p style="font-size:0.6rem; color:rgba(255,255,255,0.3); text-transform:uppercase; letter-spacing:1px;">Tosito Games Platform v1.2</p>
   </div>
 
-  <div id="layout-simple" class="controller-layout simple-ctrl active">
-    <div class="nav-ring">
-      <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
-      <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
-      <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
-      <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
-      <button class="ring-btn btn-ok" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">OK</button>
+  <!-- 2. ACTUAL CONTROLS (Hidden until Joined) -->
+  <div id="remote-controls-ui" style="display:none; width:100%; height:100%; flex-direction:column; align-items:center; justify-content:space-between;">
+    <div class="controller-header">
+      <div style="display:flex; flex-direction:column;">
+        <div style="font-weight:900; italic; letter-spacing:2px; font-size:1.1rem; color:var(--sky)">TOSITO REMOTE</div>
+        <div id="remote-user-name" style="font-size:0.65rem; color:rgba(255,255,255,0.5); font-weight:bold; text-transform:uppercase; cursor:pointer;" onclick="editGuestName()">JUGADOR</div>
+      </div>
+      <button class="mode-toggle" id="btn-toggle-layout" onclick="toggleRemoteLayout()">MODO: NAVEGACIÓN</button>
     </div>
-    <div style="margin-top:3rem; display:flex; gap:20px;">
-      <button class="btn btn-glass" style="width:90px; height:50px; border-radius:100px; border-color:var(--red); color:var(--red);" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">VOLVER</button>
-    </div>
-  </div>
 
-  <div id="layout-gaming" class="controller-layout gaming-ctrl">
-    <div class="dpad-container">
-       <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
-       <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
-       <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
-       <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+    <div id="layout-simple" class="controller-layout simple-ctrl active">
+      <div class="nav-ring">
+        <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
+        <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
+        <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
+        <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+        <button class="ring-btn btn-ok" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">OK</button>
+      </div>
+      <div style="margin-top:3rem; display:flex; gap:20px;">
+        <button class="btn btn-glass" style="width:90px; height:50px; border-radius:100px; border-color:var(--red); color:var(--red);" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">VOLVER</button>
+      </div>
     </div>
-    <div class="action-container">
-        <button class="game-btn btn-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
-        <button class="game-btn btn-a" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">A</button>
-    </div>
-  </div>
 
-  <div id="remote-status-label" style="position:absolute; bottom:15px; font-size:0.6rem; color:rgba(255,255,255,0.3); letter-spacing:1px;">CONECTADO A LA SESIÓN</div>
+    <div id="layout-gaming" class="controller-layout gaming-ctrl">
+      <div class="dpad-container">
+         <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
+         <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
+         <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
+         <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+      </div>
+      <div class="action-container">
+          <button class="game-btn btn-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
+          <button class="game-btn btn-a" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">A</button>
+      </div>
+    </div>
+
+    <div id="layout-pro" class="controller-layout pro-ctrl">
+      <div class="pro-shoulders">
+        <button class="pro-btn-s" ontouchstart="remoteKey('l', true)" ontouchend="remoteKey('l', false)">L</button>
+        <button class="pro-btn-s" ontouchstart="remoteKey('r', true)" ontouchend="remoteKey('r', false)">R</button>
+      </div>
+
+      <div class="pro-row">
+        <div class="pro-dpad" id="pro-dpad-ring">
+          <button class="pro-btn" style="top:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
+          <button class="pro-btn" style="bottom:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
+          <button class="pro-btn" style="left:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
+          <button class="pro-btn" style="right:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+        </div>
+
+        <div class="pro-center-cluster">
+          <div class="pro-aux-btns">
+            <button class="pro-btn-aux" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">SELECT</button>
+            <button class="pro-btn-aux" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">START</button>
+          </div>
+          <button class="btn btn-glass" style="font-size:0.6rem; padding:4px 10px;" onclick="window._cStickMode = !window._cStickMode; this.classList.toggle('active'); this.textContent = window._cStickMode ? 'MODO: CAMARA' : 'MODO: MOVER';">C-MODE</button>
+        </div>
+
+        <div class="pro-actions">
+          <button class="pro-a" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">A</button>
+          <button class="pro-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
+          <button class="pro-z" ontouchstart="remoteKey('z', true)" ontouchend="remoteKey('z', false)">Z</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="remote-status-label" style="position:relative; bottom:15px; font-size:0.6rem; color:rgba(255,255,255,0.3); letter-spacing:1px; margin-top:1rem;">CONECTADO A LA SESIÓN</div>
+  </div>
 </div>
 
-<script>
-  // AUTO-LAYOUT LISTENER (MOBILE SIDE)
-  let _currentLayoutSig = 'simple';
-  function initLayoutSignalListener(uid) {
-    db.collection('remotes').doc(uid).onSnapshot(doc => {
-      if (doc.exists) {
-        const layout = doc.data().layout;
-        if (layout && layout !== _currentLayoutSig) {
-          _currentLayoutSig = layout;
-          applyRemoteLayout(layout);
-        }
-      }
-    });
-  }
-
-  function applyRemoteLayout(mode) {
-    const s = document.getElementById('layout-simple');
-    const g = document.getElementById('layout-gaming');
-    const btn = document.getElementById('btn-toggle-layout');
-    if (mode === 'gaming') { s.classList.remove('active'); g.classList.add('active'); btn.textContent = "MODO: JUEGO"; }
-    else { g.classList.remove('active'); s.classList.add('active'); btn.textContent = "MODO: NAVEGACIÓN"; }
-    if (window.navigator.vibrate) window.navigator.vibrate([10, 30, 10]);
-  }
-</script>
 
 </body>
 </html>
+
