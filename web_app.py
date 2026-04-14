@@ -18,6 +18,15 @@ def log_info():
 def ping():
     return jsonify({'status': 'ok', 'message': 'Tosito Games Backend is running'})
 
+@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({
+        'status': 'online',
+        'version': '3.0.0',
+        'backend': 'python/flask'
+    })
+
 # Cache AI instances by difficulty to avoid reloading the model every request
 ai_cache = {}
 

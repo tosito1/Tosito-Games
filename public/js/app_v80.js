@@ -126,18 +126,28 @@ async function loadUserProfile() {
         username: d.username || '',
         displayName: d.displayName || '',
         isAdmin: d.role === 'admin',
+        status: d.status || 'active',
         friends: d.friends || [],
         solved_puzzles: d.solved_puzzles || [],
         arcade_records: d.arcade_records || {}
       };
     } else {
-      const initialData = { elo: 1200, wins: 0, losses: 0, username: '', role: 'player', friends: [], solved_puzzles: [], uid: currentUser.uid };
+      const initialData = { elo: 1200, wins: 0, losses: 0, username: '', role: 'player', status: 'active', friends: [], solved_puzzles: [], uid: currentUser.uid };
       await db.collection('users').doc(currentUser.uid).set(initialData);
       userProfile = { ...initialData, isAdmin: false };
     }
     await checkLegacyMigration();
     updateLobbyUI();
+    updateAdminVisibility(); // Supreme Command Access
   } catch (e) { console.error("Error loading profile:", e); }
+}
+
+function updateAdminVisibility() {
+  const hubBtn = document.getElementById('hub-admin-link');
+  if (hubBtn) hubBtn.style.display = userProfile.isAdmin ? 'flex' : 'none';
+  
+  const profBtn = document.getElementById('prof-admin-btn');
+  if (profBtn) profBtn.style.display = userProfile.isAdmin ? 'inline-block' : 'none';
 }
 
 
@@ -289,6 +299,14 @@ auth.onAuthStateChanged(async user => {
       hideAppLoader();
 
       await loadUserProfile();
+      
+      // [ADMIN 2.0] Seguridad: Verificar BAN
+      if (userProfile.status === 'banned') {
+        alert("Tu cuenta ha sido suspendida por violar los términos del servicio.");
+        signOut();
+        return;
+      }
+
       updateLobbyUI();
       syncRemoteBackend();
 
@@ -296,6 +314,30 @@ auth.onAuthStateChanged(async user => {
 
       // Module Inits
       if (window.checkRemoteMode) checkRemoteMode();
+
+      // [ADMIN 2.0] Listeners Globales
+      db.collection('globals').doc('broadcast').onSnapshot(doc => {
+        if (doc.exists && doc.data().msg) {
+          const data = doc.data();
+          // Solo mostrar si es un mensaje nuevo (evitar spam al cargar)
+          if (Date.now() - (data.timestamp || 0) < 60000) {
+            toast(`📢 MENSAJE GLOBAL: ${data.msg}`);
+          }
+        }
+      });
+
+      db.collection('globals').doc('system_config').onSnapshot(doc => {
+        if (doc.exists) {
+          const data = doc.data();
+          if (data.maintenance && !userProfile.isAdmin) {
+            alert("SISTEMA EN MANTENIMIENTO: Inténtalo de nuevo en unos minutos.");
+            signOut();
+          }
+          // Update UI if in admin tab
+          const togEx = document.getElementById('tog-maintenance');
+          if (togEx) togEx.checked = !!data.maintenance;
+        }
+      });
     } else {
       // Show Auth login screen
       if (appContainer) appContainer.style.display = 'none';
@@ -355,38 +397,8 @@ function showAuthError(msg) {
 // ============================================================
 //  NAVIGATION
 // ============================================================
-function showScreen(id) {
-  const target = document.getElementById('screen-' + id);
-  if (!isRealEl(target) || target.classList.contains('active')) return;
+// showScreen was defined twice, removing this simpler one to use the GSAP version at line 722 instead.
 
-  const current = document.querySelector('.screen.active');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const navBtn = document.getElementById('nav-' + id);
-  if (navBtn) navBtn.classList.add('active');
-
-  if (typeof gsap !== 'undefined') {
-    if (current) {
-      gsap.to(current, {
-        opacity: 0,
-        scale: 0.95,
-        y: 20,
-        duration: 0.4,
-        ease: "power2.in",
-        onComplete: () => {
-          current.classList.remove('active');
-          target.classList.add('active');
-          gsap.fromTo(target, { opacity: 0, scale: 1.05, y: -20 }, { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "back.out(1.2)" });
-        }
-      });
-    } else {
-      target.classList.add('active');
-      gsap.fromTo(target, { opacity: 0, scale: 1.05 }, { opacity: 1, scale: 1, duration: 0.6 });
-    }
-  } else {
-    if (current) current.classList.remove('active');
-    target.classList.add('active');
-  }
-}
 
 function switchLobbyTab(tabId) {
   const target = document.getElementById(tabId);
@@ -396,6 +408,14 @@ function switchLobbyTab(tabId) {
   document.querySelectorAll('#screen-lobby .tab-btn').forEach(b => {
     b.classList.toggle('active', b.getAttribute('onclick')?.includes(tabId));
   });
+
+  // Admin isolation class
+  document.body.classList.toggle('admin-mode', tabId === 'tab-admin');
+
+  if (tabId === 'tab-admin') {
+    fetchAdminData();
+    renderAuditLogs();
+  }
 
   if (typeof gsap !== 'undefined') {
     if (current) {
@@ -507,9 +527,33 @@ window.showSonicScreen = function () {
   if (typeof closeDrawer === 'function') closeDrawer();
 };
 
+window.showRhythmHeroScreen = function () {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('rhythm-hero-frame');
+  if (iframe) iframe.src = getHubGameUrl('rhythm_hero.html');
+  showScreen('rhythm-hero');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showNeonPianoScreen = function () {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('neon-piano-frame');
+  if (iframe) iframe.src = getHubGameUrl('neon_piano.html');
+  showScreen('neon-piano');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
+window.showBeepBoxScreen = function () {
+  document.body.classList.add('game-mode');
+  const iframe = document.getElementById('beepbox-frame');
+  if (iframe) iframe.src = 'beepbox/index.html';
+  showScreen('beepbox');
+  if (typeof closeDrawer === 'function') closeDrawer();
+};
+
 window.exitHubGame = window.exitGame = function () {
   document.body.classList.remove('game-mode');
-  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame'];
+  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame', 'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame'];
   frames.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.src = 'about:blank';
@@ -736,7 +780,10 @@ function showScreen(id) {
     const tl = gsap.timeline();
 
     if (current) {
-      // Depth Transition Out
+      // Add mode classes to body for CSS isolation
+      document.body.classList.toggle('admin-mode', id === 'lobby');
+      document.body.classList.toggle('hub-mode', id === 'hub' || id === 'arcade');
+
       tl.to(current, {
         opacity: 0,
         scale: 0.9,
@@ -752,19 +799,27 @@ function showScreen(id) {
 
       // Depth Transition In
       const isGameFull = id === 'stack' || id === 'slither';
+      const isInstant = id === 'remote-controller';
+      
       tl.fromTo(target,
-        { opacity: 0, scale: isGameFull ? 1 : 1.1, filter: isGameFull ? "none" : "blur(10px)", y: isGameFull ? 0 : -30 },
+        { 
+          opacity: 0, 
+          scale: (isGameFull || isInstant) ? 1 : 1.1, 
+          filter: (isGameFull || isInstant) ? "none" : "blur(10px)", 
+          y: (isGameFull || isInstant) ? 0 : -30 
+        },
         {
           opacity: 1,
           scale: 1,
           filter: "blur(0px)",
           y: 0,
-          duration: isGameFull ? 0.3 : 0.8,
-          ease: isGameFull ? "power2.out" : "expo.out",
+          duration: (isGameFull || isInstant) ? 0.3 : 0.8,
+          ease: (isGameFull || isInstant) ? "power2.out" : "expo.out",
           onStart: () => {
             target.classList.add('active');
-            if (!isGameFull) window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (!isGameFull && !isInstant) window.scrollTo({ top: 0, behavior: 'smooth' });
           },
+
           onComplete: () => {
             gsap.set(target, { clearProps: "all" });
             if (typeof initJuicyUI === 'function') initJuicyUI();
@@ -786,7 +841,7 @@ function showScreen(id) {
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   if (nav) {
-    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'slither', 'profile'];
+    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'slither', 'profile', 'music-games', 'rhythm-hero', 'neon-piano', 'beepbox'];
     if (hiddenScreens.includes(id)) {
       nav.classList.add('hidden');
       if (typeof syncNavOpen === 'function') syncNavOpen(false);
@@ -1465,8 +1520,17 @@ function closeModal(id) {
 // ============================================================
 //  DRAWER
 // ============================================================
-function openDrawer() { getEl('side-drawer').classList.add('open'); getEl('drawer-overlay').classList.add('show'); }
-function closeDrawer() { getEl('side-drawer').classList.remove('open'); getEl('drawer-overlay').classList.remove('show'); }
+function openDrawer() { getEl('side-drawer').classList.add('open'); getEl('drawer-overlay').classList.add('visible'); }
+function closeDrawer() { getEl('side-drawer').classList.remove('open'); getEl('drawer-overlay').classList.remove('visible'); }
+
+/**
+ * Universal sync for sidebar/nav state.
+ * Fixes ReferenceError in multiple game/view contexts.
+ */
+function syncNavOpen(isOpen) {
+  if (isOpen) openDrawer();
+  else closeDrawer();
+}
 
 // ============================================================
 //  ADMIN CONTROLS (DRAWER)
@@ -1667,29 +1731,182 @@ function importGameJson() { toast('Función en desarrollo 🛠'); }
 //  ADMIN DATA
 // ============================================================
 async function fetchAdminData() {
+  if (!userProfile.isAdmin) return;
   try {
-    const usersSnap = await db.collection('users').get();
+    const searchVal = document.getElementById('admin-user-search')?.value.trim().toLowerCase() || "";
+    
+    // Total stats
+    const usersAllSnap = await db.collection('users').get();
     const roomsSnap = await db.collection('games').where('status', 'in', ['waiting', 'playing']).get();
-    getEl('stat-users').textContent = usersSnap.size;
+    getEl('stat-users').textContent = usersAllSnap.size;
     getEl('stat-rooms').textContent = roomsSnap.size;
+
+    // Filtered user list
+    let usersQuery = db.collection('users').orderBy('elo', 'desc').limit(50);
+    const usersSnap = await usersQuery.get();
+    
     const ul = getEl('admin-user-list');
     if (ul) {
       ul.innerHTML = '';
       usersSnap.forEach(doc => {
         const d = doc.data();
-        ul.innerHTML += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:rgba(255,255,255,.03);border-radius:8px;margin-bottom:6px"><div><div style="font-size:.85rem;font-weight:700">${d.username || d.displayName || d.email || doc.id.substring(0, 8)}</div><div style="font-size:.7rem;color:var(--muted)">${d.role || 'player'} · ELO ${d.elo || 1200}</div></div></div>`;
+        const username = (d.username || '').toLowerCase();
+        const email = (d.email || '').toLowerCase();
+        
+        if (searchVal && !username.includes(searchVal) && !email.includes(searchVal)) return;
+
+        const isAdmin = d.role === 'admin';
+        const isBanned = d.status === 'banned';
+        
+        const card = document.createElement('div');
+        card.className = 'user-row';
+        card.innerHTML = `
+          <div>
+            <div style="font-size:0.9rem; font-weight:900; color:${isBanned ? 'var(--red)' : 'white'}">
+              ${d.username || d.displayName || d.email || 'Anónimo'} 
+              ${isBanned ? '🚫' : ''}
+            </div>
+            <div style="font-size:0.75rem; color:var(--muted)">
+               ROLE: <span style="color:${isAdmin ? 'var(--amber)' : 'var(--sky)'}">${(d.role || 'player').toUpperCase()}</span> · 🏆 ELO ${d.elo || 1200}
+            </div>
+          </div>
+          <div class="admin-actions">
+            <button onclick="changeUserRole('${doc.id}', '${d.role || 'player'}')" class="btn-admin-action warning" title="Cambiar Rango">👑</button>
+            <button onclick="toggleUserBan('${doc.id}', ${isBanned})" class="btn-admin-action danger" title="${isBanned ? 'Desbanear' : 'Banear'}">🚫</button>
+            <button onclick="resetUserStats('${doc.id}')" class="btn-admin-action" title="Reset Stats">🔄</button>
+          </div>
+        `;
+        ul.appendChild(card);
       });
     }
+
+    // Room Monitor
     const rm = getEl('admin-room-monitor');
     if (rm) {
       rm.innerHTML = '';
       roomsSnap.forEach(doc => {
         const d = doc.data();
-        rm.innerHTML += `<div style="padding:8px;background:rgba(255,255,255,.03);border-radius:8px;margin-bottom:6px;font-size:.8rem"><div style="font-weight:700">Sala: ${doc.id} <span class="badge ${d.status === 'playing' ? 'badge-green' : 'badge-red'}">${d.status.toUpperCase()}</span></div><div style="color:var(--muted)">⬜${d.whiteName || d.white || '?'} vs ⬛${d.blackName || d.black || 'Esperando'}</div></div>`;
+        const card = document.createElement('div');
+        card.className = 'room-row';
+        card.innerHTML = `
+          <div class="room-header">
+            <span style="font-weight:900; color:var(--sky)">Sala: ${doc.id.substring(0,8)}</span>
+            <span class="badge ${d.status === 'playing' ? 'badge-green' : 'badge-amber'}">${d.status.toUpperCase()}</span>
+            <button onclick="forceTerminateRoom('${doc.id}')" class="btn-admin-action danger" title="Cerrar Sala">❌</button>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+            <span>⬜ ${d.whiteName || 'Libre'}</span>
+            <span style="color:var(--muted)">VS</span>
+            <span>⬛ ${d.blackName || 'Esperando...'}</span>
+          </div>
+        `;
+        rm.appendChild(card);
       });
     }
-  } catch (e) { console.error("Admin data error:", e); toast('Error al cargar datos admin'); }
+
+    renderAuditLogs();
+  } catch (e) { 
+    console.error("Admin data error:", e); 
+    toast('Error en Dashboard Global: ' + e.message); 
+  }
 }
+
+// ---- NUEVAS FUNCIONES DE ADMINISTRADOR GLOBAL (SUPREME COMMANDER 3.0) ----
+
+async function addAuditLog(action, details) {
+  try {
+    await db.collection('globals').doc('audit_logs').collection('logs').add({
+      admin: userProfile.username || currentUser.email,
+      action: action,
+      details: details,
+      timestamp: Date.now()
+    });
+  } catch (e) { console.error("Audit error:", e); }
+}
+
+window.sendGlobalBroadcast = async function() {
+  const input = document.getElementById('admin-broadcast-msg');
+  const msg = input.value.trim();
+  if (!msg) return;
+  
+  if (!confirm(`¿Enviar este mensaje a TODOS los usuarios conectados?\n\n"${msg}"`)) return;
+  
+  try {
+    await db.collection('globals').doc('broadcast').set({
+      msg: msg,
+      sender: userProfile.username || 'Admin',
+      timestamp: Date.now()
+    });
+    addAuditLog('BROADCAST', msg);
+    input.value = '';
+    toast("✅ Mensaje enviado globalmente");
+  } catch (e) { toast("Error al enviar: " + e.message); }
+};
+
+window.toggleMaintenance = async function() {
+  const isEnabled = document.getElementById('tog-maintenance').checked;
+  if (!confirm(`¿${isEnabled ? 'ACTIVAR' : 'DESACTIVAR'} modo mantenimiento global?`)) {
+    document.getElementById('tog-maintenance').checked = !isEnabled;
+    return;
+  }
+  
+  try {
+    await db.collection('globals').doc('system_config').set({
+      maintenance: isEnabled,
+      updatedAt: Date.now()
+    }, { merge: true });
+    addAuditLog('MAINTENANCE', isEnabled ? 'ACTIVATED' : 'DEACTIVATED');
+    toast(isEnabled ? "🚨 MANTENIMIENTO ACTIVADO" : "✅ SISTEMA ONLINE");
+  } catch (e) { toast("Error: " + e.message); }
+};
+
+window.changeUserRole = async function(uid, currentRole) {
+  const newRole = currentRole === 'admin' ? 'player' : 'admin';
+  if (!confirm(`¿Cambiar rango del usuario a ${newRole.toUpperCase()}?`)) return;
+  
+  try {
+    await db.collection('users').doc(uid).update({ role: newRole });
+    addAuditLog('ROLE_CHANGE', `UID: ${uid} -> ${newRole}`);
+    toast(`Usuario actualizado a ${newRole}`);
+    fetchAdminData();
+  } catch (e) { toast("Error: " + e.message); }
+};
+
+window.toggleUserBan = async function(uid, currentlyBanned) {
+  const newStatus = currentlyBanned ? 'active' : 'banned';
+  if (!confirm(`¿${currentlyBanned ? 'DESBANEAR' : 'BANEAR'} a este usuario?`)) return;
+  
+  try {
+    await db.collection('users').doc(uid).update({ status: newStatus });
+    addAuditLog('BAN_TOGGLE', `UID: ${uid} -> ${newStatus}`);
+    toast(currentlyBanned ? "Usuario perdonado" : "Usuario baneado 🚫");
+    fetchAdminData();
+  } catch (e) { toast("Error: " + e.message); }
+};
+
+window.resetUserStats = async function(uid) {
+  if (!confirm("¿Resetear estadísticas de este usuario? (ELO 1200, 0 victorias)")) return;
+  
+  try {
+    await db.collection('users').doc(uid).update({ 
+      elo: 1200, wins: 0, losses: 0 
+    });
+    addAuditLog('STATS_RESET', `UID: ${uid}`);
+    toast("Estadísticas reseteadas ✓");
+    fetchAdminData();
+  } catch (e) { toast("Error: " + e.message); }
+};
+
+window.forceTerminateRoom = async function(roomId) {
+  if (!confirm("¿Cerrar esta sala a la fuerza?")) return;
+  
+  try {
+    await db.collection('games').doc(roomId).delete();
+    addAuditLog('ROOM_TERMINATE', `ID: ${roomId}`);
+    toast("Sala terminada con éxito");
+    fetchAdminData();
+  } catch (e) { toast("Error: " + e.message); }
+};
 
 // ============================================================
 //  EXERCISES
@@ -3634,11 +3851,13 @@ function refreshInputMethodVisibility() {
 }
 
 class VirtualJoystick {
+
   constructor(containerId) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
     this.thumb = this.container.querySelector('.joystick-thumb');
     this.active = false;
+    this.pointerId = null;
     this.rect = null;
     this.currentKeys = { up: false, down: false, left: false, right: false };
     
@@ -3646,26 +3865,30 @@ class VirtualJoystick {
   }
   
   init() {
-    this.container.addEventListener('touchstart', (e) => this.onStart(e), { passive: false });
-    window.addEventListener('touchmove', (e) => this.onMove(e), { passive: false });
-    window.addEventListener('touchend', () => this.onEnd(), { passive: false });
+    this.container.style.touchAction = 'none'; // Prevent browser scrolling
+    this.container.addEventListener('pointerdown', (e) => this.onStart(e));
+    this.container.addEventListener('pointermove', (e) => this.onMove(e));
+    this.container.addEventListener('pointerup', (e) => this.onEnd(e));
+    this.container.addEventListener('pointercancel', (e) => this.onEnd(e));
   }
   
   onStart(e) {
+    if (this.active) return;
     this.active = true;
+    this.pointerId = e.pointerId;
+    this.container.setPointerCapture(e.pointerId);
     this.rect = this.container.getBoundingClientRect();
     this.onMove(e);
   }
   
   onMove(e) {
-    if (!this.active) return;
-    e.preventDefault();
-    const touch = e.touches[0];
+    if (!this.active || e.pointerId !== this.pointerId) return;
+    
     const centerX = this.rect.left + this.rect.width / 2;
     const centerY = this.rect.top + this.rect.height / 2;
     
-    let deltaX = touch.clientX - centerX;
-    let deltaY = touch.clientY - centerY;
+    let deltaX = e.clientX - centerX;
+    let deltaY = e.clientY - centerY;
     
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     const maxRadius = this.rect.width / 2;
@@ -3681,10 +3904,10 @@ class VirtualJoystick {
       this.thumb.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
     }
     
-    // Key translation setup
+    // Balanced thresholds for Mario 64
     const normX = deltaX / maxRadius;
     const normY = deltaY / maxRadius;
-    const threshold = 0.3;
+    const threshold = 0.35; 
     
     this.updateKeys('ArrowUp', normY < -threshold);
     this.updateKeys('ArrowDown', normY > threshold);
@@ -3692,14 +3915,30 @@ class VirtualJoystick {
     this.updateKeys('ArrowRight', normX > threshold);
   }
   
-  onEnd() {
+  onEnd(e) {
+    if (!this.active || (e && e.pointerId !== this.pointerId)) return;
+    
     this.active = false;
+    if (e && e.pointerId !== null) {
+      try { this.container.releasePointerCapture(e.pointerId); } catch(err) {}
+    }
+    this.pointerId = null;
+    
     if (this.thumb) this.thumb.style.transform = `translate(0px, 0px)`;
     
-    // Stop all directional keys
-    ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].forEach(k => {
-      this.updateKeys(k, false);
-    });
+    // Stop all directional keys immediately
+    const directions = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    directions.forEach(k => this.updateKeys(k, false));
+
+    // Force clear internal tracker
+    this.currentKeys = { up: false, down: false, left: false, right: false };
+
+    // Safety Fallback: Send release again in 50ms to clear network lag "sticky" keys
+    setTimeout(() => {
+        directions.forEach(k => {
+           window.remoteKey(k, false);
+        });
+    }, 50);
   }
   
   updateKeys(key, isPressed) {
@@ -3808,6 +4047,12 @@ function pruneInactiveControllers() {
   Object.keys(_activeControllers).forEach(cid => {
     const ctrl = _activeControllers[cid];
     const isVeryOld = (now - (ctrl.lastSeenLocal || 0)) > cleanupTimeout;
+    const isStuck = (now - (ctrl.lastSeenLocal || 0)) > 3000; // 3s without heartbeat -> panic release
+
+    if (isStuck) {
+        // If we haven't seen a heartbeat in 3s, assume movement might be stuck
+        releaseAllKeys(ctrl.playerSlot);
+    }
 
     if (isVeryOld) {
       console.log(`[📡] Hard Deleting Stale Session: ${ctrl.name} (${cid})`);
@@ -3816,6 +4061,7 @@ function pruneInactiveControllers() {
       changed = true;
     }
   });
+
 
   if (changed) {
     syncPlayerSlots();
@@ -3847,8 +4093,7 @@ function syncPlayerSlots() {
 
 function refreshRemotePlayersPanel() {
   const panel = document.getElementById('host-remote-players-panel');
-  if (!panel) return;
-
+  const modalList = document.getElementById('remote-players-list');
   const now = Date.now();
   const timeout = 30000; 
 
@@ -3859,35 +4104,59 @@ function refreshRemotePlayersPanel() {
     return isRecentlySeen && isOnline;
   });
 
-  if (activeCids.length === 0) {
-    panel.style.display = 'none';
-    return;
+  // 1. Update Hub Sidebar/Panel
+  if (panel) {
+    if (activeCids.length === 0) {
+      panel.style.display = 'none';
+    } else {
+      panel.style.display = 'flex';
+      panel.innerHTML = '';
+      activeCids.forEach(cid => {
+        const ctrl = _activeControllers[cid];
+        const card = document.createElement('div');
+        card.className = 'remote-player-card';
+        const avatars = ['🎮', '🕹️', '👾', '🚀'];
+        const avatar = avatars[(ctrl.playerSlot - 1) % avatars.length];
+        const crown = ctrl.playerSlot === 1 ? '<span style="color:var(--amber);margin-left:5px;">👑</span>' : '';
+        card.innerHTML = `
+          <div class="remote-player-avatar">${avatar}</div>
+          <div class="remote-player-info">
+            <div class="remote-player-name">${ctrl.name}${crown}</div>
+            <div class="remote-player-status">EN LÍNEA</div>
+          </div>
+        `;
+        panel.appendChild(card);
+      });
+    }
   }
 
-  panel.style.display = 'flex';
-  panel.innerHTML = ''; 
-
-  activeCids.forEach(cid => {
-    const ctrl = _activeControllers[cid];
-    const card = document.createElement('div');
-    card.className = 'remote-player-card';
-
-    const avatars = ['🎮', '🕹️', '👾', '🚀'];
-    const avatar = avatars[(ctrl.playerSlot - 1) % avatars.length];
-
-    const crown = ctrl.playerSlot === 1 ? '<span style="color:var(--amber);margin-left:5px;">👑</span>' : '';
-
-    card.innerHTML = `
-      <div class="remote-player-avatar">${avatar}</div>
-      <div class="remote-player-info">
-        <div class="remote-player-name">${ctrl.name}${crown}</div>
-        <div class="remote-player-status">EN LÍNEA</div>
-      </div>
-    `;
-
-    panel.appendChild(card);
-  });
+  // 2. Update QR Modal List
+  if (modalList) {
+    if (activeCids.length === 0) {
+      modalList.innerHTML = '<div style="color:rgba(255,255,255,0.2); font-style:italic; font-size:0.75rem;">Ningún mando detectado aún...</div>';
+    } else {
+      modalList.innerHTML = '';
+      activeCids.sort((a,b) => _activeControllers[a].playerSlot - _activeControllers[b].playerSlot).forEach(cid => {
+        const ctrl = _activeControllers[cid];
+        const tag = document.createElement('div');
+        tag.style.cssText = `
+          display: flex; align-items: center; justify-content: space-between;
+          background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2);
+          padding: 8px 12px; border-radius: 10px; color: white; font-size: 0.8rem;
+        `;
+        tag.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="background:var(--sky); color:#020617; font-weight:900; padding:2px 6px; border-radius:4px; font-size:0.6rem;">P${ctrl.playerSlot}</span>
+            <span style="font-weight:700;">${ctrl.name}</span>
+          </div>
+          <span style="color:var(--green); font-size:0.6rem; font-weight:900;">● ONLINE</span>
+        `;
+        modalList.appendChild(tag);
+      });
+    }
+  }
 }
+
 
 function initRemoteListener() {
   if (_remoteUnsub) return;
@@ -3977,60 +4246,193 @@ window.addEventListener('mousemove', (e) => {
 function simulateRemoteKey(key, isDown, playerSlot = 1) {
   if (isDown) activateRemoteConsoleMode();
 
-  // Base Mapping for Emulator-friendly keys
-  const baseMap = {
-    'l': 'q', 'r': 'e', 'z': ' ' // L, R, Z triggers
+  const keyCodeMap = {
+    'ArrowUp': 38, 'ArrowDown': 40, 'ArrowLeft': 37, 'ArrowRight': 39,
+    'Enter': 13, 'Escape': 27, ' ': 32, 'Control': 17, 'Shift': 16, 'Alt': 18,
+    'a': 65, 'b': 66, 'c': 67, 'd': 68, 'e': 69, 'f': 70, 'g': 71, 'h': 72, 'i': 73, 'j': 74, 
+    'k': 75, 'l': 76, 'm': 77, 'n': 78, 'o': 79, 'p': 80, 'q': 81, 'r': 82, 's': 83, 't': 84, 
+    'u': 85, 'v': 86, 'w': 87, 'x': 88, 'y': 89, 'z': 90,
+    '0': 48, '1': 49, '2': 50, '3': 51, '4': 52, '5': 53, '6': 54, '7': 55, '8': 56, '9': 57
   };
-  let effectiveKey = baseMap[key] || key;
-
-  // Player Mapping
-  let targetKey = effectiveKey;
-  if (playerSlot === 2) {
-    const p2Map = {
-      'ArrowUp': 'w', 'ArrowDown': 's', 'ArrowLeft': 'a', 'ArrowRight': 'd',
-      'Enter': 'q', 'Escape': 'e', ' ': 'f', 'x': 'r', 'l': '1', 'r': '2', 'z': '3'
-    };
-    targetKey = p2Map[effectiveKey] || effectiveKey;
-  } else if (playerSlot === 3) {
-    const p3Map = {
-      'ArrowUp': 'i', 'ArrowDown': 'k', 'ArrowLeft': 'j', 'ArrowRight': 'l',
-      'Enter': 'u', 'Escape': 'o', ' ': 'h', 'x': 'y', 'l': '4', 'r': '5', 'z': '6'
-    };
-    targetKey = p3Map[effectiveKey] || effectiveKey;
-  } else if (playerSlot === 4) {
-    const p4Map = {
-      'ArrowUp': '8', 'ArrowDown': '5', 'ArrowLeft': '4', 'ArrowRight': '6',
-      'Enter': '7', 'Escape': '9', ' ': '0', 'x': 'v', 'l': '7', 'r': '9', 'z': '8'
-    };
-    targetKey = p4Map[effectiveKey] || effectiveKey;
-  }
-
-  const hub = document.getElementById('screen-hub');
-  const isHubActive = hub && hub.style.display !== 'none';
-
-  if (isHubActive && isDown && playerSlot === 1) { // Only P1 navigates hub
-    if (targetKey.startsWith('Arrow')) {
-      handleHubRemoteNavigation(targetKey);
-      return;
-    }
-    if (targetKey === 'Enter') {
-      triggerFocusedCard();
-      return;
-    }
-  }
+  
+  // Physical Code Names (Required for React/Cyber Stack compatibility)
+  const codeDescriptionMap = {
+    'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown', 'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight',
+    'Enter': 'Enter', 'Escape': 'Escape', ' ': 'Space', 'Control': 'ControlLeft', 'Shift': 'ShiftLeft',
+    'x': 'KeyX', 'z': 'KeyZ', 'y': 'KeyY', 'a': 'KeyA', 's': 'KeyS', 'q': 'KeyQ', 'w': 'KeyW', 'd': 'KeyD',
+    'e': 'KeyE', 'r': 'KeyR', 'f': 'KeyF', 'h': 'KeyH', 'u': 'KeyU', 'i': 'KeyI', 'j': 'KeyJ', 'k': 'KeyK', 'l': 'KeyL',
+    'b': 'KeyB', 'c': 'KeyC', 'ShiftRight': 'ShiftRight'
+  };
 
   const type = isDown ? 'keydown' : 'keyup';
-  const event = new KeyboardEvent(type, { key: targetKey, bubbles: true, code: targetKey });
-  document.dispatchEvent(event);
-  document.querySelectorAll('iframe').forEach(f => {
-    try {
-      if (f.contentWindow) {
-        f.contentWindow.document.dispatchEvent(new KeyboardEvent(type, { key: targetKey, bubbles: true }));
-        f.contentWindow.dispatchEvent(new KeyboardEvent(type, { key: targetKey, bubbles: true }));
-      }
-    } catch (e) { }
+
+
+
+  // Base Mapping
+  let targetKeys = [key]; // Most inputs are 1:1
+
+  // Master Universal Command Profile (Player 1)
+  if (playerSlot === 1) {
+    const universalMap = {
+      'x': ['x'],                        // X Button (Bottom-B) -> JUMP ONLY (Fixes Ground Pound)
+      'z': ['z', 'c'],                   // A Button (Right-A) -> PUNCH
+      'y': [' ', 'y', 'a'],               // Y Button (Left-Y)  -> CROUCH / Special
+      'b': ['b', 'Shift', 'Backspace'],  // B Button (Top-X)   -> Extra
+      ' ': [' ', 'z', 'Shift'],          // Generic B Button 
+      'l': [' ', 'q', '1', '['],         // L Trigger -> Alternate CROUCH
+      'r': ['e', '2', ']'],              // R Trigger
+      'Enter': ['Enter', 'x'],           // OK / Start
+      'Escape': ['Escape', 'a']          // Back / Select
+    };
+
+
+    if (universalMap[key]) {
+      targetKeys = universalMap[key];
+    }
+  }
+
+  // C-STICK MODE (Transform Arrows to WASD for 3D Camera/Control)
+  if (window._cStickMode && key.startsWith('Arrow')) {
+      const cStickMap = { 'ArrowUp':'w', 'ArrowDown':'s', 'ArrowLeft':'a', 'ArrowRight':'d' };
+      targetKeys = [cStickMap[key]];
+  }
+
+
+
+
+  // Handle Player Multi-Slot Mappings
+  if (playerSlot === 2) {
+    const p2Map = { 'ArrowUp':'w','ArrowDown':'s','ArrowLeft':'a','ArrowRight':'d','Enter':'q','Escape':'e',' ':'f','x':'r' };
+    targetKeys = [p2Map[key] || key];
+  } else if (playerSlot === 3) {
+    const p3Map = { 'ArrowUp':'i','ArrowDown':'k','ArrowLeft':'j','ArrowRight':'l','Enter':'u','Escape':'o',' ':'h','x':'y' };
+    targetKeys = [p3Map[key] || key];
+  } else if (playerSlot === 4) {
+    const p4Map = { 'ArrowUp':'8','ArrowDown':'5','ArrowLeft':'4','ArrowRight':'6','Enter':'7','Escape':'9',' ':'0','x':'v' };
+    targetKeys = [p4Map[key] || key];
+  }
+
+  // HUB NAVIGATION (P1 ONLY)
+  const hub = document.getElementById('screen-hub');
+  // FIX: Use classList because showScreen toggles .active, not .style.display
+  const isHubActive = hub && hub.classList.contains('active');
+  
+  if (isHubActive && isDown && playerSlot === 1) {
+    const firstKey = targetKeys[0];
+    if (firstKey.startsWith('Arrow')) { handleHubRemoteNavigation(firstKey); return; }
+    if (firstKey === 'Enter') { triggerFocusedCard(); return; }
+  }
+
+  // IFRAME MENU NAVIGATION 
+  // We navigate the menu BUT we DO NOT return, so the key also reaches the game.
+  if (!isHubActive && isDown && playerSlot === 1) {
+    const firstKey = targetKeys[0];
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(firstKey)) {
+        handleIframeMenuNavigation(firstKey); 
+    }
+  }
+
+
+  // DISPATCH TO ALL TARGETS
+
+  targetKeys.forEach(tKey => {
+    const kCode = keyCodeMap[tKey] || 0;
+    const eventData = {
+      key: tKey,
+      code: tKey,
+      keyCode: kCode,
+      which: kCode,
+      bubbles: true,
+      cancelable: true,
+      view: window
+    };
+
+    const dispatch = (target) => {
+      try {
+        const win = target.defaultView || target.contentWindow || (target.ownerDocument ? target.ownerDocument.defaultView : window);
+        const Constructor = win.KeyboardEvent || KeyboardEvent;
+        const finalCode = codeDescriptionMap[tKey] || tKey;
+        
+        target.dispatchEvent(new Constructor(type, {
+            ...eventData,
+            code: finalCode,
+            view: win
+        }));
+      } catch (e) {}
+    };
+
+
+    // 1. Dispatch to main window/document
+    dispatch(window);
+    dispatch(document);
+
+    // 2. Dispatch to all iframes
+    document.querySelectorAll('iframe').forEach(f => {
+      try {
+        if (f.contentWindow) {
+          // Focus the iframe on first interaction
+          if (isDown && document.activeElement !== f) f.focus();
+          
+          dispatch(f.contentWindow);
+          dispatch(f.contentWindow.document);
+
+          // Deep Dispatch: Send directly to the focused element or the main game canvas
+          const innerDoc = f.contentWindow.document;
+          if (innerDoc.activeElement) dispatch(innerDoc.activeElement);
+          
+          const gameCanvas = innerDoc.querySelector('canvas') || innerDoc.querySelector('#canvas') || innerDoc.body;
+          if (isDown && gameCanvas) {
+              gameCanvas.focus();
+              dispatch(gameCanvas);
+          }
+        }
+      } catch (e) {}
+    });
+
   });
 }
+
+/**
+ * Visual Focus Highlighter
+ * Injects CSS into the active game iframe to show which button is selected by the remote.
+ */
+function injectRemoteHighlighter(iframe) {
+    try {
+        const doc = iframe.contentWindow.document;
+        if (doc.getElementById('remote-focus-style')) return;
+
+        const style = doc.createElement('style');
+        style.id = 'remote-focus-style';
+        style.textContent = `
+            :focus, .remote-focus-highlight {
+                outline: 4px solid #00f2ff !important;
+                outline-offset: 2px !important;
+                box-shadow: 0 0 20px #00f2ff, inset 0 0 10px #00f2ff !important;
+                transition: all 0.2s ease-out !important;
+                z-index: 999999 !important;
+                position: relative !important;
+            }
+        `;
+        doc.head.appendChild(style);
+    } catch (e) {}
+}
+
+// Ensure highlighters are injected when iframes load
+document.addEventListener('DOMContentLoaded', () => {
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach(m => {
+            m.addedNodes.forEach(node => {
+                if (node.tagName === 'IFRAME') {
+                    node.addEventListener('load', () => injectRemoteHighlighter(node));
+                }
+            });
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // Also check existing ones
+    document.querySelectorAll('iframe').forEach(f => injectRemoteHighlighter(f));
+});
+
 
 function handleHubRemoteNavigation(key) {
   const cards = Array.from(document.querySelectorAll('.hub-card'));
@@ -4052,9 +4454,56 @@ function handleHubRemoteNavigation(key) {
 }
 
 function triggerFocusedCard() {
+  // Try hub card first
   const card = document.querySelector('.hub-card.remote-focus');
-  if (card) card.click();
+  if (card) {
+      card.click();
+      return;
+  }
+
+  // Try iframe focused element
+  const activeIframe = document.querySelector('.screen.active iframe');
+  if (activeIframe && activeIframe.contentWindow) {
+      try {
+          const innerDoc = activeIframe.contentWindow.document;
+          if (innerDoc.activeElement && typeof innerDoc.activeElement.click === 'function') {
+              innerDoc.activeElement.click();
+          }
+      } catch (e) {}
+  }
 }
+
+/**
+ * Universal Menu Bridge: Moves focus between buttons inside an iframe game menu.
+ */
+function handleIframeMenuNavigation(key) {
+  const activeIframe = document.querySelector('.screen.active iframe');
+  if (!activeIframe || !activeIframe.contentWindow) return false;
+
+  try {
+    const innerDoc = activeIframe.contentWindow.document;
+    const focusables = Array.from(innerDoc.querySelectorAll('button:not([disabled]), a, input, [tabindex="0"]'));
+    if (focusables.length === 0) return false;
+
+    let currentIndex = focusables.indexOf(innerDoc.activeElement);
+    
+    if (key === 'ArrowDown' || key === 'ArrowRight') {
+      currentIndex = (currentIndex + 1) % focusables.length;
+    } else if (key === 'ArrowUp' || key === 'ArrowLeft') {
+      currentIndex = (currentIndex - 1 + focusables.length) % focusables.length;
+    }
+
+    focusables[currentIndex].focus();
+    // Add visual feedback (optional)
+    if (focusables[currentIndex].scrollIntoView) {
+        focusables[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 
 window.remoteKey = function (key, isDown) {
   const uid = window._remoteTargetUid;
@@ -4092,15 +4541,262 @@ window.remoteKey = function (key, isDown) {
 window.addEventListener('load', () => {
   checkRemoteMode();
   checkBackendHealth();
-  setInterval(checkBackendHealth, 45000); // Check every 45s
+  setInterval(checkBackendHealth, 45000); 
   
-  // Heartbeat & Pruning Initialization
   new VirtualJoystick('gaming-joystick');
   new VirtualJoystick('pro-joystick');
   refreshInputMethodVisibility();
   
-  // Pruning task (Host only, but safe to run)
+  // Initialize Supreme Commander 3.0 Hub
+  initHubCMS(); 
+
   setInterval(pruneInactiveControllers, 10000); 
 });
 
 
+// ============================================================
+//  SUPREME COMMANDER 3.0: HUB CMS & ANALYTICS
+// ============================================================
+let _hubItems = [];
+let _hubUnsub = null;
+
+function initHubCMS() {
+  if (_hubUnsub) return;
+  console.log("[🛠️] Initializing Dynamic Hub CMS...");
+  
+  _hubUnsub = db.collection('globals').doc('hub_content').collection('items').onSnapshot(snap => {
+    if (snap.empty && userProfile.isAdmin) {
+       console.log("[⚡] Hub collection empty. Triggering Auto-Seed...");
+       autoSeedHub();
+    }
+    _hubItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderHub();
+    renderCMSEditor();
+  }, err => console.error("CMS Error:", err));
+
+  // Health Probe
+  setInterval(checkSystemHealth, 30000);
+  checkSystemHealth();
+}
+
+function renderHub() {
+  const grids = {
+    strategy: document.getElementById('grid-strategy'),
+    arcade: document.getElementById('grid-arcade'),
+    puzzles: document.getElementById('grid-puzzles'),
+    retro: document.getElementById('grid-retro'),
+    music: document.getElementById('grid-music')
+  };
+
+  // Clear grids
+  Object.values(grids).forEach(g => { if(g) g.innerHTML = ''; });
+
+  const sorted = [..._hubItems].sort((a, b) => (a.order || 99) - (b.order || 99));
+
+  sorted.forEach(item => {
+    if (!item.visible && !userProfile.isAdmin) return; // Hide unless admin
+
+    const grid = grids[item.section || 'arcade'];
+    if (!grid) return;
+
+    const card = document.createElement('div');
+    card.className = `hub-card btn-juicy ${!item.visible ? 'admin-hidden-card' : ''}`;
+    if (item.id) card.id = `hub-card-${item.id}`;
+    
+    // Custom styles
+    if (item.color) card.style.borderColor = item.color;
+
+    const glowStyle = item.color ? `background:radial-gradient(circle at center, ${item.color}, transparent 70%); opacity:0.3;` : '';
+
+    card.onclick = () => {
+        try { eval(item.action); } catch(e) { console.error("Action error:", e); }
+    };
+
+    card.innerHTML = `
+      <div class="card-glow" style="${glowStyle}"></div>
+      <span class="card-emoji">${item.emoji || '🎮'}</span>
+      <h3 class="card-name">${item.title}</h3>
+      <p class="card-desc">${item.desc || ''}</p>
+      <button class="card-action" style="${item.color ? 'background:'+item.color+'; color:white;' : ''}">¡Jugar Ahora! →</button>
+      ${!item.visible ? '<div class="admin-only-tag">Oculto para usuarios</div>' : ''}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ---- ANALYTICS & HEALTH ----
+
+async function checkSystemHealth() {
+  const dot = document.getElementById('admin-health-dot');
+  const lbl = document.getElementById('admin-health-lbl');
+  if (!dot || !lbl) return;
+
+  try {
+    const start = Date.now();
+    // Probe checkBackendHealth already exists but we want a more visual one for 3.0
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const port = 5001;
+    
+    const target = isLocal ? `${protocol}//${host}:${port}/api/health` : (remoteBackendUrl ? `${remoteBackendUrl}/api/health` : null);
+    
+    if (!target) throw new Error("No backend configured");
+
+    const res = await fetch(target, { method: 'GET', mode: 'cors' });
+    const latency = Date.now() - start;
+
+    if (res.ok) {
+       dot.style.background = 'var(--green)';
+       lbl.textContent = `SISTEMA ONLINE (${latency}ms)`;
+       lbl.style.color = 'var(--green)';
+    } else {
+       throw new Error("HTTP Error");
+    }
+  } catch (e) {
+    dot.style.background = 'var(--red)';
+    lbl.textContent = 'SERVER OFFLINE';
+    lbl.style.color = 'var(--red)';
+  }
+}
+
+async function autoSeedHub() {
+  // First, cleanup non-game items from the hub
+  try { await db.collection('globals').doc('hub_content').collection('items').doc('remote').delete(); } catch(e){}
+
+  const items = [
+    // --- ESTRATEGIA Y TABLERO ---
+    { id:'chess', section:'strategy', title:'Ajedrez Pro', emoji:'♟️', desc:'Contra la IA, resuelve puzzles y compite...', action:"showScreen('lobby')", color:'', order:1, visible:true },
+    { id:'ttt', section:'strategy', title:'Tres en Raya', emoji:'❌⭕', desc:'Rápido y letal Contra la IA...', action:'showTTTScreen()', color:'', order:2, visible:true },
+    { id:'damas', section:'strategy', title:'Las Damas', emoji:'🔴', desc:'El clásico juego de estrategia español...', action:'showCheckersScreen()', color:'', order:3, visible:true },
+    
+    // --- ARCADE Y ACCIÓN ---
+    { id:'slither', section:'arcade', title:'Slither Neo', emoji:'🐍', desc:'Consume energía y domina la arena global...', action:'showSlitherScreen()', color:'var(--indigo)', order:1, visible:true },
+    { id:'anomalia', section:'arcade', title:'Anomalía', emoji:'🛸', desc:'Shooter arcade evolutivo de alta intensidad...', action:'showAnomaliaScreen()', color:'#ef4444', order:2, visible:true },
+    { id:'stack', section:'arcade', title:'Cyber Stack', emoji:'🧱', desc:'Desafío de equilibrio 3D con bloques de neón...', action:'showStackScreen()', color:'', order:3, visible:true },
+    { id:'turbo', section:'arcade', title:'Neon Drifter', emoji:'🏎️', desc:'Carreras arcade de alta velocidad con derrapes...', action:'showTurboDriftScreen()', color:'var(--sky)', order:4, visible:true },
+    { id:'hexa', section:'arcade', title:'Hexa Falls', emoji:'💠', desc:'Puzzles geométricos en caída libre multijugador...', action:'showHexaFallsScreen()', color:'var(--purple)', order:5, visible:true },
+    
+    // --- PUZZLES Y LÓGICA ---
+    { id:'match3', section:'puzzles', title:'Match 3', emoji:'💎', desc:'Combina gemas y genera explosiones de puntos...', action:"showLogicGame('match3')", color:'#ec4899', order:1, visible:true },
+    { id:'memory', section:'puzzles', title:'Mind Flip', emoji:'🧠', desc:'Desafía tu memoria visual con cartas mágicas...', action:"showLogicGame('memory')", color:'#818cf8', order:2, visible:true },
+    { id:'pipes', section:'puzzles', title:'Tuberías', emoji:'🔧', desc:'Conecta el flujo de energía antes de que se agote...', action:"showLogicGame('pipes')", color:'#22d3ee', order:3, visible:true },
+    { id:'2048', section:'puzzles', title:'2048 Mastery', emoji:'🔢', desc:'Suma baldosas hasta alcanzar la mítica cifra...', action:"showLogicGame('2048')", color:'#fb923c', order:4, visible:true },
+    { id:'wordle', section:'puzzles', title:'Word Quest', emoji:'📝', desc:'Adivina la palabra oculta en 6 intentos...', action:"showLogicGame('wordle')", color:'#f59e0b', order:5, visible:true },
+    { id:'sudoku', section:'puzzles', title:'Zen Sudoku', emoji:'🧩', desc:'Relaja tu mente con desafíos de lógica pura...', action:"showLogicGame('sudoku')", color:'#3b82f6', order:6, visible:true },
+    
+    // --- NINTENDO RETRO ---
+    { id:'mario64', section:'retro', title:'Super Mario 64', emoji:'🍄', desc:'El clásico revolucionario en 3D de Nintendo...', action:'showMario64Screen()', color:'#E60012', order:1, visible:true },
+    { id:'sonic', section:'retro', title:'Sonic Mega Collection', emoji:'🦔', desc:'Gotta go fast! Clásicos de 16 bits...', action:'showSonicScreen()', color:'#005DC3', order:2, visible:true },
+    
+    // --- MÚSICA Y RITMO ---
+    { id:'ritmo', section:'music', title:'Rhythm Hero', emoji:'🎸', desc:'Desafía tus reflejos al compás de la música...', action:'showRhythmHeroScreen()', color:'#f472b6', order:1, visible:true },
+    { id:'piano', section:'music', title:'Neon Piano', emoji:'🎹', desc:'Toca las baldosas al ritmo de piezas modernas...', action:'showNeonPianoScreen()', color:'var(--sky)', order:2, visible:true },
+    { id:'beepbox', section:'music', title:'BeepBox Lab', emoji:'🎼', desc:'Estudio de creación musical de 8 bits interactivo...', action:'showBeepBoxScreen()', color:'var(--amber)', order:3, visible:true }
+  ];
+  for (const item of items) {
+    await db.collection('globals').doc('hub_content').collection('items').doc(item.id).set(item);
+  }
+  addAuditLog('CMS_RECONSTRUCTION', `Restored full catalog: ${items.length} games deployed.`);
+  toast("Hub reconstruido satisfactoriamente ✅");
+}
+
+function drawActivityChart() {
+  const svg = document.getElementById('svg-activity');
+  if (!svg) return;
+  
+  const data = [12, 45, 23, 67, 89, 43, 21, 56, 78, 90, 110, 85, 60, 40, 30, 25, 15, 10, 5, 8, 12, 18, 25, 30];
+  const max = Math.max(...data);
+  const width = svg.clientWidth || 400;
+  const height = 80;
+  
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * 100;
+    const y = 100 - (v / max) * 80;
+    return `${x},${y}`;
+  }).join(' ');
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="grad-chart" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--sky)" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="var(--sky)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polyline fill="none" stroke="var(--sky)" stroke-width="2" points="${points}" style="vector-effect: non-scaling-stroke;"/>
+    <polygon fill="url(#grad-chart)" points="0,100 ${points} 100,100" style="vector-effect: non-scaling-stroke;"/>
+  `;
+}
+
+// ---- CMS EDITOR ----
+
+
+function renderCMSEditor() {
+    const container = document.getElementById('admin-hub-cms-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const sorted = [..._hubItems].sort((a,b) => (a.order||99) - (b.order||99));
+
+    sorted.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'cms-item-card';
+        card.innerHTML = `
+            <div class="cms-item-header">
+                <span style="font-weight:900;">${item.emoji} ${item.title}</span>
+                <label class="switch">
+                    <input type="checkbox" ${item.visible ? 'checked' : ''} onchange="toggleHubItemVisibility('${item.id}', ${item.visible})">
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+            <div style="font-size:0.6rem; color:var(--muted);">${item.desc.substring(0, 40)}...</div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+window.toggleHubItemVisibility = async function(id, currentVisible) {
+    try {
+        await db.collection('globals').doc('hub_content').collection('items').doc(id).update({
+            visible: !currentVisible
+        });
+        addAuditLog('CMS_TOGGLE', `${id} -> ${!currentVisible}`);
+        toast(id + " actualizado");
+    } catch(e) { toast("Error CMS: " + e.message); }
+}
+
+async function addAuditLog(action, details) {
+    if (!currentUser) return;
+    try {
+        await db.collection('globals').doc('audit_logs').collection('logs').add({
+            admin: userProfile.displayName || currentUser.email,
+            action: action,
+            details: details,
+            timestamp: Date.now()
+        });
+        renderAuditLogs();
+    } catch(e) { console.error("Log error:", e); }
+}
+
+async function renderAuditLogs() {
+    const list = document.getElementById('admin-audit-logs');
+    if (!list) return;
+    try {
+        const snap = await db.collection('globals').doc('audit_logs').collection('logs').orderBy('timestamp', 'desc').limit(15).get();
+        if (snap.empty) {
+            list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--muted); font-size:0.7rem;">No hay registros de actividad todavía.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        snap.forEach(doc => {
+            const d = doc.data();
+            const time = new Date(d.timestamp).toLocaleTimeString();
+            const log = document.createElement('div');
+            log.style.cssText = "font-size:0.65rem; padding:6px; border-bottom:1px solid rgba(255,255,255,0.05); color:var(--muted);";
+            log.innerHTML = `<span style="color:var(--sky); font-weight:700;">[${time}]</span> <span style="color:white;">${d.admin || 'System'}</span>: ${d.action} <span style="font-style:italic;">(${d.details})</span>`;
+            list.appendChild(log);
+        });
+    } catch(e) {
+        list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--red); font-size:0.7rem;">Error cargando logs.</div>';
+    }
+}

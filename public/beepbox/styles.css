@@ -1,0 +1,185 @@
+/* Full-viewport iframe with safe area handling for mobile */
+:root {
+  --bg: #111;
+}
+
+html,body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+}
+
+body {
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 100vh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing: border-box;
+}
+
+/* iframe fills the entire viewport */
+#siteFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: white;
+}
+
+/* Simple fallback notice if iframe is blocked by browser policies */
+#blockedNotice {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-size: 13px;
+  border-radius: 8px;
+  display: none;
+  z-index: 9999;
+}
+
+/* Bottom-right credit note */
+#creditNote {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10000;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-size: 12px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+  opacity: 0.9;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* subtle hover/focus affordance */
+#creditNote:hover,
+#creditNote:focus {
+  transform: translateY(-2px);
+  background: rgba(0,0,0,0.65);
+  opacity: 1;
+  outline: none;
+}
+
+/* --- BASES ESPECTACULARES SIDEBAR --- */
+#basesSidebar {
+  position: fixed;
+  top: 80px;
+  right: -260px; /* Hidden by default (matches width) */
+  width: 260px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: none;
+  border-top-left-radius: 24px;
+  border-bottom-left-radius: 24px;
+  z-index: 10001;
+  padding: 24px;
+  transition: right 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: -10px 0 50px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#basesSidebar.open {
+  right: 0;
+}
+
+#basesToggle {
+  position: absolute;
+  left: -50px;
+  top: 20px;
+  width: 50px;
+  height: 50px;
+  background: rgba(56, 189, 248, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: none;
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  color: #020617;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -5px 0 15px rgba(56, 189, 248, 0.4);
+  font-size: 24px;
+  transition: all 0.3s;
+}
+
+#basesToggle:hover {
+  background: #fff;
+  width: 60px;
+  left: -60px;
+}
+
+#basesSidebar h2 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #38bdf8;
+  margin: 0 0 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.base-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.base-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  transform: translateX(-4px);
+}
+
+.base-btn .name {
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.base-btn .desc {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Genre specific accents */
+.base-btn[data-genre="synthwave"] { border-left: 4px solid #ff00ff; }
+.base-btn[data-genre="8bit"] { border-left: 4px solid #00ffaa; }
+.base-btn[data-genre="lofi"] { border-left: 4px solid #8b5cf6; }
+.base-btn[data-genre="trap"] { border-left: 4px solid #ef4444; }
+.base-btn[data-genre="orchestra"] { border-left: 4px solid #f59e0b; }
+
+@font-face {
+  font-family: 'Outfit';
+  src: url('https://fonts.googleapis.com/css2?family=Outfit:wght@900&display=swap');
+}

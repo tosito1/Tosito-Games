@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Piano - Tosito Games</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #020617;
+            --sky: #38BDF8;
+            --pink: #f472b6;
+            --purple: #818CF8;
+            --green: #10B981;
+            --red: #EF4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background: var(--bg); color: white;
+            font-family: 'Orbitron', sans-serif;
+            user-select: none; touch-action: none;
+        }
+
+        #game-container {
+            position: relative; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        canvas {
+            display: block; width: 100%; height: 100%;
+            background: #000;
+        }
+
+        .ui-layer {
+            position: absolute; inset: 0; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .hud {
+            width: 100%; padding: 20px; display: flex; justify-content: space-between;
+            align-items: center; z-index: 10;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+        }
+
+        .score-box { text-align: center; width: 100%; }
+        .score-val { font-size: 3.5rem; font-weight: 900; color: var(--sky); text-shadow: 0 0 20px rgba(56,189,248,0.5); }
+
+        /* Menu / Game Over */
+        .overlay {
+            position: absolute; inset: 0; z-index: 100;
+            background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(20px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 2rem; text-align: center; padding: 2rem;
+        }
+
+        .logo { font-size: 3.5rem; font-weight: 900; color: var(--sky); letter-spacing: -2px; }
+        .btn-start {
+            padding: 1.2rem 3rem; border-radius: 99px; background: var(--sky); color: #000;
+            border: none; font-weight: 900; font-size: 1.2rem; cursor: pointer;
+            transition: all 0.3s; pointer-events: auto;
+        }
+        .btn-start:hover { transform: scale(1.1); box-shadow: 0 0 30px var(--sky); }
+
+        .exit-btn {
+            position: absolute; top: 20px; left: 20px;
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; pointer-events: auto; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; z-index: 200;
+        }
+
+        #game-over { display: none; }
+        .final-score { font-size: 4rem; font-weight: 900; color: white; margin: 1rem 0; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="canvas"></canvas>
+
+        <div class="ui-layer">
+            <button class="exit-btn" onclick="exitGame()">🏠</button>
+
+            <div class="hud">
+                <div class="score-box">
+                    <div class="score-val" id="score">0</div>
+                </div>
+            </div>
+
+            <!-- Start Menu -->
+            <div id="menu" class="overlay">
+                <h1 class="logo">NEON<br>PIANO</h1>
+                <p style="color:var(--sky); letter-spacing: 2px;">TOCA LAS TECLAS DE NEÓN</p>
+                <button class="btn-start" onclick="startGame()">INICIAR</button>
+            </div>
+
+            <!-- Game Over -->
+            <div id="game-over" class="overlay">
+                <h1 style="color:var(--red)">¡GAME OVER!</h1>
+                <div>
+                    <p style="font-size: 0.8rem; color: var(--muted);">PUNTUACIÓN FINAL</p>
+                    <div class="final-score" id="final-score">0</div>
+                </div>
+                <button class="btn-start" onclick="resetGame()">REINTENTAR</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const menu = document.getElementById('menu');
+        const gameOverEl = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score');
+
+        let width, height;
+        let score = 0;
+        let isStarted = false;
+        let isGameOver = false;
+        let speed = 5;
+        let tiles = [];
+        let lanes = 4;
+        let tileWidth, tileHeight;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            tileWidth = width / lanes;
+            tileHeight = height / 4;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Tile {
+            constructor(lane, y) {
+                this.lane = lane;
+                this.y = y;
+                this.hit = false;
+                this.color = '#38BDF8';
+            }
+
+            draw() {
+                const x = this.lane * tileWidth;
+                
+                ctx.save();
+                if (this.hit) {
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+                    ctx.fillRect(x, this.y, tileWidth, tileHeight);
+                } else {
+                    // Neon effect
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = this.color;
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(x + 2, this.y + 2, tileWidth - 4, tileHeight - 4);
+                    
+                    // Inner glow
+                    ctx.strokeStyle = "white";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x + 10, this.y + 10, tileWidth - 20, tileHeight - 20);
+                }
+                ctx.restore();
+            }
+
+            update() {
+                this.y += speed;
+                if (this.y > height && !this.hit) {
+                    gameOver();
+                }
+            }
+        }
+
+        function createInitialTiles() {
+            tiles = [];
+            for (let i = 1; i <= 5; i++) {
+                const lane = Math.floor(Math.random() * lanes);
+                tiles.push(new Tile(lane, -i * tileHeight));
+            }
+        }
+
+        function spawnTile() {
+            const lane = Math.floor(Math.random() * lanes);
+            const lastY = tiles.length > 0 ? tiles[tiles.length - 1].y : 0;
+            tiles.push(new Tile(lane, lastY - tileHeight));
+        }
+
+        function handleInput(clientX, clientY) {
+            if (!isStarted || isGameOver) return;
+
+            const lane = Math.floor(clientX / tileWidth);
+            
+            // Find the lowest unhit tile
+            let targetTile = null;
+            let lowestY = -Infinity;
+
+            for (let tile of tiles) {
+                if (!tile.hit && tile.y > lowestY) {
+                    lowestY = tile.y;
+                    targetTile = tile;
+                }
+            }
+
+            if (targetTile && targetTile.lane === lane && clientY > targetTile.y && clientY < targetTile.y + tileHeight) {
+                targetTile.hit = true;
+                score++;
+                scoreEl.textContent = score;
+                speed += 0.05;
+                spawnTile();
+                
+                // Play a simple "piano" sound (visual feedback for now)
+                gsap.fromTo(scoreEl, { scale: 1.2 }, { scale: 1, duration: 0.2 });
+            } else {
+                gameOver();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => handleInput(e.clientX, e.clientY));
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            handleInput(touch.clientX, touch.clientY);
+        });
+
+        function gameOver() {
+            if (isGameOver) return;
+            isGameOver = true;
+            finalScoreEl.textContent = score;
+            gameOverEl.style.display = 'flex';
+            
+            // Save score to parent
+            if (window.parent && window.parent.saveArcadeScore) {
+                window.parent.saveArcadeScore('neon-piano', score);
+            }
+        }
+
+        function loop() {
+            if (!isStarted || isGameOver) return;
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw lanes
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            for (let i = 1; i < lanes; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * tileWidth, 0);
+                ctx.lineTo(i * tileWidth, height);
+                ctx.stroke();
+            }
+
+            // Update and draw tiles
+            for (let i = tiles.length - 1; i >= 0; i--) {
+                const tile = tiles[i];
+                tile.update();
+                tile.draw();
+
+                if (tile.y > height) {
+                    tiles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        function startGame() {
+            menu.style.display = 'none';
+            isStarted = true;
+            createInitialTiles();
+            requestAnimationFrame(loop);
+        }
+
+        function resetGame() {
+            score = 0;
+            speed = 5;
+            isGameOver = false;
+            scoreEl.textContent = "0";
+            gameOverEl.style.display = 'none';
+            createInitialTiles();
+        }
+
+        function exitGame() {
+            if (window.parent && window.parent.exitHubGame) {
+                window.parent.exitHubGame();
+            } else {
+                window.history.back();
+            }
+        }
+
+    </script>
+</body>
+</html>

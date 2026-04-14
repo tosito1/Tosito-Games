@@ -246,7 +246,7 @@
             }, []);
 
             useEffect(() => {
-                if (!user || !db) return;
+                if (!user || !db || typeof user.uid !== 'string') return;
                 const fetchPersonalScore = async () => {
                     try {
                         const docRef = doc(db, 'cyberstack_stats', user.uid);
@@ -255,6 +255,7 @@
                     } catch (error) { console.error("Score fetch error:", error); }
                 };
                 fetchPersonalScore();
+
 
                 const leaderboardRef = collection(db, 'cyberstack_leaderboard');
                 const unsubscribe = onSnapshot(leaderboardRef, (snapshot) => {
@@ -280,7 +281,8 @@
             };
 
             const saveScoreSingle = useCallback(async (finalScore) => {
-                if (!user || !db || finalScore <= 0 || gameMode.includes('LOCAL_MULTI')) return;
+                if (!user || !db || typeof user.uid !== 'string' || finalScore <= 0 || gameMode.includes('LOCAL_MULTI')) return;
+
                 
                 // NOTIFICAR AL PADRE (Plataforma)
                 try {
@@ -825,9 +827,12 @@
                                     <div className="space-y-3">
                                         {leaderboard.map((entry, idx) => (
                                             <div key={entry.id} className="flex justify-between items-center text-xs">
-                                                <span className="text-slate-400 uppercase tracking-tighter">{idx + 1}. {entry.uid === user?.uid ? 'Tú' : entry.uid.slice(0,6)}</span>
+                                                <span className="text-slate-400 uppercase tracking-tighter">
+                                                    {idx + 1}. {entry.uid === user?.uid ? 'Tú' : (entry.uid ? entry.uid.slice(0,6) : 'Invonito')}
+                                                </span>
                                                 <span className="font-bold text-white">{entry.score}</span>
                                             </div>
+
                                         ))}
                                     </div>
                                 </div>

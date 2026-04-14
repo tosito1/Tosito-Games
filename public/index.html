@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/img/tosito_games_logo.png">
 <style>
   /* FORCED FULLSCREEN FOR GAME MICRO-APPS */
-  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls, #screen-anomalia, #screen-turbo-drift, #screen-mario64, #screen-sonic {
+  #screen-stack, #screen-slither, #screen-logicmaster, #screen-hexa-falls, #screen-anomalia, #screen-turbo-drift, #screen-mario64, #screen-sonic, #screen-rhythm-hero, #screen-neon-piano, #screen-beepbox {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
@@ -35,7 +35,21 @@
     max-width: none !important;
     margin: 0 !important;
   }
-  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active, #screen-anomalia.active, #screen-turbo-drift.active {
+
+  /* Admin Mode: Hide Navigation Sidebar and Center Content */
+  body.admin-mode #bottom-nav,
+  body.admin-mode #floating-remote-btn {
+    display: none !important;
+  }
+  body.admin-mode #app-container {
+    padding-left: 0 !important;
+  }
+  body.admin-mode #screen-lobby {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  #screen-stack.active, #screen-slither.active, #screen-logicmaster.active, #screen-hexa-falls.active, #screen-anomalia.active, #screen-turbo-drift.active, #screen-rhythm-hero.active, #screen-neon-piano.active, #screen-beepbox.active {
     display: block !important;
   }
 </style>
@@ -293,7 +307,7 @@ body.nav-open #app-container {
 .badge-sky    { background: rgba(56,189,248,.13); color: var(--sky); border: 1px solid rgba(56,189,248,.3); }
 .badge-green  { background: rgba(16,185,129,.13); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
 .badge-red    { background: rgba(239,68,68,.13); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
-.badge-amber  { background: rgba(251,191,36,.13); color: var(--amber); border: 1px solid rgba(251,191,36,.3); }
+.badge-amber  { background: rgba(251, 191, 36, 0.2); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.4); }
 
 /* ============================================================
    COMMON LAYOUT HELPERS
@@ -1074,7 +1088,8 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 }
 
 .controller-layout { display: none; width: 100%; flex: 1; align-items: center; justify-content: center; }
-.controller-layout.active { display: flex !important; animation: t-fadeIn 0.4s ease; }
+.controller-layout.active { display: flex !important; }
+
 
 /* DPAD & RING FIXED CIRCLES */
 .nav-ring, .dpad-container {
@@ -1189,10 +1204,12 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
   box-shadow: 0 6px 15px rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center;
 }
-.btn-y { left: 0; top: 50%; transform: translateY(-50%); background: #2563eb; color: white; } /* Blue */
-.btn-x { top: 0; left: 50%; transform: translateX(-50%); background: #9333ea; color: white; } /* Purple */
-.btn-a { right: 0; top: 50%; transform: translateY(-50%); background: var(--green); color: #000; } /* Green */
-.btn-b { bottom: 0; left: 50%; transform: translateX(-50%); background: var(--red); color: white; } /* Red */
+.btn-y { left: 0; top: 50%; transform: translateY(-50%); background: #2563eb; color: white; } /* Blue - Left */
+.btn-b { bottom: 0; left: 50%; transform: translateX(-50%); background: var(--red); color: white; } /* Red - Bottom */
+.btn-a { right: 0; top: 50%; transform: translateY(-50%); background: var(--green); color: #000; } /* Green - Right */
+.btn-x { top: 0; left: 50%; transform: translateX(-50%); background: #9333ea; color: white; } /* Purple - Top */
+
+
 
 /* Shoulders */
 .pro-btn-shoulder { 
@@ -1364,6 +1381,36 @@ body.game-mode #floating-remote-btn { display: flex; }
 }
 .btn-header-remote:hover { background: rgba(56,189,248,0.1); border-color: var(--sky); transform: translateY(-2px); }
 
+/* ADMIN QUICK ACTIONS */
+.admin-actions { display: flex; gap: 6px; }
+.btn-admin-action {
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05); color: white;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-admin-action:hover { transform: scale(1.1); filter: brightness(1.3); }
+.btn-admin-action.danger:hover { background: var(--red); border-color: var(--red); color: white; }
+.btn-admin-action.warning:hover { background: var(--amber); border-color: var(--amber); color: black; }
+.btn-admin-action.success:hover { background: var(--green); border-color: var(--green); color: black; }
+
+.user-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;
+  margin-bottom: 8px; transition: all 0.3s;
+}
+.user-row:hover { background: rgba(255,255,255,0.06); border-color: rgba(56,189,248,0.2); }
+
+.room-row {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; background: rgba(255,255,255,0.03);
+  border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 8px;
+}
+.room-header { display: flex; justify-content: space-between; align-items: center; }
+
 </style>
 
 </head>
@@ -1444,8 +1491,8 @@ body.game-mode #floating-remote-btn { display: flex; }
   <button class="nav-btn" onclick="showScreen('social')" id="nav-social">
     <span class="icon">👥</span>SOCIAL
   </button>
-  <button class="nav-btn" onclick="openRemoteModal()" id="nav-remote">
-    <span class="icon">📡</span>ENLACE MANDO
+  <button class="nav-btn" onclick="showScreen('music-games')" id="nav-music-games">
+    <span class="icon">🎵</span>MÚSICA
   </button>
   <a href="https://drive.google.com/file/d/1tdaixmzbIuKbwp2s6U5TgPasxLrG7bdj/view?usp=sharing"
      target="_blank" class="nav-btn" id="nav-download">
@@ -1467,7 +1514,17 @@ body.game-mode #floating-remote-btn { display: flex; }
     <header class="hub-header">
       <div class="header-brand">TOSITO GAMES</div>
       <div class="header-actions">
-        <button class="btn-header-remote" onclick="openRemoteModal()" title="Vincular Mando Móvil">📡</button>
+        <!-- New Admin Command Access (Only for Admins) -->
+        <button id="hub-admin-link" class="btn btn-glass" onclick="showScreen('lobby'); switchLobbyTab('tab-admin')" style="display:none; width:auto; padding:0 15px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:var(--amber); font-weight:900; gap:8px;">
+          <span>🛰️</span>
+          <span style="font-size:0.75rem; letter-spacing:0.5px;">PANEL DE MANDO</span>
+        </button>
+
+        <button class="btn-header-remote" onclick="openRemoteModal()" title="Vincular Mando Móvil" style="display:flex; align-items:center; gap:8px; width:auto; padding:0 15px; background:rgba(56,189,248,0.1); border:1px solid var(--border-hi);">
+          <span>📡</span>
+          <span style="font-size:0.75rem; font-weight:900; letter-spacing:0.5px;">VINCULAR MANDO</span>
+        </button>
+
         <div class="header-user" onclick="showScreen('profile')">
           <span style="font-size:1.1rem">👤</span>
           <span id="hub-header-username" class="header-user-name">Perfil</span>
@@ -1481,181 +1538,86 @@ body.game-mode #floating-remote-btn { display: flex; }
       <p class="hero-sub">Tu plataforma de juegos de mesa. Desafía a la IA, compite con amigos y domina cada tablero.</p>
     </div>
 
-    <!-- SECCIÓN: ESTRATEGIA Y TABLERO -->
+    <!-- HUB CONTENT: DYNAMIC SECTIONS -->
+    <!-- 01 ESTRATEGIA -->
     <div class="hub-section-container">
       <h4 class="hub-section-title"><span>01</span> Estrategia y Tablero</h4>
-      <div class="hub-games-grid">
-        <!-- Ajedrez Pro -->
-        <div class="hub-card btn-juicy card-chess" onclick="showScreen('lobby')" id="hub-card-chess">
-          <div class="card-glow"></div>
-          <span class="card-emoji">♟️</span>
-          <h3 class="card-name">Ajedrez Pro</h3>
-          <p class="card-desc">Juega contra la IA, resuelve puzzles tácticos, explora aperturas y compite online. El tablero definitivo.</p>
-          <button class="card-action">Entrar al Lobby →</button>
-        </div>
-
-        <!-- Tres en Raya -->
-        <div class="hub-card btn-juicy card-ttt" onclick="showTTTScreen()" id="hub-card-ttt">
-          <div class="card-glow"></div>
-          <span class="card-emoji">❌⭕</span>
-          <h3 class="card-name">Tres en Raya</h3>
-          <p class="card-desc">Rápido, letal e icónico. Juega Tic-Tac-Toe contra la IA con animaciones fluidas y estrategia pura.</p>
-          <button class="card-action">Jugar Ahora →</button>
-        </div>
-
-        <!-- Las Damas -->
-        <div class="hub-card btn-juicy card-damas" onclick="showCheckersScreen()" id="hub-card-damas">
-          <div class="card-glow"></div>
-          <span class="card-emoji">🔴</span>
-          <h3 class="card-name">Las Damas</h3>
-          <p class="card-desc">El clásico juego de estrategia con reglamento oficial español. Vence capturando o bloqueando a la IA.</p>
-          <button class="card-action">Jugar Ahora →</button>
-        </div>
+      <div id="grid-strategy" class="hub-games-grid">
+        <div class="hub-loading">Sincronizando tablero...</div>
       </div>
     </div>
 
-    <!-- SECCIÓN: ARCADE Y ACCIÓN -->
+    <!-- 02 ARCADE -->
     <div class="hub-section-container">
       <h4 class="hub-section-title"><span style="color:var(--indigo)">02</span> Arcade y Acción</h4>
-      <div class="hub-games-grid">
-        <!-- Cyber Stack -->
-        <div class="hub-card btn-juicy card-stack" onclick="showStackScreen()" id="hub-card-stack">
-          <div class="card-glow"></div>
-          <span class="card-emoji">🧱</span>
-          <h3 class="card-name">Cyber Stack</h3>
-          <p class="card-desc">Desafío de equilibrio 3D. Apila bloques de neón, mantén la precisión y escala hasta las nubes.</p>
-          <button class="card-action">¡Construir! →</button>
-        </div>
-
-        <!-- Slither Neo -->
-        <div class="hub-card btn-juicy card-slither" onclick="showSlitherScreen()" id="hub-card-slither">
-          <div class="card-glow" style="background:radial-gradient(circle at center, var(--indigo), transparent 70%);"></div>
-          <span class="card-emoji">🐍</span>
-          <h3 class="card-name">Slither Neo</h3>
-          <p class="card-desc">Evolución multijugador. Consume energía, domina la arena global y conviértete en el depredador alfa del vacío.</p>
-          <button class="card-action" style="background:var(--indigo); color:white;">Entrar al Vacío →</button>
-        </div>
-
-        <!-- Hexa Falls -->
-        <div class="hub-card btn-juicy card-hexafalls" onclick="showHexaFallsScreen()" id="hub-card-hexafalls">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #f472b6, transparent 70%);"></div>
-          <span class="card-emoji">🏃‍♂️</span>
-          <h3 class="card-name">Hexa Falls</h3>
-          <p class="card-desc">Acción multijugador frenética. Esquiva obstáculos, sobrevive a la lava y sé el último frijol en pie.</p>
-          <button class="card-action" style="background:#f472b6; color:white;">¡Correr! →</button>
-        </div>
-
-        <!-- Anomalía (Shooter) -->
-        <div class="hub-card btn-juicy card-anomalia" onclick="showAnomaliaScreen()" id="hub-card-anomalia">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #ef4444, transparent 70%);"></div>
-          <span class="card-emoji">🛸</span>
-          <h3 class="card-name">Anomalía</h3>
-          <p class="card-desc">Shooter arcade de alta intensidad. Sobrevive a oleadas infinitas, recolecta XP y evoluciona tu nave.</p>
-          <button class="card-action" style="background:#ef4444; color:white;">¡Batallar! →</button>
-        </div>
-
-        <!-- Turbo Drift -->
-        <div class="hub-card btn-juicy card-turbo-drift" onclick="showTurboDriftScreen()" id="hub-card-turbo-drift">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #10b981, transparent 70%);"></div>
-          <span class="card-emoji">🏎️</span>
-          <h3 class="card-name">Turbo Drift</h3>
-          <p class="card-desc">Simulador de drift retro. Domina las curvas, quema goma y consigue la mejor puntuación en pista.</p>
-          <button class="card-action" style="background:#10b981; color:white;">¡Conducir! →</button>
-        </div>
+      <div id="grid-arcade" class="hub-games-grid">
+         <div class="hub-loading">Iniciando motores arcade...</div>
       </div>
     </div>
 
-    <!-- SECCIÓN: PUZZLES Y LÓGICA -->
+    <!-- 03 PUZZLES -->
     <div class="hub-section-container">
       <h4 class="hub-section-title"><span style="color:var(--purple)">03</span> Puzzles y Lógica</h4>
-      <div class="hub-games-grid">
-        <!-- Gem Match Pro -->
-        <div class="hub-card btn-juicy card-puzzle-match" onclick="showLogicGame('match3')" id="hub-card-match3">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #ec4899, transparent 70%);"></div>
-          <span class="card-emoji">💎</span>
-          <h3 class="card-name">Gem Match Pro</h3>
-          <p class="card-desc">Explosiones de neón y cascadas infinitas. Consigue la puntuación objetivo para subir de nivel.</p>
-          <button class="card-action" style="background:#ec4899; color:white;">Combinar →</button>
-        </div>
-
-        <!-- Logic Flow -->
-        <div class="hub-card btn-juicy card-puzzle-pipes" onclick="showLogicGame('pipes')" id="hub-card-pipes">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #06b6d4, transparent 70%);"></div>
-          <span class="card-emoji">🔌</span>
-          <h3 class="card-name">Logic Flow</h3>
-          <p class="card-desc">Conecta los circuitos rotando las piezas. Laberintos de energía con dificultad escalable.</p>
-          <button class="card-action" style="background:#06b6d4; color:white;">Conectar →</button>
-        </div>
-
-        <!-- Mind Flip -->
-        <div class="hub-card btn-juicy card-puzzle-memory" onclick="showLogicGame('memory')" id="hub-card-memory">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #6366f1, transparent 70%);"></div>
-          <span class="card-emoji">🧠</span>
-          <h3 class="card-name">Mind Flip</h3>
-          <p class="card-desc">Entrena tu memoria con parejas de neón en un entorno 3D de alta fidelidad.</p>
-          <button class="card-action" style="background:#6366f1; color:white;">Memorizar →</button>
-        </div>
-
-        <!-- 2048 Ultra -->
-        <div class="hub-card btn-juicy card-puzzle-2048" onclick="showLogicGame('2048')" id="hub-card-2048">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #f97316, transparent 70%);"></div>
-          <span class="card-emoji">🔢</span>
-          <h3 class="card-name">2048 Ultra</h3>
-          <p class="card-desc">Desliza y combina baldosas de neón hasta alcanzar la meta. Dificultad escalable por nivel.</p>
-          <button class="card-action" style="background:#f97316; color:white;">Combinar →</button>
-        </div>
-
-        <!-- Word Quest (Wordle) -->
-        <div class="hub-card btn-juicy card-puzzle-wordle" onclick="showLogicGame('wordle')" id="hub-card-wordle">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #f59e0b, transparent 70%);"></div>
-          <span class="card-emoji">📝</span>
-          <h3 class="card-name">Word Quest</h3>
-          <p class="card-desc">Adivina la palabra oculta en 6 intentos. Desafío léxico con palabras de longitud variable.</p>
-          <button class="card-action" style="background:#f59e0b; color:white;">Adivinar →</button>
-        </div>
-
-        <!-- Zen Sudoku -->
-        <div class="hub-card btn-juicy card-puzzle-sudoku" onclick="showLogicGame('sudoku')" id="hub-card-sudoku">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #3b82f6, transparent 70%);"></div>
-          <span class="card-emoji">🧩</span>
-          <h3 class="card-name">Zen Sudoku</h3>
-          <p class="card-desc">Relaja tu mente con desafíos de lógica pura. Menos pistas iniciales a medida que avanzas.</p>
-          <button class="card-action" style="background:#3b82f6; color:white;">Resolver →</button>
-        </div>
+      <div id="grid-puzzles" class="hub-games-grid">
+         <div class="hub-loading">Cargando desafíos...</div>
       </div>
     </div>
 
-    <!-- SECCIÓN: NINTENDO RETRO -->
+    <!-- 04 RETRO -->
     <div class="hub-section-container">
       <h4 class="hub-section-title"><span style="color:#E60012">04</span> Nintendo Retro</h4>
-      <div class="hub-games-grid">
-        <!-- Super Mario 64 -->
-        <div class="hub-card btn-juicy card-mario" onclick="showMario64Screen()" id="hub-card-mario">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #E60012, transparent 70%);"></div>
-          <span class="card-emoji">🍄</span>
-          <h3 class="card-name" style="color:#E60012">Super Mario 64</h3>
-          <p class="card-desc">El clásico revolucionario en 3D. Explora el castillo de Peach y recupera las estrellas de poder.</p>
-          <button class="card-action" style="background:#E60012; color:white;">¡Jugar Ahora! →</button>
-        </div>
+      <div id="grid-retro" class="hub-games-grid">
+         <div class="hub-loading">Rebobinando cartuchos...</div>
+      </div>
+    </div>
 
-        <!-- Sonic Mega Classic Collection -->
-        <div class="hub-card btn-juicy card-sonic" onclick="showSonicScreen()" id="hub-card-sonic">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #005DC3, transparent 70%);"></div>
-          <span class="card-emoji">🦔</span>
-          <h3 class="card-name" style="color:#005DC3">Sonic Mega Collection</h3>
-          <p class="card-desc">Gotta go fast! Una colección masiva de los clásicos de 16 bits y hacks legendarios del erizo.</p>
-          <button class="card-action" style="background:#005DC3; color:white;">¡Correr! →</button>
-        </div>
+    <!-- 05 MUSICAL -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span style="color:var(--sky)">05</span> Música y Ritmo</h4>
+      <div id="grid-music" class="hub-games-grid">
+         <div class="hub-loading">Afinando instrumentos...</div>
+      </div>
+    </div>
+  </div>
 
-        <!-- Legend of Tosito -->
-        <div class="hub-card btn-juicy card-retro-legend" id="hub-card-retro-legend">
-          <div class="card-glow" style="background:radial-gradient(circle at center, #ca8a04, transparent 70%);"></div>
-          <span class="card-emoji">⚔️</span>
-          <h3 class="card-name" style="color:#ca8a04">The Legend of Tosito</h3>
-          <p class="card-desc">Una épica aventura de 8 bits. Explora mazmorras, encuentra artefactos y forja tu destino.</p>
-          <div class="badge-coming">Próximamente</div>
-          <button class="card-action" style="background:#ca8a04; color:white; opacity:0.6; cursor:not-allowed;">Aventurarse →</button>
-        </div>
+  <!-- ======================================================
+       MUSIC GAMES HUB
+       ====================================================== -->
+  <div id="screen-music-games" class="screen" style="padding-top:2rem;">
+    <div class="section-header">
+      <div>
+        <h2 class="section-title">Música y Ritmo</h2>
+        <p class="section-sub">Pon a prueba tus reflejos y oído musical.</p>
+      </div>
+      <button class="btn btn-glass" onclick="showScreen('hub')" style="width:auto; padding:10px 20px;">🏠 Hub Principal</button>
+    </div>
+
+    <div class="hub-games-grid" style="margin-top:2rem;">
+      <!-- Rhythm Hero Card -->
+      <div class="hub-card btn-juicy card-rhythm" onclick="showRhythmHeroScreen()">
+        <div class="card-glow" style="background:#f472b6; opacity:0.2;"></div>
+        <span class="card-emoji">🎸</span>
+        <h3 class="card-name" style="color:#f472b6">Rhythm Hero</h3>
+        <p class="card-desc">Juego de ritmo clásico. Sigue las notas al compás de la música.</p>
+        <button class="card-action" style="background:#f472b6; color:white;">¡Rockear! →</button>
+      </div>
+
+      <!-- Neon Piano Card -->
+      <div class="hub-card btn-juicy card-piano" onclick="showNeonPianoScreen()">
+        <div class="card-glow" style="background:var(--sky); opacity:0.2;"></div>
+        <span class="card-emoji">🎹</span>
+        <h3 class="card-name" style="color:var(--sky)">Neon Piano</h3>
+        <p class="card-desc">Toca las baldosas de neón. Precisión y velocidad extrema.</p>
+        <button class="card-action" style="background:var(--sky); color:#020617;">🎹 Tocar →</button>
+      </div>
+
+      <!-- BeepBox Card -->
+      <div class="hub-card btn-juicy card-beepbox" onclick="showBeepBoxScreen()">
+        <div class="card-glow" style="background:var(--amber); opacity:0.2;"></div>
+        <span class="card-emoji">🎷</span>
+        <h3 class="card-name" style="color:var(--amber)">BeepBox Studio</h3>
+        <p class="card-desc">Editor de música chiptune. Crea bandas sonoras retro para tus juegos.</p>
+        <button class="card-action" style="background:var(--amber); color:#000;">🎨 Abrir Editor →</button>
       </div>
     </div>
   </div>
@@ -1703,6 +1665,21 @@ body.game-mode #floating-remote-btn { display: flex; }
   <!-- Turbo Drift -->
   <div id="screen-turbo-drift" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
     <iframe id="turbo-drift-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- Rhythm Hero -->
+  <div id="screen-rhythm-hero" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#000 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="rhythm-hero-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- Neon Piano -->
+  <div id="screen-neon-piano" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#000 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="neon-piano-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
+  <!-- BeepBox -->
+  <div id="screen-beepbox" class="screen" style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#000 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="beepbox-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
 
@@ -1859,6 +1836,7 @@ body.game-mode #floating-remote-btn { display: flex; }
       <button class="tab-btn active" onclick="switchLobbyTab('tab-ia')">Bot IA</button>
       <button class="tab-btn" onclick="switchLobbyTab('tab-online')">Multijugador</button>
       <button class="tab-btn" onclick="switchLobbyTab('tab-history')">Historial</button>
+      <button class="tab-btn admin-only" id="tab-btn-admin" style="display:none;" onclick="switchLobbyTab('tab-admin')">🛰️ Mando</button>
     </div>
 
     <!-- IA TAB -->
@@ -1924,8 +1902,24 @@ body.game-mode #floating-remote-btn { display: flex; }
     <!-- ADMIN TAB -->
     <div id="tab-admin" class="tab-pane">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-        <h3 style="color:var(--amber);font-size:1.3rem;">Panel de Administración</h3>
-        <button onclick="fetchAdminData()" class="btn btn-glass" style="width:auto;padding:10px 18px;">🔄 Refrescar</button>
+        <div>
+          <h3 style="color:var(--amber);font-size:1.3rem; margin-bottom:5px;">Supreme Command Center</h3>
+          <div style="display:flex; align-items:center; gap:10px; font-size:0.7rem;">
+             <span id="admin-health-dot" style="width:8px; height:8px; border-radius:50%; background:var(--red);"></span>
+             <span id="admin-health-lbl">SERVER OFFLINE</span>
+             <span style="color:var(--muted)">·</span>
+             <span style="color:var(--sky)">V3.0 COMMANDER</span>
+          </div>
+        </div>
+        <button onclick="fetchAdminData()" class="btn btn-glass" style="width:auto;padding:10px 18px;">🔄 Refrescar Todo</button>
+      </div>
+
+      <!-- ANALYTICS DASHBOARD -->
+      <div class="glass-panel" style="margin-bottom:14px; border-color:rgba(56,189,248,0.3);">
+        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--sky);text-transform:uppercase; letter-spacing:1px;">📊 Actividad de Usuarios (24h)</h4>
+        <div style="height:80px; width:100%; position:relative;" id="admin-activity-chart">
+           <svg width="100%" height="100%" preserveAspectRatio="none" id="svg-activity"></svg>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:2rem;">
         <div class="glass-panel" style="text-align:center;">
@@ -1943,18 +1937,58 @@ body.game-mode #floating-remote-btn { display: flex; }
           <button onclick="migrateOpeningsToFirestore()" class="btn btn-glass" style="border-color:var(--amber);color:var(--amber);">💾 Migrar Aperturas</button>
           <button onclick="migrateExercisesToFirestore()" class="btn btn-glass" style="border-color:var(--purple);color:var(--purple);">💾 Migrar Ejercicios</button>
           <button id="btn-migrate-hist" onclick="migrateHistoricalToFirestore()" class="btn btn-glass" style="border-color:var(--sky);color:var(--sky);">🏆 Migrar Histórico</button>
-          <button onclick="importManyPuzzlesFromLichess()" class="btn btn-glass" style="border-color:var(--amber);color:var(--amber);">🎲 Lichess 50+</button>
+          <button onclick="autoSeedHub()" class="btn btn-primary" style="background:var(--sky); color:black; border:none; font-weight:800;">🚀 RE-CARGAR HUB CMS</button>
           <button onclick="db.collection('puzzles').get().then(s=>toast('Puzzles: '+s.size))" class="btn btn-glass">📊 Info Puzzles</button>
           <button onclick="db.collection('users').get().then(s=>toast('Usuarios: '+s.size))" class="btn btn-glass">👤 Info Usuarios</button>
         </div>
       </div>
-      <div class="glass-panel" style="margin-bottom:14px;">
-        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--muted);text-transform:uppercase;">Monitor en Vivo</h4>
-        <div id="admin-room-monitor" class="list-grid"></div>
+      <!-- SISTEMA DE BROADCAST GLOBAL -->
+      <div class="glass-panel" style="margin-bottom:14px; border-color:var(--sky);">
+        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--sky);text-transform:uppercase;">📣 Megáfono Global</h4>
+        <div style="display:flex; gap:10px;">
+          <input type="text" id="admin-broadcast-msg" class="input" placeholder="Escribe un mensaje para todos..." style="flex:1;">
+          <button onclick="sendGlobalBroadcast()" class="btn btn-primary" style="width:auto; padding:0 25px; background:var(--sky); color:black;">Enviar a Todos</button>
+        </div>
       </div>
-      <div class="glass-panel">
-        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--muted);text-transform:uppercase;">Directorio de Usuarios</h4>
+
+      <!-- ESTADO DEL SISTEMA -->
+      <div class="glass-panel" style="margin-bottom:14px; border-color:var(--red);">
+        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--red);text-transform:uppercase;">⚙️ Estado del Sistema</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px; background:rgba(255,0,0,0.05); border-radius:12px; border:1px solid rgba(239,68,68,0.2);">
+            <span style="font-size:0.8rem; font-weight:700;">Modo Mantenimiento</span>
+            <label class="switch"><input type="checkbox" id="tog-maintenance" onchange="toggleMaintenance()"><span class="switch-slider"></span></label>
+          </div>
+          <button onclick="db.collection('globals').doc('system').set({clear_rooms: Date.now()}, {merge:true}); toast('Petición de purga enviada');" class="btn btn-glass" style="border-color:var(--red); color:var(--red);">🧹 Purgar Salas Viejas</button>
+        </div>
+      </div>
+
+      <!-- MÓDULO: GESTIÓN DE HUB (CMS) -->
+      <div class="glass-panel" style="margin-bottom:14px; border-color:var(--amber);">
+        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--amber);text-transform:uppercase; letter-spacing:1px;">🎮 Gestor de Contenido (Hub CMS)</h4>
+        <div id="admin-hub-cms-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
+           <div class="hub-loading" style="font-size:0.7rem; color:var(--muted);">Cargando juegos...</div>
+        </div>
+      </div>
+
+      <!-- MÓDULO: EXPLORADOR DE USUARIOS 2.0 -->
+      <div class="glass-panel" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+           <h4 style="font-size:.85rem;color:var(--muted);text-transform:uppercase;">👥 Explorador de Usuarios</h4>
+           <div style="display:flex; gap:8px;">
+              <input type="text" id="admin-user-search" class="input" placeholder="Buscar por @usuario o email..." style="width:200px; font-size:0.75rem;">
+              <button onclick="fetchAdminData()" class="btn btn-glass" style="width:auto; padding:0 12px;">🔍</button>
+           </div>
+        </div>
         <div id="admin-user-list" class="list-grid"></div>
+      </div>
+
+      <!-- MÓDULO: REGISTRO DE AUDITORÍA (AUDIT LOGS) -->
+      <div class="glass-panel" style="margin-bottom:14px; border-color:var(--sky);">
+        <h4 style="margin-bottom:1rem;font-size:.85rem;color:var(--sky);text-transform:uppercase; letter-spacing:1px;">📜 Registro de Auditoría (Audit Logs)</h4>
+        <div id="admin-audit-logs" style="max-height:200px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:12px; font-family:monospace;">
+           <div style="padding:1rem; text-align:center; color:var(--muted); font-size:0.7rem;">Cargando historial de mando...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2188,6 +2222,7 @@ body.game-mode #floating-remote-btn { display: flex; }
       <h2 id="profile-name" style="font-size:2.5rem;font-family:'Orbitron',sans-serif;font-weight:900;margin-bottom:6px;">--</h2>
       <div style="display:flex;align-items:center;gap:12px;justify-content:center;">
         <span id="profile-user-display" style="color:var(--sky);font-size:1.1rem;font-weight:700;cursor:pointer;" onclick="startEditUser()"></span>
+        <input id="profile-user-input" class="input" style="display:none; width:180px; text-align:center; height:32px; font-size:1rem;" onblur="saveUsername()" onkeydown="if(event.key==='Enter') saveUsername()">
         <button id="prof-admin-btn" class="badge badge-amber" style="display:none; cursor:pointer;" onclick="showScreen('lobby');switchLobbyTab('tab-admin')">ADMIN 👑</button>
       </div>
       <p id="profile-email" style="color:var(--muted);font-size:.88rem;margin-top:10px;"></p>
@@ -3345,10 +3380,18 @@ document.addEventListener('DOMContentLoaded', () => {
       <img id="remote-qr" src="" alt="QR Code" style="width:180px; height:180px;">
     </div>
 
+    <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:12px; font-size:0.8rem; text-align:left; margin-bottom:1rem;">
+      <p style="color:var(--muted); margin-bottom:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; font-size:0.7rem;">Mando(s) Conectado(s):</p>
+      <div id="remote-players-list" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="color:rgba(255,255,255,0.3); font-style:italic; font-size:0.75rem;">Ningún mando detectado aún...</div>
+      </div>
+    </div>
+
     <div style="background:rgba(255,255,255,0.05); padding:1rem; border-radius:12px; font-size:0.8rem; text-align:left;">
       <p style="color:var(--muted); margin-bottom:8px; font-weight:700;">Enlace Manual:</p>
       <a id="remote-debug-link" href="#" target="_blank" style="color:var(--sky); word-break:break-all; font-family:monospace; font-size:0.7rem;">---</a>
     </div>
+
     
     <button class="btn btn-primary" onclick="closeRemoteModal()" style="margin-top:1.5rem; width:100%; padding:15px; font-weight:900;">LISTO</button>
   </div>
@@ -3395,42 +3438,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="nav-ring">
 
-          <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
-          <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
-          <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
-          <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
-          <button class="ring-btn btn-ok" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">OK</button>
+          <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)" ontouchcancel="remoteKey('ArrowUp', false)">▲</button>
+          <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)" ontouchcancel="remoteKey('ArrowDown', false)">▼</button>
+          <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)" ontouchcancel="remoteKey('ArrowLeft', false)">◀</button>
+          <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)" ontouchcancel="remoteKey('ArrowRight', false)">▶</button>
+          <button class="ring-btn btn-ok" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)" ontouchcancel="remoteKey('Enter', false)">OK</button>
+
         </div>
         <div style="margin-top:3rem; display:flex; gap:20px;">
-          <button class="btn btn-glass" style="width:90px; height:50px; border-radius:100px; border-color:var(--red); color:var(--red);" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">VOLVER</button>
+          <button class="btn btn-glass" style="width:90px; height:50px; border-radius:100px; border-color:var(--red); color:var(--red);" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)" ontouchcancel="remoteKey('Escape', false)">VOLVER</button>
+
         </div>
       </div>
 
       <div id="layout-gaming" class="controller-layout gaming-ctrl">
         <div class="dpad-container" id="gaming-dpad">
-           <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
-           <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
-           <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
-           <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+           <button class="ring-btn btn-up" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)" ontouchcancel="remoteKey('ArrowUp', false)">▲</button>
+           <button class="ring-btn btn-down" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)" ontouchcancel="remoteKey('ArrowDown', false)">▼</button>
+           <button class="ring-btn btn-left" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)" ontouchcancel="remoteKey('ArrowLeft', false)">◀</button>
+           <button class="ring-btn btn-right" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)" ontouchcancel="remoteKey('ArrowRight', false)">▶</button>
+
         </div>
         <div class="joystick-base" id="gaming-joystick" style="display:none;">
           <div class="joystick-thumb"></div>
         </div>
         <div class="action-container">
-            <button class="game-btn btn-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
-            <button class="game-btn btn-a" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">A</button>
+            <button class="game-btn btn-b" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)" ontouchcancel="remoteKey('x', false)">B</button>
+            <button class="game-btn btn-a" ontouchstart="remoteKey('b', true)" ontouchend="remoteKey('b', false)" ontouchcancel="remoteKey('b', false)">X</button>
+
+
         </div>
       </div>
 
       <div id="layout-pro" class="controller-layout pro-ctrl">
         <!-- CONSOLE SIDES -->
         <div class="pro-side-left">
-          <button class="pro-btn-shoulder" ontouchstart="remoteKey('l', true)" ontouchend="remoteKey('l', false)">L</button>
+          <button class="pro-btn-shoulder" ontouchstart="remoteKey('l', true)" ontouchend="remoteKey('l', false)" ontouchcancel="remoteKey('l', false)">L</button>
+
           <div class="pro-dpad" id="pro-dpad-ring">
-            <button class="pro-btn" style="top:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)">▲</button>
-            <button class="pro-btn" style="bottom:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)">▼</button>
-            <button class="pro-btn" style="left:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)">◀</button>
-            <button class="pro-btn" style="right:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)">▶</button>
+            <button class="pro-btn" style="top:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowUp', true)" ontouchend="remoteKey('ArrowUp', false)" ontouchcancel="remoteKey('ArrowUp', false)">▲</button>
+            <button class="pro-btn" style="bottom:0; left:50%; transform:translateX(-50%)" ontouchstart="remoteKey('ArrowDown', true)" ontouchend="remoteKey('ArrowDown', false)" ontouchcancel="remoteKey('ArrowDown', false)">▼</button>
+            <button class="pro-btn" style="left:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowLeft', true)" ontouchend="remoteKey('ArrowLeft', false)" ontouchcancel="remoteKey('ArrowLeft', false)">◀</button>
+            <button class="pro-btn" style="right:0; top:50%; transform:translateY(-50%)" ontouchstart="remoteKey('ArrowRight', true)" ontouchend="remoteKey('ArrowRight', false)" ontouchcancel="remoteKey('ArrowRight', false)">▶</button>
+
           </div>
           <div class="joystick-base" id="pro-joystick" style="display:none; transform:scale(0.8);">
             <div class="joystick-thumb"></div>
@@ -3439,20 +3489,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="pro-center">
           <div class="pro-aux-btns">
-            <button class="pro-btn-aux" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)">SELECT</button>
-            <button class="pro-btn-aux" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)">START</button>
+            <button class="pro-btn-aux" ontouchstart="remoteKey('Escape', true)" ontouchend="remoteKey('Escape', false)" ontouchcancel="remoteKey('Escape', false)">SELECT</button>
+            <button class="pro-btn-aux" ontouchstart="remoteKey('Enter', true)" ontouchend="remoteKey('Enter', false)" ontouchcancel="remoteKey('Enter', false)">START</button>
+
           </div>
           <button class="btn btn-glass c-mode-btn" onclick="window._cStickMode = !window._cStickMode; this.classList.toggle('active'); this.textContent = window._cStickMode ? 'MODO: CAMARA' : 'MODO: MOVER';">C-MODE</button>
         </div>
 
         <div class="pro-side-right">
-          <button class="pro-btn-shoulder" ontouchstart="remoteKey('r', true)" ontouchend="remoteKey('r', false)">R</button>
+          <button class="pro-btn-shoulder" ontouchstart="remoteKey('r', true)" ontouchend="remoteKey('r', false)" ontouchcancel="remoteKey('r', false)">R</button>
+
           <div class="pro-actions-diamond">
-            <button class="pro-btn-action btn-y" ontouchstart="remoteKey('y', true)" ontouchend="remoteKey('y', false)">Y</button>
-            <button class="pro-btn-action btn-x" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)">X</button>
-            <button class="pro-btn-action btn-b" ontouchstart="remoteKey(' ', true)" ontouchend="remoteKey(' ', false)">B</button>
-            <button class="pro-btn-action btn-a" ontouchstart="remoteKey('z', true)" ontouchend="remoteKey('z', false)">A</button>
+            <button class="pro-btn-action btn-y" ontouchstart="remoteKey('y', true)" ontouchend="remoteKey('y', false)" ontouchcancel="remoteKey('y', false)">Y</button>
+            <button class="pro-btn-action btn-b" ontouchstart="remoteKey('x', true)" ontouchend="remoteKey('x', false)" ontouchcancel="remoteKey('x', false)">B</button>
+            <button class="pro-btn-action btn-x" ontouchstart="remoteKey('b', true)" ontouchend="remoteKey('b', false)" ontouchcancel="remoteKey('b', false)">X</button>
+            <button class="pro-btn-action btn-a" ontouchstart="remoteKey('z', true)" ontouchend="remoteKey('z', false)" ontouchcancel="remoteKey('z', false)">A</button>
+
+
           </div>
+
         </div>
       </div>
 
