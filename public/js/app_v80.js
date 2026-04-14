@@ -113,6 +113,38 @@ let remoteBackendUrl = localStorage.getItem('tosito_manual_backend') || null;
 let isManualBackend = !!localStorage.getItem('tosito_manual_backend');
 let aiLevel = 'level_3';
 
+// --- Global Core State ---
+let gameStatus = 'idling'; // 'idling', 'playing', 'finished'
+let turn = 'white';
+let board = null;
+let playerColor = 'white';
+let isAiGame = true;
+let isAiThinking = false;
+let isGodMode = false;
+let isLocalSim = false;
+let mainBoard = null;
+
+// --- Timers ---
+let timerInterval = null;
+let whiteMs = 0;
+let blackMs = 0;
+
+// --- Piece Movement & Interaction ---
+let selectedSq = null;
+let validMoves = [];
+let lastMove = null;
+let premove = null;
+let isCheck = false;
+let gameWinner = null;
+
+// --- Hints & Engine ---
+let isHintEnabled = false;
+let hintEngine = 'level_7';
+let currentHint = null;
+
+// --- Networking ---
+let unsubRoom = null;
+
 async function loadUserProfile() {
   if (!currentUser) return;
   try {
@@ -406,8 +438,11 @@ function switchLobbyTab(tabId) {
 
   const current = document.querySelector('#screen-lobby .tab-pane.active');
   document.querySelectorAll('#screen-lobby .tab-btn').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('onclick')?.includes(tabId));
+    b.classList.remove('active');
   });
+  
+  const targetBtn = document.querySelector(`#screen-lobby .tab-btn[onclick*="${tabId}"]`);
+  if (targetBtn) targetBtn.classList.add('active');
 
   // Admin isolation class
   document.body.classList.toggle('admin-mode', tabId === 'tab-admin');
@@ -722,37 +757,7 @@ function selectLevel(id) { aiLevel = id; renderLevelButtons(); }
 // ============================================================
 //  NAVIGATION
 // ============================================================
-function switchLobbyTab(tabId) {
-  const target = document.getElementById(tabId);
-  if (!isRealEl(target) || target.classList.contains('active')) return;
 
-  const current = document.querySelector('#screen-lobby .tab-pane.active');
-  const buttons = document.querySelectorAll('#screen-lobby .tab-btn');
-
-  if (buttons.length > 0) {
-    buttons.forEach(b => {
-      b.classList.toggle('active', b.getAttribute('onclick')?.includes(tabId));
-    });
-  }
-
-  if (typeof gsap !== 'undefined') {
-    if (current) {
-      gsap.to(current, {
-        opacity: 0, x: -20, duration: 0.2, onComplete: () => {
-          current.classList.remove('active');
-          target.classList.add('active');
-          gsap.fromTo(target, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.3 });
-        }
-      });
-    } else {
-      target.classList.add('active');
-      gsap.fromTo(target, { opacity: 0 }, { opacity: 1, duration: 0.3 });
-    }
-  } else {
-    if (current) current.classList.remove('active');
-    target.classList.add('active');
-  }
-}
 
 function switchExTab(id) {
   document.querySelectorAll('#screen-exercises .tab-pane').forEach(p => p.classList.remove('active'));
@@ -762,6 +767,25 @@ function switchExTab(id) {
   const btn = getEl(btnId);
   if (btn) btn.classList.add('active');
   if (id === 'ex-explore-view') loadCommunityPuzzles();
+}
+
+window.toggleSidebar = function() {
+  const isCollapsed = document.body.classList.toggle('nav-collapsed');
+  localStorage.setItem('sidebar_collapsed', isCollapsed);
+  
+  // Optional: Trigger a window resize event to notify charts or other elements
+  window.dispatchEvent(new Event('resize'));
+  
+  if (typeof gsap !== 'undefined') {
+    gsap.from('.sidebar-toggle-btn svg', { rotate: isCollapsed ? 0 : 180, duration: 0.4, ease: "back.out(2)" });
+  }
+};
+
+function loadSidebarPreference() {
+  const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+  if (isCollapsed) {
+    document.body.classList.add('nav-collapsed');
+  }
 }
 function showScreen(id) {
   const target = document.getElementById('screen-' + id);
@@ -840,17 +864,61 @@ function showScreen(id) {
 
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
+  const gameScreens = [
+    'tictactoe', 'checkers', 'stack', 'slither', 
+    'logicmaster', 'hexa-falls', 'mario64', 'sonic', 
+    'anomalia', 'turbo-drift', 'rhythm-hero', 'neon-piano', 
+    'beepbox', 'voxlab', 'bloxorz'
+  ];
+  const hiddenScreens = [...gameScreens];
+  
+  // Game Mode Isolation
+  if (gameScreens.includes(id)) {
+    document.body.classList.add('game-mode');
+  } else {
+    document.body.classList.remove('game-mode');
+  }
+
   if (nav) {
-    const hiddenScreens = ['hub', 'tictactoe', 'checkers', 'stack', 'slither', 'profile', 'music-games', 'rhythm-hero', 'neon-piano', 'beepbox'];
     if (hiddenScreens.includes(id)) {
       nav.classList.add('hidden');
-      if (typeof syncNavOpen === 'function') syncNavOpen(false);
     } else {
       nav.classList.remove('hidden');
-      if (typeof syncNavOpen === 'function') syncNavOpen(true);
     }
   }
 }
+
+// ============================================================
+//  VOXLAB PRO INTEGRATION
+// ============================================================
+window.showVoxLabScreen = function() {
+  const frame = document.getElementById('voxlab-frame');
+  if (frame && !frame.src) {
+    frame.src = '/voxlab.html';
+  }
+  showScreen('voxlab');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
+window.exitVoxLab = function() {
+  showScreen('music-games');
+};
+
+// ============================================================
+//  BLOXORZ INTEGRATION
+// ============================================================
+window.showBloxorzScreen = function() {
+  const frame = document.getElementById('bloxorz-frame');
+  if (frame && !frame.src) {
+    frame.src = '/bloxorz.html';
+  }
+  showScreen('bloxorz');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
+window.exitBloxorz = function() {
+  showScreen('hub');
+};
 
 function triggerCelebration() {
   const colors = ['#FBBF24', '#38BDF8', '#10B981', '#F43F5E', '#8B5CF6'];
@@ -937,6 +1005,51 @@ function exitGame() {
   showScreen('lobby');
   fetchBoardState();
 }
+
+/**
+ * UNIVERSAL EXIT HANDLER
+ * Centralized logic to return to the correct Hub from any game.
+ */
+window.exitCurrentGame = function() {
+  const current = document.querySelector('.screen.active');
+  if (!current) return;
+  
+  const id = current.id.replace('screen-', '');
+  console.log(`[🚪] Universal Exit from: ${id}`);
+
+  // 1. CHESS-HUB RELATED GAMES (Goes to Lobby)
+  const chessRelated = ['game', 'checkers', 'tictactoe'];
+  if (chessRelated.includes(id)) {
+    // ABANDONMENT CHECK
+    if (gameStatus === 'playing') {
+      const confirmText = id === 'game' ? "¿Abandonar partida? Perderás por incomparecencia." : "¿Salir del juego? La partida se dará por perdida.";
+      if (!confirm(confirmText)) return;
+      processGameAbandonment();
+    }
+
+    if (id === 'game') return exitGame();
+    if (typeof stopTimer === 'function') stopTimer();
+    return showScreen('lobby');
+  }
+
+  // 2. ARCADE / HUB RELATED GAMES (Goes to Hub)
+  const iframeIds = [
+    'stack-frame', 'slither-frame', 'logicmaster-frame', 
+    'hexa-falls-frame', 'anomalia-frame', 'turbo-drift-frame',
+    'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame'
+  ];
+
+  iframeIds.forEach(fid => {
+    const frame = document.getElementById(fid);
+    if (frame) frame.src = 'about:blank';
+  });
+
+  // Specific cleanup if needed (mario64/sonic)
+  if (id === 'mario64' && typeof stopMario === 'function') stopMario();
+  if (id === 'sonic' && typeof stopSonic === 'function') stopSonic();
+
+  showScreen('hub');
+};
 
 // ============================================================
 //  GSAP UTILITIES
@@ -1478,7 +1591,33 @@ function onTimeOut(color) {
 // ============================================================
 function onGameEnd(winner) {
   gameStatus = 'finished';
-  loadHistoricalGames();
+  
+  // Record result if scorable
+  const current = document.querySelector('.screen.active');
+  const id = current ? current.id.replace('screen-', '') : 'unknown';
+  const scorable = ['game', 'checkers', 'tictactoe'];
+  
+  if (scorable.includes(id)) {
+    let result = 'draw';
+    // Robust detection: check if winner string contains the player's color
+    const wStr = winner.toLowerCase();
+    const pColor = playerColor.toLowerCase(); // 'white' or 'black'
+    const colorName = pColor === 'white' ? 'blanca' : 'negra';
+    
+    if (wStr === 'draw' || wStr.includes('tablas') || wStr.includes('empate')) {
+      result = 'draw';
+    } else if (wStr.includes(pColor) || wStr.includes(colorName)) {
+      result = 'win';
+    } else {
+      result = 'loss';
+    }
+    
+    // Determine opponent name
+    let opponent = isAiGame ? `IA (${aiLevel.replace('level_', 'Nivel ')})` : 'Oponente Online';
+    recordMatchResult(result, opponent, id);
+  }
+
+  loadHistoryGames();
   const modal = getEl('winner-modal');
   const title = getEl('winner-title');
   const msg = getEl('winner-msg');
@@ -1520,16 +1659,12 @@ function closeModal(id) {
 // ============================================================
 //  DRAWER
 // ============================================================
-function openDrawer() { getEl('side-drawer').classList.add('open'); getEl('drawer-overlay').classList.add('visible'); }
-function closeDrawer() { getEl('side-drawer').classList.remove('open'); getEl('drawer-overlay').classList.remove('visible'); }
-
 /**
  * Universal sync for sidebar/nav state.
- * Fixes ReferenceError in multiple game/view contexts.
+ * Legacy drawer logic removed to prioritize the primary navigation sidebar.
  */
 function syncNavOpen(isOpen) {
-  if (isOpen) openDrawer();
-  else closeDrawer();
+  // Primary navigation sidebar state is now handled by toggleSidebar() and showScreen()
 }
 
 // ============================================================
@@ -1554,6 +1689,81 @@ async function resetBoard() {
     gameWinner = null; gameStatus = 'playing';
   }
   startTimers(10); await fetchBoardState(); closeDrawer();
+}
+
+/**
+ * --- MATCH PERSISTENCE LAYER ---
+ * High-fidelity recording for game results and history.
+ */
+
+async function recordMatchResult(result, opponentName, gameType = 'chess') {
+  if (!currentUser) return;
+  console.log(`[🏆] Recording Match: ${result} vs ${opponentName} (${gameType})`);
+
+  try {
+    // 1. Update User Stats (Elo, Wins, Losses)
+    const statsUpdate = {};
+    if (result === 'win') {
+      userProfile.wins++;
+      userProfile.elo += 20;
+      statsUpdate.wins = userProfile.wins;
+      statsUpdate.elo = userProfile.elo;
+    } else if (result === 'loss') {
+      userProfile.losses++;
+      userProfile.elo = Math.max(100, userProfile.elo - 15);
+      statsUpdate.losses = userProfile.losses;
+      statsUpdate.elo = userProfile.elo;
+    }
+    
+    await db.collection('users').doc(currentUser.uid).update(statsUpdate);
+
+    // 2. Add to History Collection
+    await db.collection('games_history').add({
+      playerUid: currentUser.uid,
+      playerDisplayName: userProfile.displayName || currentUser.displayName || 'Jugador',
+      opponentName: opponentName,
+      result: result, // 'win', 'loss', 'draw'
+      gameType: gameType,
+      timestamp: Date.now().toString(),
+      details: result === 'win' ? 'Victoria Magistral' : (result === 'loss' ? 'Derrota por Juego' : 'Tablas')
+    });
+
+    toast(result === 'win' ? "¡Estadísticas actualizadas! +20 ELO" : "Partida guardada en el historial");
+    updateLobbyUI(); 
+
+  } catch (e) {
+    console.error("Error recording match result:", e);
+  }
+}
+
+async function processGameAbandonment() {
+  const current = document.querySelector('.screen.active');
+  if (!current) return;
+  const id = current.id.replace('screen-', '');
+
+  console.log(`[⚔️] Abandonment sequence for: ${id}`);
+  
+  // Determine Opponent String
+  let opponent = isAiGame ? `IA (${aiLevel.replace('level_', 'Nivel ')})` : 'Oponente Online';
+  
+  // Record Loss
+  await recordMatchResult('loss', opponent, id);
+  
+  // If Multiplayer, notify opponent via Room status
+  if (!isAiGame && currentRoom) {
+    try {
+      await db.collection('games').doc(currentRoom).update({
+        status: 'finished',
+        result: playerColor === 'white' ? 'black' : 'white', // The other color wins
+        reason: 'abandonment'
+      });
+    } catch (e) {
+      console.error("Error updating room status on abandonment:", e);
+    }
+  }
+
+  gameStatus = 'finished';
+  stopTimer();
 }
 
 // ============================================================
@@ -4539,6 +4749,7 @@ window.remoteKey = function (key, isDown) {
 
 // Initial state check
 window.addEventListener('load', () => {
+  loadSidebarPreference();
   checkRemoteMode();
   checkBackendHealth();
   setInterval(checkBackendHealth, 45000); 
@@ -4585,7 +4796,8 @@ function renderHub() {
     arcade: document.getElementById('grid-arcade'),
     puzzles: document.getElementById('grid-puzzles'),
     retro: document.getElementById('grid-retro'),
-    music: document.getElementById('grid-music')
+    music: document.getElementById('grid-music'),
+    sports: document.getElementById('grid-sports')
   };
 
   // Clear grids
@@ -4674,8 +4886,10 @@ async function autoSeedHub() {
     { id:'slither', section:'arcade', title:'Slither Neo', emoji:'🐍', desc:'Consume energía y domina la arena global...', action:'showSlitherScreen()', color:'var(--indigo)', order:1, visible:true },
     { id:'anomalia', section:'arcade', title:'Anomalía', emoji:'🛸', desc:'Shooter arcade evolutivo de alta intensidad...', action:'showAnomaliaScreen()', color:'#ef4444', order:2, visible:true },
     { id:'stack', section:'arcade', title:'Cyber Stack', emoji:'🧱', desc:'Desafío de equilibrio 3D con bloques de neón...', action:'showStackScreen()', color:'', order:3, visible:true },
-    { id:'turbo', section:'arcade', title:'Neon Drifter', emoji:'🏎️', desc:'Carreras arcade de alta velocidad con derrapes...', action:'showTurboDriftScreen()', color:'var(--sky)', order:4, visible:true },
-    { id:'hexa', section:'arcade', title:'Hexa Falls', emoji:'💠', desc:'Puzzles geométricos en caída libre multijugador...', action:'showHexaFallsScreen()', color:'var(--purple)', order:5, visible:true },
+    { id:'hexa', section:'arcade', title:'Hexa Falls', emoji:'💠', desc:'Puzzles geométricos en caída libre multijugador...', action:'showHexaFallsScreen()', color:'var(--purple)', order:4, visible:true },
+    
+    // --- DEPORTES Y VELOCIDAD ---
+    { id:'turbo', section:'sports', title:'Neon Drifter', emoji:'🏎️', desc:'Carreras arcade de alta velocidad con derrapes...', action:'showTurboDriftScreen()', color:'var(--sky)', order:1, visible:true },
     
     // --- PUZZLES Y LÓGICA ---
     { id:'match3', section:'puzzles', title:'Match 3', emoji:'💎', desc:'Combina gemas y genera explosiones de puntos...', action:"showLogicGame('match3')", color:'#ec4899', order:1, visible:true },
@@ -4684,6 +4898,7 @@ async function autoSeedHub() {
     { id:'2048', section:'puzzles', title:'2048 Mastery', emoji:'🔢', desc:'Suma baldosas hasta alcanzar la mítica cifra...', action:"showLogicGame('2048')", color:'#fb923c', order:4, visible:true },
     { id:'wordle', section:'puzzles', title:'Word Quest', emoji:'📝', desc:'Adivina la palabra oculta en 6 intentos...', action:"showLogicGame('wordle')", color:'#f59e0b', order:5, visible:true },
     { id:'sudoku', section:'puzzles', title:'Zen Sudoku', emoji:'🧩', desc:'Relaja tu mente con desafíos de lógica pura...', action:"showLogicGame('sudoku')", color:'#3b82f6', order:6, visible:true },
+    { id:'bloxorz', section:'puzzles', title:'Bloxorz 3D', emoji:'🧱', desc:'Desafío de lógica espacial. Lleva el bloque al agujero...', action:"showBloxorzScreen()", color:'var(--sky)', order:7, visible:true },
     
     // --- NINTENDO RETRO ---
     { id:'mario64', section:'retro', title:'Super Mario 64', emoji:'🍄', desc:'El clásico revolucionario en 3D de Nintendo...', action:'showMario64Screen()', color:'#E60012', order:1, visible:true },
@@ -4692,7 +4907,8 @@ async function autoSeedHub() {
     // --- MÚSICA Y RITMO ---
     { id:'ritmo', section:'music', title:'Rhythm Hero', emoji:'🎸', desc:'Desafía tus reflejos al compás de la música...', action:'showRhythmHeroScreen()', color:'#f472b6', order:1, visible:true },
     { id:'piano', section:'music', title:'Neon Piano', emoji:'🎹', desc:'Toca las baldosas al ritmo de piezas modernas...', action:'showNeonPianoScreen()', color:'var(--sky)', order:2, visible:true },
-    { id:'beepbox', section:'music', title:'BeepBox Lab', emoji:'🎼', desc:'Estudio de creación musical de 8 bits interactivo...', action:'showBeepBoxScreen()', color:'var(--amber)', order:3, visible:true }
+    { id:'beepbox', section:'music', title:'BeepBox Lab', emoji:'🎼', desc:'Estudio de creación musical de 8 bits interactivo...', action:'showBeepBoxScreen()', color:'var(--amber)', order:3, visible:true },
+    { id:'voxlab', section:'music', title:'VoxLab Pro', emoji:'⚡', desc:'Motor sónico y procesador vocal. Auto-Tune profesional...', action:'showVoxLabScreen()', color:'var(--sky)', order:4, visible:true }
   ];
   for (const item of items) {
     await db.collection('globals').doc('hub_content').collection('items').doc(item.id).set(item);

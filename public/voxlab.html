@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxLab Pro Engine | Tosito Games</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;900&family=Orbitron:wght@400;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background-color: #0a0a0a; color: #d4d4d4; overflow: hidden; height: 100vh; }
+        .orbitron { font-family: 'Orbitron', sans-serif; }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+        .vertical-slider { appearance: none; width: 100%; height: auto; background: transparent; cursor: pointer; }
+        .vertical-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 12px; background: #a3a3a3; border-radius: 2px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .vertical-slider::-webkit-slider-runnable-track { background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); }
+        
+        input[type=range].vertical-slider {
+            writing-mode: bt-lr; /* IE */
+            -webkit-appearance: slider-vertical; /* WebKit */
+            width: 8px;
+            height: 120px;
+            padding: 0 5px;
+        }
+
+        /* Glassmorphism utility */
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .accent-glow { text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Simplified Lucide Wrapper for React ---
+        const Icon = ({ name, className, size = 18 }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current) {
+                    iconRef.current.innerHTML = lucide.createIcons({
+                        icons: { [name]: {} },
+                        attrs: { class: className, width: size, height: size }
+                    })[name];
+                }
+            }, [name, className, size]);
+            return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
+        };
+
+        // --- FUNCIONES DE AUDIO PRO & DSP ---
+        const createReverbBuffer = (ctx) => {
+          const length = ctx.sampleRate * 2.0; 
+          const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+          for (let c = 0; c < 2; c++) {
+            const channelData = buffer.getChannelData(c);
+            let lastOut = 0; 
+            for (let i = 0; i < length; i++) {
+              const noise = Math.random() * 2 - 1;
+              const dampingMultiplier = 0.1 + (i / length) * 0.3; 
+              lastOut = lastOut + dampingMultiplier * (noise - lastOut);
+              channelData[i] = lastOut * Math.pow(1 - i / length, 4) * 1.5;
+            }
+          }
+          return buffer;
+        };
+
+        const makeDistortionCurve = (amount) => {
+          const k = typeof amount === 'number' ? amount : 50;
+          const n_samples = 44100;
+          const curve = new Float32Array(n_samples);
+          const deg = Math.PI / 180;
+          for (let i = 0; i < n_samples; ++i) {
+            const x = (i * 2) / n_samples - 1;
+            curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+          }
+          return curve;
+        };
+
+        const makeRectifierCurve = () => {
+          const curve = new Float32Array(256);
+          for (let i = 0; i < 256; i++) curve[i] = Math.abs((i * 2) / 256 - 1);
+          return curve;
+        };
+
+        function autoCorrelate(buf, sampleRate) {
+          let SIZE = buf.length;
+          let rms = 0;
+          for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+          rms = Math.sqrt(rms / SIZE);
+          if (rms < 0.01) return -1;
+
+          let r1 = 0, r2 = SIZE - 1, thres = 0.2;
+          for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+          for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
+          
+          const processedBuf = buf.slice(r1, r2); 
+          const processedSize = processedBuf.length;
+          let c = new Array(processedSize).fill(0);
+          for (let i = 0; i < processedSize; i++) { 
+            for (let j = 0; j < processedSize - i; j++) c[i] = c[i] + processedBuf[j] * processedBuf[j + i]; 
+          }
+
+          let d = 0; while (c[d] > c[d + 1]) d++;
+          let maxval = -1, maxpos = -1;
+          for (let i = d; i < processedSize; i++) { 
+            if (c[i] > maxval) { maxval = c[i]; maxpos = i; } 
+          }
+          return sampleRate / maxpos;
+        }
+
+        const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const SCALES = {
+          'Cromática': [0,1,2,3,4,5,6,7,8,9,10,11],
+          'Mayor': [0,2,4,5,7,9,11],
+          'Menor': [0,2,3,5,7,8,10]
+        };
+
+        function freqToMidi(freq) { return Math.round(12 * (Math.log(freq / 440) / Math.log(2)) + 69); }
+        function midiToNoteString(midi) { return `${NOTES[midi % 12]}${Math.floor(midi / 12) - 1}`; }
+
+        function snapToScale(freq, rootNote, scaleType) {
+          if (freq < 20) return -1;
+          let midi = freqToMidi(freq);
+          let noteClass = (midi - rootNote) % 12;
+          if (noteClass < 0) noteClass += 12;
+          let scale = SCALES[scaleType];
+          let closest = scale[0], minDiff = 100;
+          for (let n of scale) {
+            let diff = Math.abs(noteClass - n);
+            if (diff > 6) diff = 12 - diff;
+            if (diff < minDiff) { minDiff = diff; closest = n; }
+          }
+          let snappedMidi = midi - noteClass + closest;
+          if (noteClass - closest > 6) snappedMidi += 12; else if (closest - noteClass > 6) snappedMidi -= 12;
+          return { freq: 440 * Math.pow(2, (snappedMidi - 69) / 12), midi: snappedMidi };
+        }
+
+        function getDelayTime(bpm, fraction) {
+          const beatTime = 60 / bpm; 
+          switch(fraction) {
+            case '1/4': return beatTime;
+            case '1/8': return beatTime / 2;
+            case '1/8D': return (beatTime / 2) * 1.5; 
+            case '1/16': return beatTime / 4;
+            default: return beatTime / 2;
+          }
+        }
+
+        function App() {
+          const [isReady, setIsReady] = useState(false);
+          const [monitorActive, setMonitorActive] = useState(false); 
+          const [activePreset, setActivePreset] = useState('Métrica (Drill ES)');
+          const [isRecording, setIsRecording] = useState(false);
+          const [recordings, setRecordings] = useState([]);
+          const [showWarning, setShowWarning] = useState(false);
+          const [project, setProject] = useState({ bpm: 125 });
+
+          const [params, setParams] = useState({
+            inputGain: 2.8, micVolume: 1.0, beatVolume: 0.8, masterVolume: 0.9,
+            eqLow: -6, eqMid: 4, eqHigh: 14, deEsser: -25, delaySync: '1/8', delayFeedback: 0.15, reverb: 0.2, distortion: 5, 
+            compThreshold: -30, compRatio: 12, pan: 0, gateThreshold: -70, chorusMix: 0.1       
+          });
+
+          const [autoTune, setAutoTune] = useState({
+            enabled: true, rootNote: 1, scale: 'Menor', retuneSpeed: 0.001, octaveOffset: 0, waveform: 'sawtooth', mix: 0.95, 
+            formantShift: 1.25, vibratoDepth: 0.02, breathiness: 0.15 
+          });
+
+          const [midiConnected, setMidiConnected] = useState(false);
+          const [backingTrack, setBackingTrack] = useState({ name: null, isPlaying: false, source: null, buffer: null });
+          const [loops, setLoops] = useState([
+            { id: 0, state: 'empty', source: null }, { id: 1, state: 'empty', source: null },
+            { id: 2, state: 'empty', source: null }, { id: 3, state: 'empty', source: null },
+          ]);
+
+          const audioCtx = useRef(null);
+          const analyser = useRef(null);
+          const pitchAnalyser = useRef(null); 
+          const masterGainRef = useRef(null);
+          const monitorGainRef = useRef(null);
+          const recorder = useRef(null);
+          const audioChunks = useRef([]);
+          const loopRecorder = useRef(null);
+          const loopChunks = useRef([]);
+          const activeLoopIndex = useRef(null);
+          
+          const canvasRef = useRef(null);
+          const reqAnimFrame = useRef(null);
+          const grMeterRef = useRef(null); 
+          const masterMeterRef = useRef(null);
+          const pitchDisplayRef = useRef(null); 
+
+          const nodes = useRef({
+            inputGainNode: null, micGain: null, beatGain: null, masterGain: null, monitorGain: null,
+            gateGain: null, eqLow: null, eqMid: null, eqHigh: null, deEsser: null, 
+            distortion: null, delay: null, feedback: null, reverb: null, reverbGain: null,
+            synthOsc1: null, synthOsc2: null, synthGain: null, cleanGain: null, compressor: null, panner: null, chorusGain: null,
+            formant1: null, formant2: null, formant3: null, vibratoLFO: null, vibratoGain: null, breathGain: null
+          });
+
+          // --- MANEJADORES DE ESTADO ---
+          const handleParamChange = (e) => {
+            const { name, value } = e.target;
+            setParams(prev => ({ ...prev, [name]: parseFloat(value) }));
+            setActivePreset('Personalizado');
+          };
+
+          const handleAutoTuneChange = (key, value) => {
+            setAutoTune(prev => ({ ...prev, [key]: value }));
+            setActivePreset('Personalizado');
+          };
+
+          const initAudio = async (startMonitor = false) => {
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+              });
+              const ctx = new (window.AudioContext || window.webkitAudioContext)();
+              audioCtx.current = ctx;
+
+              const micSource = ctx.createMediaStreamSource(stream);
+              const inputGainNode = ctx.createGain(); 
+              inputGainNode.gain.value = params.inputGain;
+              micSource.connect(inputGainNode);
+
+              const micGain = ctx.createGain(); micGain.gain.value = params.micVolume;
+              const beatGain = ctx.createGain(); beatGain.gain.value = params.beatVolume;
+              
+              const rumbleFilter = ctx.createBiquadFilter(); rumbleFilter.type = 'highpass'; rumbleFilter.frequency.value = 80;
+              inputGainNode.connect(rumbleFilter); rumbleFilter.connect(micGain);
+
+              const gateGain = ctx.createGain(); gateGain.gain.value = 1;
+              micGain.connect(gateGain);
+              
+              const pAn = ctx.createAnalyser(); pAn.fftSize = 2048; gateGain.connect(pAn); pitchAnalyser.current = pAn;
+
+              const rectifier = ctx.createWaveShaper(); rectifier.curve = makeRectifierCurve();
+              const envFilter = ctx.createBiquadFilter(); envFilter.type = 'lowpass'; envFilter.frequency.value = 35;
+              const envBoost = ctx.createGain(); envBoost.gain.value = 5.0; 
+              gateGain.connect(rectifier); rectifier.connect(envFilter); envFilter.connect(envBoost);
+
+              const synthOsc1 = ctx.createOscillator(); const synthOsc2 = ctx.createOscillator();
+              synthOsc1.type = autoTune.waveform; synthOsc2.type = autoTune.waveform;
+              synthOsc1.start(); synthOsc2.start();
+
+              const vibratoLFO = ctx.createOscillator(); vibratoLFO.type = 'sine'; vibratoLFO.frequency.value = 6.0; 
+              const vibratoGain = ctx.createGain(); vibratoGain.gain.value = autoTune.vibratoDepth * 261.63;
+              vibratoLFO.connect(vibratoGain); vibratoGain.connect(synthOsc1.frequency); vibratoGain.connect(synthOsc2.frequency);
+              vibratoLFO.start();
+
+              const noiseSize = ctx.sampleRate * 2;
+              const noiseBuf = ctx.createBuffer(1, noiseSize, ctx.sampleRate);
+              const outBuf = noiseBuf.getChannelData(0);
+              for (let i = 0; i < noiseSize; i++) outBuf[i] = Math.random() * 2 - 1;
+              const breathSource = ctx.createBufferSource(); breathSource.buffer = noiseBuf; breathSource.loop = true;
+              const breathFilter = ctx.createBiquadFilter(); breathFilter.type = 'highpass'; breathFilter.frequency.value = 5500;
+              const breathGainNode = ctx.createGain(); breathGainNode.gain.value = autoTune.breathiness;
+              breathSource.connect(breathFilter); breathFilter.connect(breathGainNode); breathSource.start();
+
+              const formant1 = ctx.createBiquadFilter(); formant1.type = 'bandpass'; formant1.frequency.value = 700 * autoTune.formantShift; formant1.Q.value = 2;
+              const formant2 = ctx.createBiquadFilter(); formant2.type = 'bandpass'; formant2.frequency.value = 1200 * autoTune.formantShift; formant2.Q.value = 2;
+              const formant3 = ctx.createBiquadFilter(); formant3.type = 'bandpass'; formant3.frequency.value = 2600 * autoTune.formantShift; formant3.Q.value = 2;
+              const synthGain = ctx.createGain(); synthGain.gain.value = 0; 
+              synthOsc1.connect(formant1); synthOsc2.connect(formant1);
+              synthOsc1.connect(formant2); synthOsc2.connect(formant2);
+              synthOsc1.connect(formant3); synthOsc2.connect(formant3);
+              breathGainNode.connect(synthGain); formant1.connect(synthGain); formant2.connect(synthGain); formant3.connect(synthGain);
+              envBoost.connect(synthGain.gain);
+
+              const cleanGain = ctx.createGain(); cleanGain.gain.value = 1; gateGain.connect(cleanGain);
+              const preEqGain = ctx.createGain(); cleanGain.connect(preEqGain); synthGain.connect(preEqGain); 
+
+              const eqLow = ctx.createBiquadFilter(); eqLow.type = 'lowshelf'; eqLow.frequency.value = 200; 
+              const eqMid = ctx.createBiquadFilter(); eqMid.type = 'peaking'; eqMid.frequency.value = 2500; eqMid.Q.value = 1.2;
+              const eqHigh = ctx.createBiquadFilter(); eqHigh.type = 'highshelf'; eqHigh.frequency.value = 8500; 
+              const deEsser = ctx.createDynamicsCompressor();
+              deEsser.threshold.value = params.deEsser; deEsser.ratio.value = 15; deEsser.attack.value = 0.001; deEsser.release.value = 0.05;
+              const deEsserFilter = ctx.createBiquadFilter(); deEsserFilter.type = 'highpass'; deEsserFilter.frequency.value = 6000;
+              eqHigh.connect(deEsserFilter); deEsserFilter.connect(deEsser); 
+              preEqGain.connect(eqLow); eqLow.connect(eqMid); eqMid.connect(eqHigh); eqHigh.connect(deEsser);
+              const distortionNode = ctx.createWaveShaper(); distortionNode.oversample = '4x'; deEsser.connect(distortionNode);
+              
+              const delayNode = ctx.createDelay(4.0); delayNode.delayTime.value = getDelayTime(project.bpm, params.delaySync);
+              const feedbackNode = ctx.createGain(); feedbackNode.gain.value = 0;
+              const delayFilter = ctx.createBiquadFilter(); delayFilter.type = 'lowpass'; delayFilter.frequency.value = 2500; 
+              distortionNode.connect(delayNode); delayNode.connect(delayFilter); delayFilter.connect(feedbackNode); feedbackNode.connect(delayNode);
+              const convolverNode = ctx.createConvolver(); convolverNode.buffer = createReverbBuffer(ctx);
+              const reverbGainNode = ctx.createGain(); reverbGainNode.gain.value = 0;
+              distortionNode.connect(convolverNode); convolverNode.connect(reverbGainNode);
+              const chorusDelay = ctx.createDelay(); chorusDelay.delayTime.value = 0.025; 
+              const chorusLFO = ctx.createOscillator(); chorusLFO.type = 'sine'; chorusLFO.frequency.value = 1.2; 
+              const chorusLFOGain = ctx.createGain(); chorusLFOGain.gain.value = 0.003; 
+              chorusLFO.connect(chorusLFOGain); chorusLFOGain.connect(chorusDelay.delayTime); chorusLFO.start();
+              const chorusGainNode = ctx.createGain(); chorusGainNode.gain.value = 0;
+              distortionNode.connect(chorusDelay); chorusDelay.connect(chorusGainNode);
+
+              const dryGain = ctx.createGain(); distortionNode.connect(dryGain);
+              const compressorNode = ctx.createDynamicsCompressor(); compressorNode.threshold.value = params.compThreshold; compressorNode.knee.value = 10; compressorNode.ratio.value = params.compRatio; compressorNode.attack.value = 0.002; compressorNode.release.value = 0.05;
+              dryGain.connect(compressorNode); delayNode.connect(compressorNode); reverbGainNode.connect(compressorNode); chorusGainNode.connect(compressorNode);
+              const pannerNode = ctx.createStereoPanner(); pannerNode.pan.value = params.pan; compressorNode.connect(pannerNode);
+              
+              const masterGainNode = ctx.createGain(); masterGainNode.gain.value = params.masterVolume; masterGainRef.current = masterGainNode;
+              pannerNode.connect(masterGainNode); beatGain.connect(masterGainNode); 
+
+              const monitor = ctx.createGain(); monitor.gain.value = startMonitor ? 1 : 0; monitorGainRef.current = monitor;
+              const an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.8; analyser.current = an;
+              masterGainNode.connect(an); an.connect(monitor); monitor.connect(ctx.destination);
+
+              const dest = ctx.createMediaStreamDestination(); masterGainNode.connect(dest);
+              const mediaRecorder = new MediaRecorder(dest.stream);
+              mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.current.push(e.data); };
+              mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+                const url = URL.createObjectURL(blob);
+                setRecordings(prev => [...prev, { id: Date.now(), url, name: `Master ${prev.length + 1}` }]);
+                audioChunks.current = [];
+              };
+              recorder.current = mediaRecorder;
+
+              nodes.current = { 
+                inputGainNode, micGain, beatGain, masterGain: masterGainNode, monitorGain: monitor, gateGain, eqLow, eqMid, eqHigh, deEsser, 
+                distortion: distortionNode, delay: delayNode, feedback: feedbackNode, reverb: convolverNode, reverbGain: reverbGainNode, 
+                synthOsc1, synthOsc2, synthGain, cleanGain, compressor: compressorNode, panner: pannerNode, chorusGain: chorusGainNode, 
+                formant1, formant2, formant3, vibratoLFO, vibratoGain, breathGain: breathGainNode 
+              };
+
+              const loopDest = ctx.createMediaStreamDestination(); pannerNode.connect(loopDest);
+              const lRec = new MediaRecorder(loopDest.stream);
+              lRec.ondataavailable = (e) => { if (e.data.size > 0) loopChunks.current.push(e.data); };
+              lRec.onstop = async () => {
+                const blob = new Blob(loopChunks.current, { type: 'audio/webm' });
+                loopChunks.current = [];
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+                const loopSource = ctx.createBufferSource(); loopSource.buffer = audioBuffer; loopSource.loop = true;
+                loopSource.connect(masterGainNode); loopSource.start();
+                setLoops(prev => { const n = [...prev]; n[activeLoopIndex.current] = { ...n[activeLoopIndex.current], state: 'playing', source: loopSource }; return n; });
+              };
+              loopRecorder.current = lRec;
+
+              setIsReady(true); drawVisualizer();
+            } catch (err) { console.error("Mic error", err); }
+          };
+
+          useEffect(() => {
+            if (!isReady || !nodes.current || !nodes.current.inputGainNode) return;
+            const { inputGainNode, micGain, beatGain, masterGain, delay, feedback, reverbGain, distortion, eqLow, eqMid, eqHigh, deEsser, compressor, panner, chorusGain } = nodes.current;
+            const t = audioCtx.current.currentTime;
+            inputGainNode?.gain?.setTargetAtTime(params.inputGain, t, 0.015);
+            micGain?.gain?.setTargetAtTime(params.micVolume, t, 0.015);
+            beatGain?.gain?.setTargetAtTime(params.beatVolume, t, 0.015);
+            masterGain?.gain?.setTargetAtTime(params.masterVolume, t, 0.015);
+            eqLow?.gain?.setTargetAtTime(params.eqLow, t, 0.015); 
+            eqMid?.gain?.setTargetAtTime(params.eqMid, t, 0.015); 
+            eqHigh?.gain?.setTargetAtTime(params.eqHigh, t, 0.015);
+            delay?.delayTime?.setTargetAtTime(getDelayTime(project.bpm, params.delaySync), t, 0.015); 
+            feedback?.gain?.setTargetAtTime(params.delayFeedback, t, 0.015); 
+            reverbGain?.gain?.setTargetAtTime(params.reverb, t, 0.015);
+            chorusGain?.gain?.setTargetAtTime(params.chorusMix, t, 0.015); 
+            deEsser?.threshold?.setTargetAtTime(params.deEsser, t, 0.015);
+            compressor?.threshold?.setTargetAtTime(params.compThreshold, t, 0.015); 
+            compressor?.ratio?.setTargetAtTime(params.compRatio, t, 0.015); 
+            panner?.pan?.setTargetAtTime(params.pan, t, 0.015);
+            if (distortion) distortion.curve = params.distortion > 0 ? makeDistortionCurve(params.distortion) : null;
+          }, [params, project.bpm, isReady]);
+
+          useEffect(() => {
+            if (!isReady || !nodes.current || !nodes.current.synthOsc1) return;
+            const { synthOsc1, synthOsc2, cleanGain, formant1, formant2, formant3, breathGain } = nodes.current;
+            const t = audioCtx.current.currentTime;
+            if (synthOsc1) synthOsc1.type = autoTune.waveform; 
+            if (synthOsc2) synthOsc2.type = autoTune.waveform;
+            formant1?.frequency?.setTargetAtTime(700 * autoTune.formantShift, t, 0.05);
+            formant2?.frequency?.setTargetAtTime(1200 * autoTune.formantShift, t, 0.05);
+            formant3?.frequency?.setTargetAtTime(2600 * autoTune.formantShift, t, 0.05);
+            breathGain?.gain?.setTargetAtTime(autoTune.breathiness, t, 0.05);
+            if (cleanGain) cleanGain.gain.setTargetAtTime(autoTune.enabled ? 1 - autoTune.mix : 1, t, 0.05);
+            if (!autoTune.enabled && pitchDisplayRef.current) pitchDisplayRef.current.innerText = 'OFF';
+          }, [autoTune, isReady]);
+
+          useEffect(() => { 
+            if (monitorGainRef.current) monitorGainRef.current.gain.setTargetAtTime(monitorActive ? 1 : 0, audioCtx.current?.currentTime || 0, 0.05); 
+          }, [monitorActive]);
+
+          const drawVisualizer = useCallback(() => {
+            if (!analyser.current || !canvasRef.current) return;
+            const canvas = canvasRef.current; const ctx = canvas.getContext('2d');
+            const width = canvas.width; const height = canvas.height;
+            const bufferLength = analyser.current.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength); const timeData = new Uint8Array(bufferLength);
+            const draw = () => {
+              reqAnimFrame.current = requestAnimationFrame(draw);
+              analyser.current.getByteFrequencyData(dataArray); analyser.current.getByteTimeDomainData(timeData);
+              if (autoTune.enabled && pitchAnalyser.current && nodes.current.synthOsc1 && !midiConnected) {
+                const floatData = new Float32Array(pitchAnalyser.current.fftSize);
+                pitchAnalyser.current.getFloatTimeDomainData(floatData);
+                const freq = autoCorrelate(floatData, audioCtx.current.sampleRate);
+                if (freq !== -1) {
+                  const snapped = snapToScale(freq, autoTune.rootNote, autoTune.scale);
+                  const finalFreq = snapped.freq * Math.pow(2, autoTune.octaveOffset);
+                  const t = audioCtx.current.currentTime;
+                  nodes.current.synthOsc1.frequency.setTargetAtTime(finalFreq, t, autoTune.retuneSpeed);
+                  nodes.current.synthOsc2.frequency.setTargetAtTime(finalFreq * 1.01, t, autoTune.retuneSpeed);
+                  if(nodes.current.vibratoGain) nodes.current.vibratoGain.gain.setTargetAtTime(autoTune.vibratoDepth * finalFreq, t, 0.1);
+                  if(pitchDisplayRef.current) pitchDisplayRef.current.innerText = `${midiToNoteString(freqToMidi(freq))} → ${midiToNoteString(snapped.midi + (autoTune.octaveOffset * 12))}`;
+                } else if(pitchDisplayRef.current) pitchDisplayRef.current.innerText = '-';
+              }
+              if (nodes.current.compressor && grMeterRef.current) {
+                let reduction = nodes.current.compressor.reduction;
+                if (typeof reduction === 'object' && reduction.value !== undefined) reduction = reduction.value; else if (typeof reduction !== 'number') reduction = 0;
+                grMeterRef.current.style.height = `${Math.min(100, Math.max(0, (Math.abs(reduction) / 15) * 100))}%`;
+              }
+              if (nodes.current.gateGain) {
+                let sumSquares = 0; for(let i=0; i<bufferLength; i++) sumSquares += Math.pow((timeData[i]/128.0) - 1.0, 2);
+                const db = 20 * Math.log10(Math.max(Math.sqrt(sumSquares/bufferLength), 0.0001));
+                const t = audioCtx.current.currentTime;
+                if (db < params.gateThreshold) nodes.current.gateGain.gain.setTargetAtTime(0, t, 0.1); 
+                else nodes.current.gateGain.gain.setTargetAtTime(1, t, 0.02);
+              }
+              if (masterMeterRef.current) {
+                const peak = Math.max(...timeData.map(v => Math.abs((v/128.0)-1)));
+                masterMeterRef.current.style.height = `${Math.min(100, peak * 100)}%`;
+              }
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.3)'; ctx.fillRect(0, 0, width, height);
+              let x = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                const barHeight = dataArray[i];
+                ctx.fillStyle = `rgb(${barHeight + (25 * (i/bufferLength))},${250 * (i/bufferLength)},255)`; ctx.fillRect(x, height - barHeight / 2, (width / bufferLength) * 2.5, barHeight / 2);
+                x += (width / bufferLength) * 2.5 + 1;
+              }
+              ctx.lineWidth = 2; ctx.strokeStyle = '#06b6d4'; ctx.beginPath();
+              x = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                const y = (timeData[i] / 128.0) * height / 2;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                x += width * 1.0 / bufferLength;
+              }
+              ctx.stroke();
+            };
+            draw();
+          }, [autoTune, midiConnected, params.gateThreshold]);
+
+          const DAW_PRESETS = {
+            'Métrica (Drill ES)': { icon: '🔪', params: { inputGain: 3.5, volume: 0.95, micVolume: 1.0, beatVolume: 0.8, masterVolume: 0.9, eqLow: -6, eqMid: 4, eqHigh: 14, deEsser: -25, delaySync: '1/8', delayFeedback: 0.15, reverb: 0.2, distortion: 10, compThreshold: -30, compRatio: 12, pan: 0, chorusMix: 0.1, gateThreshold: -70 }, auto: { enabled: true, rootNote: 1, scale: 'Menor', retuneSpeed: 0.001, octaveOffset: 0, waveform: 'sawtooth', mix: 0.95, formantShift: 1.25, vibratoDepth: 0.03, breathiness: 0.2 } },
+            'Lorna (Old School)': { icon: '🔥', params: { inputGain: 3.0, volume: 1.0, micVolume: 1.0, beatVolume: 0.8, masterVolume: 0.9, eqLow: 2, eqMid: 5, eqHigh: 8, deEsser: -15, delaySync: '1/16', delayFeedback: 0.3, reverb: 0.1, distortion: 30, compThreshold: -20, compRatio: 8, pan: 0, chorusMix: 0, gateThreshold: -60 }, auto: { enabled: false, rootNote: 0, scale: 'Mayor', retuneSpeed: 0.1, octaveOffset: 0, waveform: 'sawtooth', mix: 1.0, formantShift: 1.0, vibratoDepth: 0, breathiness: 0.1 } },
+            'Quevedo Mix': { icon: '🇮🇨', params: { inputGain: 3.0, volume: 0.9, micVolume: 1.0, beatVolume: 0.8, masterVolume: 0.9, eqLow: -4, eqMid: 2, eqHigh: 12, deEsser: -25, delaySync: '1/8D', delayFeedback: 0.3, reverb: 0.3, distortion: 0, compThreshold: -25, compRatio: 8, pan: 0, chorusMix: 0.1, gateThreshold: -65 }, auto: { enabled: true, rootNote: 0, scale: 'Menor', retuneSpeed: 0.01, octaveOffset: 0, waveform: 'sawtooth', mix: 0.85, formantShift: 1.05, vibratoDepth: 0.01, breathiness: 0.15 } },
+          };
+
+          const applyPreset = (presetName) => {
+            if (!DAW_PRESETS[presetName]) return;
+            setActivePreset(presetName); setParams(DAW_PRESETS[presetName].params); setAutoTune(DAW_PRESETS[presetName].auto);
+          };
+
+          const handleBackingTrackUpload = async (e) => {
+            const file = e.target.files[0]; if (!file || !isReady) return;
+            const arrayBuffer = await file.arrayBuffer(); const audioBuffer = await audioCtx.current.decodeAudioData(arrayBuffer);
+            setBackingTrack(prev => { if (prev.source) prev.source.stop(); return { name: file.name, isPlaying: false, source: null, buffer: audioBuffer }; });
+          };
+
+          const toggleBackingTrack = () => {
+            if (!backingTrack.buffer || !isReady) return;
+            if (backingTrack.isPlaying && backingTrack.source) { backingTrack.source.stop(); setBackingTrack(prev => ({ ...prev, isPlaying: false, source: null })); } 
+            else {
+              const source = audioCtx.current.createBufferSource(); source.buffer = backingTrack.buffer; source.connect(nodes.current.beatGain); source.start();
+              source.onended = () => setBackingTrack(prev => ({ ...prev, isPlaying: false, source: null })); setBackingTrack(prev => ({ ...prev, isPlaying: true, source }));
+            }
+          };
+
+          const toggleRecording = () => {
+            if (!recorder.current) return;
+            if (isRecording) { recorder.current.stop(); setIsRecording(false); } 
+            else { audioChunks.current = []; recorder.current.start(); setIsRecording(true); }
+          };
+
+          const toggleLoop = (index) => {
+            if (!isReady || !loopRecorder.current) return;
+            const loop = loops[index];
+            if (loop.state === 'empty') { activeLoopIndex.current = index; loopChunks.current = []; loopRecorder.current.start(); setLoops(prev => { const n = [...prev]; n[index] = { ...n[index], state: 'recording' }; return n; }); } 
+            else if (loop.state === 'recording') { loopRecorder.current.stop(); } 
+            else if (loop.state === 'playing') { if (loop.source) loop.source.stop(); setLoops(prev => { const n = [...prev]; n[index] = { id: index, state: 'empty', source: null }; return n; }); }
+          };
+
+          return (
+            <div className="min-h-screen bg-neutral-950 text-neutral-300 font-sans overflow-hidden flex flex-col">
+              {showWarning && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+                  <div className="bg-neutral-900 border border-emerald-500/30 p-8 rounded-xl max-w-md shadow-2xl text-center">
+                    <Icon name="Headphones" size={64} className="text-emerald-500 mx-auto mb-4 animate-bounce" />
+                    <h2 className="text-xl font-bold text-white mb-2">Conecta tus Auriculares</h2>
+                    <p className="text-neutral-400 text-sm mb-6">Para evitar acoples destructivos y sonar como en un estudio real, usa auriculares.</p>
+                    <button onClick={() => { setShowWarning(false); setMonitorActive(true); if(!isReady) initAudio(true); }} className="px-8 py-3 rounded-full bg-emerald-500 text-neutral-950 font-black tracking-widest hover:bg-emerald-400 transition-colors w-full">ESTOY LISTO</button>
+                  </div>
+                </div>
+              )}
+              <header className="bg-neutral-900 border-b border-neutral-800 p-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 text-emerald-400"><Icon name="Zap" className="fill-current" /><span className="font-black tracking-widest text-sm uppercase orbitron">VoxLab Pro Engine</span></div>
+                  <div className="h-6 w-px bg-neutral-800"></div>
+                  <div className="flex items-center gap-2 bg-neutral-950 px-3 py-1 rounded border border-neutral-800">
+                     <Icon name="Clock" size={14} className="text-neutral-500" />
+                     <span className="text-xs font-bold text-neutral-400">BPM</span>
+                     <input type="number" value={project.bpm} onChange={(e) => setProject(prev => ({...prev, bpm: parseInt(e.target.value)}))} className="w-12 bg-transparent text-emerald-400 font-mono text-sm outline-none text-right" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={toggleRecording} disabled={!isReady} className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold transition-colors ${!isReady ? 'bg-neutral-800 text-neutral-600' : isRecording ? 'bg-red-500 text-white' : 'bg-neutral-800 text-red-400 hover:bg-neutral-700'}`}>
+                    {isRecording ? <Icon name="Square" size={12} className="fill-current"/> : <Icon name="Circle" size={12} className="fill-current"/>} {isRecording ? 'GRABANDO' : 'GRABAR'}
+                  </button>
+                  {!isReady ? (
+                    <button onClick={() => setShowWarning(true)} className="flex items-center gap-2 px-4 py-1.5 rounded bg-emerald-500 text-neutral-950 text-xs font-black">
+                      <Icon name="Power" size={12} /> ENCENDER MOTOR
+                    </button>
+                  ) : (
+                     <button onClick={() => setMonitorActive(!monitorActive)} className={`flex items-center gap-2 px-4 py-1.5 rounded text-xs font-bold transition-colors ${monitorActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-neutral-800 text-neutral-500 hover:text-white'}`}>
+                        {monitorActive ? <Icon name="Volume2" size={12}/> : <Icon name="VolumeX" size={12}/>} MONITOR
+                     </button>
+                  )}
+                </div>
+              </header>
+              <main className="flex-1 flex overflow-hidden">
+                <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0">
+                  <div className="p-4 border-b border-neutral-800">
+                    <h3 className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-3 flex items-center gap-2"><Icon name="ListRestart" size={12} /> Vocal Presets</h3>
+                    <div className="flex flex-col gap-2">
+                      {Object.entries(DAW_PRESETS).map(([name, data]) => (
+                        <button key={name} onClick={() => applyPreset(name)} disabled={!isReady} className={`flex items-center justify-between px-3 py-2 rounded text-xs font-bold transition-all ${activePreset === name ? 'bg-emerald-500 text-neutral-950' : 'bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-400'}`}>
+                          <span className="flex items-center gap-2"><span>{data.icon}</span> {name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
+                    <h3 className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mb-3 flex items-center gap-2"><Icon name="Disc" size={12} /> Backing Track</h3>
+                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-neutral-700 rounded-lg hover:border-emerald-500 cursor-pointer mb-2">
+                      <Icon name="Upload" size={20} className="text-neutral-500 mb-2" />
+                      <span className="text-[10px] font-bold text-neutral-400 text-center">{backingTrack.name || 'Subir Beat (MP3)'}</span>
+                      <input type="file" accept="audio/*" onChange={handleBackingTrackUpload} disabled={!isReady} className="hidden" />
+                    </label>
+                    {backingTrack.name && (
+                      <button onClick={toggleBackingTrack} disabled={!isReady} className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 ${backingTrack.isPlaying ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800 text-white'}`}>
+                        {backingTrack.isPlaying ? <Icon name="Square" size={12} className="fill-current"/> : <Icon name="Play" size={12} className="fill-current"/>} PLAY
+                      </button>
+                    )}
+                    <h3 className="text-[10px] uppercase font-bold tracking-widest text-neutral-500 mt-6 mb-3 flex items-center gap-2"><Icon name="Save" size={12} /> Export</h3>
+                    <div className="flex flex-col gap-2">
+                      {recordings.map((rec) => (
+                        <div key={rec.id} className="bg-neutral-950 border border-neutral-800 rounded p-2 flex items-center justify-between text-[10px]">
+                          <span className="truncate max-w-[100px]">{rec.name}</span>
+                          <a href={rec.url} download={`VoxLab_${rec.name}.webm`} className="text-emerald-400"><Icon name="Download" size={12} /></a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </aside>
+                <section className="flex-1 flex flex-col bg-neutral-950 p-4 gap-4 overflow-y-auto custom-scrollbar">
+                  <div className="h-48 bg-black rounded-lg border border-neutral-800 relative overflow-hidden flex items-center justify-center">
+                    <canvas ref={canvasRef} width={800} height={200} className="w-full h-full opacity-80 mix-blend-screen" />
+                  </div>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 relative">
+                      <div className="flex justify-between items-center mb-4 border-b border-neutral-800 pb-2">
+                         <div className="flex items-center gap-2"><Icon name="Piano" size={16} className="text-amber-500" /><h3 className="text-xs font-black tracking-widest text-neutral-300 uppercase">Auto-Tune Engine</h3></div>
+                         <div className="bg-black border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-mono"><span ref={pitchDisplayRef} className="text-amber-500 font-bold">-</span></div>
+                      </div>
+                      <div className={`grid grid-cols-2 gap-x-6 gap-y-4 ${autoTune.enabled ? 'opacity-100' : 'opacity-30'}`}>
+                         <div><label className="text-[9px] uppercase font-bold text-neutral-500 mb-1 block">Key</label><select value={autoTune.rootNote} onChange={(e) => handleAutoTuneChange('rootNote', parseInt(e.target.value))} className="w-full bg-neutral-950 border border-neutral-800 rounded p-1.5 text-xs text-amber-500">{NOTES.map((n, i) => <option key={n} value={i}>{n}</option>)}</select></div>
+                         <div><label className="text-[9px] uppercase font-bold text-neutral-500 mb-1 block">Scale</label><select value={autoTune.scale} onChange={(e) => handleAutoTuneChange('scale', e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded p-1.5 text-xs text-amber-500">{Object.keys(SCALES).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                         <div className="col-span-2"><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">Retune Speed</label><span className="text-[9px] font-mono text-amber-500">{Math.round((0.2 - autoTune.retuneSpeed) * 500)}</span></div><input type="range" min="0" max="0.2" step="0.001" value={0.2 - autoTune.retuneSpeed} onChange={(e) => handleAutoTuneChange('retuneSpeed', 0.2 - parseFloat(e.target.value))} className="w-full h-1 bg-neutral-800 rounded appearance-none cursor-pointer accent-amber-500" /></div>
+                         <div><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">Formants</label><span className="text-[9px] font-mono text-amber-500">{Math.round(autoTune.formantShift*100)}%</span></div><input type="range" min="0.5" max="1.5" step="0.05" value={autoTune.formantShift} onChange={(e) => handleAutoTuneChange('formantShift', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-800 rounded accent-amber-500" /></div>
+                         <div><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">Breath Layer</label><span className="text-[9px] font-mono text-amber-500">{Math.round(autoTune.breathiness*100)}%</span></div><input type="range" min="0" max="0.5" step="0.05" value={autoTune.breathiness} onChange={(e) => handleAutoTuneChange('breathiness', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-800 rounded accent-amber-500" /></div>
+                      </div>
+                    </div>
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 relative">
+                      <div className="flex items-center gap-2 mb-4 border-b border-neutral-800 pb-2"><Icon name="SlidersHorizontal" size={16} className="text-cyan-400" /><h3 className="text-xs font-black tracking-widest text-neutral-300 uppercase">Vocal Chain</h3></div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                         <div className="col-span-2"><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">Pre-Amp</label><span className="text-[9px] font-mono text-cyan-400">{Math.round(params.inputGain * 100)}%</span></div><input type="range" name="inputGain" min="0" max="5" step="0.1" value={params.inputGain} onChange={handleParamChange} className="w-full h-1.5 bg-neutral-800 rounded appearance-none accent-cyan-400" /></div>
+                         <div className="col-span-2 flex gap-4 bg-neutral-950 p-2 rounded border border-neutral-800">{[ { id: 'eqLow', l: 'LOW' }, { id: 'eqMid', l: 'MID' }, { id: 'eqHigh', l: 'HIGH' } ].map(eq => (<div key={eq.id} className="flex-1 flex flex-col items-center"><label className="text-[8px] font-bold text-neutral-500 mb-1">{eq.l}</label><input type="range" name={eq.id} min="-15" max="15" step="1" value={params[eq.id]} onChange={handleParamChange} className="w-full h-1 bg-neutral-800 rounded accent-cyan-400" /><span className="text-[9px] font-mono text-cyan-400 mt-1">{params[eq.id]}dB</span></div>))}</div>
+                         <div><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">De-Esser</label><span className="text-[9px] font-mono text-cyan-400">{params.deEsser}dB</span></div><input type="range" name="deEsser" min="-40" max="0" step="1" value={params.deEsser} onChange={handleParamChange} className="w-full h-1 bg-neutral-800 rounded accent-cyan-400" /></div>
+                         <div><div className="flex justify-between mb-1"><label className="text-[9px] uppercase font-bold text-neutral-500">Compressor</label><span className="text-[9px] font-mono text-cyan-400">{params.compThreshold}dB</span></div><input type="range" name="compThreshold" min="-40" max="0" step="1" value={params.compThreshold} onChange={handleParamChange} className="w-full h-1 bg-neutral-800 rounded accent-cyan-400" /></div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+                <aside className="w-80 bg-neutral-900 border-l border-neutral-800 p-4 flex flex-col shrink-0">
+                  <div className="flex items-center justify-between mb-4 border-b border-neutral-800 pb-2"><h3 className="text-xs font-black tracking-widest text-neutral-300 uppercase">MIXER CONSOLE</h3></div>
+                  <div className="flex-1 flex justify-between gap-2">
+                    <div className="flex flex-col items-center flex-1 bg-neutral-950 rounded py-3 border border-neutral-800"><span className="text-[9px] font-bold text-neutral-500 mb-2 uppercase">Mic</span><input type="range" name="micVolume" min="0" max="1.5" step="0.05" value={params.micVolume} onChange={handleParamChange} className="vertical-slider" /><span className="text-[9px] font-mono text-emerald-400 mt-2">{Math.round(params.micVolume * 100)}</span></div>
+                    <div className="flex flex-col items-center flex-1 bg-neutral-950 rounded py-3 border border-neutral-800"><span className="text-[9px] font-bold text-neutral-500 mb-2 uppercase">Beat</span><input type="range" name="beatVolume" min="0" max="1.5" step="0.05" value={params.beatVolume} onChange={handleParamChange} className="vertical-slider" /><span className="text-[9px] font-mono text-cyan-400 mt-2">{Math.round(params.beatVolume * 100)}</span></div>
+                    <div className="flex flex-col items-center flex-1 bg-neutral-950 rounded py-3 border border-neutral-700 shadow-xl"><span className="text-[9px] font-black text-white mb-2 uppercase">Master</span><div className="w-3 h-24 bg-black rounded-full mb-2 overflow-hidden flex flex-col justify-end border border-neutral-800"><div ref={masterMeterRef} className="w-full bg-gradient-to-t from-emerald-500 via-amber-500 to-red-600 transition-all duration-75" style={{height: '0%'}}></div></div><input type="range" name="masterVolume" min="0" max="1.5" step="0.05" value={params.masterVolume} onChange={handleParamChange} className="vertical-slider" /><span className="text-[9px] font-mono text-white mt-2">{Math.round(params.masterVolume * 100)}</span></div>
+                  </div>
+                  <div className="mt-4 bg-neutral-950 rounded border border-neutral-800 p-3">
+                     <div className="flex justify-between mb-1"><span className="text-[9px] font-bold text-neutral-500">LIMITER GAIN REDUCTION</span></div>
+                     <div className="w-full h-1.5 bg-black rounded-full overflow-hidden flex justify-end"><div ref={grMeterRef} className="h-full bg-red-500 transition-all duration-75" style={{width: '0%'}}></div></div>
+                  </div>
+                </aside>
+              </main>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

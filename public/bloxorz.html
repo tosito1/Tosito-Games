@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloxorz 3D - Edición Fiel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&display=swap');
+
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Syncopate', sans-serif; }
+        
+        #ui {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            color: #00f2ff;
+            pointer-events: none;
+            z-index: 5;
+            text-transform: uppercase;
+        }
+        .stat { font-size: 14px; font-weight: 700; margin-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 242, 255, 0.5); }
+        
+        #overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(0,10,20,0.8) 0%, rgba(0,0,0,0.95) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+        }
+        
+        h1 { 
+            font-size: 64px; 
+            margin: 0; 
+            letter-spacing: 20px; 
+            color: #fff; 
+            text-shadow: 0 0 30px rgba(0, 242, 255, 0.5);
+            font-weight: 700;
+        }
+        
+        .menu-buttons { display: flex; flex-direction: column; gap: 20px; margin-top: 40px; }
+        
+        button {
+            background: rgba(0, 242, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            padding: 16px 50px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 300px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            font-family: 'Syncopate', sans-serif;
+            backdrop-filter: blur(5px);
+        }
+        
+        button:hover { 
+            background: #00f2ff; 
+            color: #000; 
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 242, 255, 0.4);
+        }
+        
+        button:disabled { opacity: 0.1; cursor: not-allowed; transform: none; box-shadow: none; }
+        
+        #instructions {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.4);
+            font-size: 10px;
+            letter-spacing: 3px;
+        }
+
+        #save-info { font-size: 10px; color: #00ffcc; margin-top: 15px; opacity: 0; transition: opacity 0.5s; }
+        
+        #msg { letter-spacing: 5px; color: #00f2ff; font-size: 12px; margin-top: 10px; opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="stat" id="lvl-txt">STAGE: 01</div>
+        <div class="stat" id="mov-txt">MOVES: 00</div>
+    </div>
+
+    <div id="overlay">
+        <h1 id="title">BLOXORZ</h1>
+        <p id="msg">REMASTERIZADO</p>
+        
+        <div class="menu-buttons">
+            <button id="btn-start">NUEVA PARTIDA</button>
+            <button id="btn-continue" disabled>CONTINUAR</button>
+            <button id="btn-reset-save" style="font-size: 9px; padding: 5px; min-width: auto; border: none; color: #555; background: none; margin-top: 10px;">BORRAR PROGRESO</button>
+        </div>
+        <div id="save-info">PROGRESO GUARDADO</div>
+    </div>
+
+    <div id="instructions">FLECHAS PARA MOVER • R PARA REINICIAR NIVEL</div>
+
+    <script>
+        let scene, camera, renderer, stars;
+        let block;
+        let tiles = [];
+        let currentLevel = 0;
+        let moves = 0;
+        let isAnimating = false;
+        let gameState = 'START';
+
+        // Definición de Niveles Originales (Ampliados hasta el 10)
+        const levels = [
+            { // Stage 1
+                start: { x: 1, z: 1 },
+                grid: [
+                    [1,1,1,0,0,0,0,0,0,0],
+                    [1,1,1,1,1,1,0,0,0,0],
+                    [1,1,1,1,1,1,1,1,1,0],
+                    [0,1,1,1,1,1,1,1,1,1],
+                    [0,0,0,0,0,1,1,9,1,1],
+                    [0,0,0,0,0,0,1,1,1,0]
+                ]
+            },
+            { // Stage 2
+                start: { x: 1, z: 2 },
+                grid: [
+                    [0,0,0,0,0,0,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,0,0,1],
+                    [1,1,1,1,1,1,1,1,9,1,1],
+                    [1,1,1,0,0,0,1,1,1,1,1],
+                    [0,0,0,0,0,0,0,1,1,1,0]
+                ]
+            },
+            { // Stage 3
+                start: { x: 1, z: 1 },
+                grid: [
+                    [0,0,0,0,0,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,1],
+                    [1,1,1,0,0,1,1,9,1,1],
+                    [1,1,1,0,0,1,1,1,1,1],
+                    [1,1,1,1,1,1,0,0,0,0]
+                ]
+            },
+            { // Stage 4
+                start: { x: 1, z: 3 },
+                grid: [
+                    [0,0,0,1,1,1,1,1,1,1],
+                    [0,0,0,1,1,9,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,0,0],
+                    [1,1,1,1,1,1,1,1,0,0],
+                    [1,1,1,1,0,0,0,0,0,0]
+                ]
+            },
+            { // Stage 5
+                start: { x: 1, z: 2 },
+                grid: [
+                    [0,0,0,0,0,0,0,1,1,1,1,1,0],
+                    [1,1,1,1,1,0,0,1,1,9,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,1,1,1,1],
+                    [1,1,1,1,1,0,0,1,1,1,1,1,1],
+                    [0,0,0,0,0,0,0,1,1,1,0,0,0]
+                ]
+            },
+            { // Stage 6
+                start: { x: 1, z: 3 },
+                grid: [
+                    [0,0,0,0,0,1,1,1,1,1,1,1,1],
+                    [0,0,0,0,0,1,1,9,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,0,0,0,0],
+                    [1,1,1,1,1,1,1,1,1,0,0,0,0],
+                    [1,1,1,1,0,0,0,0,0,0,0,0,0]
+                ]
+            },
+            { // Stage 7
+                start: { x: 3, z: 1 },
+                grid: [
+                    [0,0,0,0,1,1,1,1,1,1],
+                    [0,0,0,0,1,1,1,9,1,1],
+                    [1,1,1,1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,0,0,0,0],
+                    [1,1,1,1,1,1,0,0,0,0]
+                ]
+            },
+            { // Stage 8
+                start: { x: 1, z: 2 },
+                grid: [
+                    [0,0,0,1,1,1,1,1,1],
+                    [0,0,0,1,1,9,1,1,1],
+                    [1,1,1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,0,0],
+                    [1,1,1,0,0,0,0,0,0]
+                ]
+            },
+            { // Stage 9
+                start: { x: 1, z: 3 },
+                grid: [
+                    [0,0,0,0,0,1,1,1,1,1,1,1],
+                    [0,0,0,0,0,1,1,9,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,1,0,0],
+                    [1,1,1,1,1,1,1,1,1,1,0,0],
+                    [1,1,1,1,1,1,0,0,0,0,0,0]
+                ]
+            },
+            { // Stage 10
+                start: { x: 2, z: 2 },
+                grid: [
+                    [0,0,1,1,1,1,1,1,0,0],
+                    [0,0,1,1,9,1,1,1,0,0],
+                    [1,1,1,1,1,1,1,1,1,1],
+                    [1,1,1,1,1,1,1,1,1,1],
+                    [0,0,1,1,1,1,1,1,0,0]
+                ]
+            }
+        ];
+
+        const textures = {
+            tile: createTileTexture(),
+            block: createBlockTexture(),
+            goal: createGoalTexture()
+        };
+
+        function createTileTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#3a3a4a'; 
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#555566';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(5, 5, 118, 118);
+            ctx.strokeStyle = '#2a2a3a';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(15, 15, 98, 98);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createBlockTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#bbbbbb'; 
+            ctx.fillRect(0, 0, 128, 128);
+            for(let i=0; i<400; i++) {
+                ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`;
+                ctx.fillRect(Math.random()*128, Math.random()*128, 2, 2);
+            }
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(4, 4, 120, 120);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createGoalTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#00f2ff';
+            ctx.lineWidth = 12;
+            ctx.strokeRect(8, 8, 112, 112);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        window.onload = () => {
+            init();
+            checkSaveData();
+        };
+
+        function checkSaveData() {
+            const saved = localStorage.getItem('bloxorz_save_v3');
+            if (saved !== null) {
+                currentLevel = parseInt(saved);
+                const btn = document.getElementById('btn-continue');
+                if(btn) {
+                    btn.disabled = false;
+                    btn.innerText = `CONTINUAR (ETAPA ${currentLevel + 1})`;
+                }
+            }
+        }
+
+        function saveGame() {
+            localStorage.setItem('bloxorz_save_v3', currentLevel);
+            const tag = document.getElementById('save-info');
+            if(tag) {
+                tag.style.opacity = '1';
+                setTimeout(() => tag.style.opacity = '0', 2000);
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x00050a, 0.012);
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const d = 11; 
+            camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+            camera.position.set(20, 20, 20);
+            camera.lookAt(5, 0, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            const starGeo = new THREE.BufferGeometry();
+            const starCoords = [];
+            for(let i=0; i<1500; i++) {
+                starCoords.push(THREE.MathUtils.randFloatSpread(150), THREE.MathUtils.randFloatSpread(150), THREE.MathUtils.randFloatSpread(150));
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starCoords, 3));
+            stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12 }));
+            scene.add(stars);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+            
+            const sun = new THREE.DirectionalLight(0x00f2ff, 0.7);
+            sun.position.set(15, 30, 15);
+            sun.castShadow = true;
+            sun.shadow.camera.left = -20;
+            sun.shadow.camera.right = 20;
+            sun.shadow.camera.top = 20;
+            sun.shadow.camera.bottom = -20;
+            scene.add(sun);
+
+            setupLevel(currentLevel);
+            animate();
+        }
+
+        function setupLevel(idx) {
+            tiles.forEach(t => scene.remove(t));
+            tiles = [];
+            if (block) scene.remove(block);
+
+            const level = levels[idx];
+            const grid = level.grid;
+
+            const tileGeo = new THREE.BoxGeometry(0.98, 0.4, 0.98); 
+            
+            for (let z = 0; z < grid.length; z++) {
+                for (let x = 0; x < grid[z].length; x++) {
+                    if (grid[z][x] === 0) continue;
+                    
+                    const mat = new THREE.MeshStandardMaterial({ 
+                        map: grid[z][x] === 9 ? textures.goal : textures.tile,
+                        roughness: 0.6,
+                        metalness: 0.2
+                    });
+                    
+                    const mesh = new THREE.Mesh(tileGeo, mat);
+                    mesh.position.set(x, -0.2, z); 
+                    mesh.receiveShadow = true;
+                    scene.add(mesh);
+                    tiles.push(mesh);
+                }
+            }
+
+            const blockGeo = new THREE.BoxGeometry(0.94, 1.94, 0.94);
+            const blockMat = new THREE.MeshStandardMaterial({ 
+                map: textures.block,
+                roughness: 0.1,
+                metalness: 0.8
+            });
+            block = new THREE.Mesh(blockGeo, blockMat);
+            block.castShadow = true;
+            
+            block.position.set(level.start.x, 0.97, level.start.z);
+            block.rotation.set(0,0,0);
+            scene.add(block);
+
+            blockData = { pos: block.position.clone(), state: 'standing' };
+            
+            moves = 0;
+            updateHUD();
+            
+            const centerX = grid[0].length / 2;
+            const centerZ = grid.length / 2;
+            camera.position.set(centerX + 12, 15, centerZ + 12);
+            camera.lookAt(centerX, 0, centerZ);
+        }
+
+        let blockData = { pos: new THREE.Vector3(0, 0, 0), state: 'standing' };
+
+        function updateHUD() {
+            const lvlEl = document.getElementById('lvl-txt');
+            const movEl = document.getElementById('mov-txt');
+            if(lvlEl) lvlEl.innerText = `STAGE: ${String(currentLevel + 1).padStart(2, '0')}`;
+            if(movEl) movEl.innerText = `MOVES: ${String(moves).padStart(2, '0')}`;
+        }
+
+        function rotateBlock(dir) {
+            if (isAnimating || gameState !== 'PLAYING') return;
+            isAnimating = true;
+
+            let axis, angle, pivotPoint;
+            const pos = block.position;
+
+            if (dir === 'right') {
+                axis = new THREE.Vector3(0, 0, -1);
+                angle = Math.PI / 2;
+                let off = (blockData.state === 'standing') ? 0.5 : (blockData.state === 'lyingX' ? 1 : 0.5);
+                pivotPoint = new THREE.Vector3(pos.x + off, 0, pos.z);
+            } else if (dir === 'left') {
+                axis = new THREE.Vector3(0, 0, 1);
+                angle = Math.PI / 2;
+                let off = (blockData.state === 'standing') ? 0.5 : (blockData.state === 'lyingX' ? 1 : 0.5);
+                pivotPoint = new THREE.Vector3(pos.x - off, 0, pos.z);
+            } else if (dir === 'up') {
+                axis = new THREE.Vector3(-1, 0, 0);
+                angle = Math.PI / 2;
+                let off = (blockData.state === 'standing') ? 0.5 : (blockData.state === 'lyingZ' ? 1 : 0.5);
+                pivotPoint = new THREE.Vector3(pos.x, 0, pos.z - off);
+            } else if (dir === 'down') {
+                axis = new THREE.Vector3(1, 0, 0);
+                angle = Math.PI / 2;
+                let off = (blockData.state === 'standing') ? 0.5 : (blockData.state === 'lyingZ' ? 1 : 0.5);
+                pivotPoint = new THREE.Vector3(pos.x, 0, pos.z + off);
+            }
+
+            const pivot = new THREE.Group();
+            pivot.position.copy(pivotPoint);
+            scene.add(pivot);
+            block.position.sub(pivotPoint);
+            pivot.add(block);
+
+            let currentRot = 0;
+            const stepRot = 0.15;
+            
+            function step() {
+                if (currentRot < angle) {
+                    const delta = Math.min(stepRot, angle - currentRot);
+                    pivot.rotateOnAxis(axis, delta);
+                    currentRot += delta;
+                    requestAnimationFrame(step);
+                } else {
+                    block.getWorldPosition(block.position);
+                    block.getWorldQuaternion(block.quaternion);
+                    
+                    scene.add(block);
+                    scene.remove(pivot);
+
+                    block.position.x = Math.round(block.position.x * 2) / 2;
+                    block.position.z = Math.round(block.position.z * 2) / 2;
+                    
+                    if (blockData.state === 'standing') {
+                        blockData.state = (dir === 'left' || dir === 'right') ? 'lyingX' : 'lyingZ';
+                        block.position.y = 0.485;
+                    } else if (blockData.state === 'lyingX') {
+                        if (dir === 'left' || dir === 'right') {
+                            blockData.state = 'standing';
+                            block.position.y = 0.97;
+                        } else {
+                            block.position.y = 0.485;
+                        }
+                    } else if (blockData.state === 'lyingZ') {
+                        if (dir === 'up' || dir === 'down') {
+                            blockData.state = 'standing';
+                            block.position.y = 0.97;
+                        } else {
+                            block.position.y = 0.485;
+                        }
+                    }
+
+                    moves++;
+                    updateHUD();
+                    checkResult();
+                    isAnimating = false;
+                }
+            }
+            step();
+        }
+
+        function checkResult() {
+            const grid = levels[currentLevel].grid;
+            const x = Math.round(block.position.x);
+            const z = Math.round(block.position.z);
+            const pts = [];
+
+            if (blockData.state === 'standing') {
+                pts.push({x, z});
+            } else if (blockData.state === 'lyingX') {
+                pts.push({x: Math.floor(block.position.x), z});
+                pts.push({x: Math.ceil(block.position.x), z});
+            } else if (blockData.state === 'lyingZ') {
+                pts.push({x, z: Math.floor(block.position.z)});
+                pts.push({x, z: Math.ceil(block.position.z)});
+            }
+
+            let fall = false;
+            let win = false;
+            for (let p of pts) {
+                if (p.z < 0 || p.z >= grid.length || p.x < 0 || p.x >= grid[0].length || grid[p.z][p.x] === 0) {
+                    fall = true;
+                }
+                if (grid[p.z][p.x] === 9 && blockData.state === 'standing') {
+                    win = true;
+                }
+            }
+
+            if (fall) {
+                gameState = 'OVER';
+                setTimeout(() => showMenu("FALLIDO", "TE HAS CAÍDO", "REINTENTAR"), 300);
+            } else if (win) {
+                gameState = 'WIN';
+                saveGame();
+                setTimeout(() => {
+                    if (currentLevel < levels.length - 1) showMenu("LOGRADO", "NIVEL SUPERADO", "SIGUIENTE NIVEL");
+                    else showMenu("VICTORIA", "HAS TERMINADO EL JUEGO", "REINICIAR");
+                }, 300);
+            }
+        }
+
+        function showMenu(title, msg, btnText) {
+            const titleEl = document.getElementById('title');
+            const msgEl = document.getElementById('msg');
+            const btnStart = document.getElementById('btn-start');
+            const overlay = document.getElementById('overlay');
+
+            if(titleEl) titleEl.innerText = title;
+            if(msgEl) msgEl.innerText = msg;
+            if(btnStart) btnStart.innerText = btnText;
+            const btnCont = document.getElementById('btn-continue');
+            if(btnCont) btnCont.style.display = 'none';
+            if(overlay) overlay.style.display = 'flex';
+        }
+
+        document.getElementById('btn-start').onclick = () => {
+            if (gameState === 'WIN') currentLevel = (currentLevel + 1) % levels.length;
+            document.getElementById('overlay').style.display = 'none';
+            gameState = 'PLAYING';
+            setupLevel(currentLevel);
+        };
+
+        document.getElementById('btn-continue').onclick = () => {
+            document.getElementById('overlay').style.display = 'none';
+            gameState = 'PLAYING';
+            setupLevel(currentLevel);
+        };
+
+        document.getElementById('btn-reset-save').onclick = (e) => {
+            e.stopPropagation();
+            localStorage.removeItem('bloxorz_save_v3');
+            location.reload();
+        };
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(stars) stars.rotation.y += 0.0002;
+            renderer.render(scene, camera);
+        }
+
+        window.onkeydown = (e) => {
+            if (gameState !== 'PLAYING' || isAnimating) return;
+            if (e.key === 'ArrowRight') rotateBlock('right');
+            if (e.key === 'ArrowLeft') rotateBlock('left');
+            if (e.key === 'ArrowUp') rotateBlock('up');
+            if (e.key === 'ArrowDown') rotateBlock('down');
+            if (e.key.toLowerCase() === 'r') setupLevel(currentLevel);
+        };
+
+        window.onresize = () => {
+            const aspect = window.innerWidth / window.innerHeight;
+            const d = 11;
+            camera.left = -d * aspect; camera.right = d * aspect;
+            camera.top = d; camera.bottom = -d;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>

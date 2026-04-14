@@ -36,11 +36,7 @@
     margin: 0 !important;
   }
 
-  /* Admin Mode: Hide Navigation Sidebar and Center Content */
-  body.admin-mode #bottom-nav,
-  body.admin-mode #floating-remote-btn {
-    display: none !important;
-  }
+  /* Admin Mode: Center Content (Nav is handled by its own logic) */
   body.admin-mode #app-container {
     padding-left: 0 !important;
   }
@@ -63,6 +59,45 @@
     console.log("[🛠️] Eruda Console Initialized");
   }
 </script>
+
+<style>
+/* UNIVERSAL GAME EXIT BUTTON */
+#universal-game-exit-btn {
+  position: fixed;
+  top: 25px;
+  right: 25px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: white;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 10001; /* Above all games */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+#universal-game-exit-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: #EF4444;
+  transform: scale(1.15) rotate(90deg);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+#universal-game-exit-btn:active {
+  transform: scale(0.95);
+}
+
+body.game-mode #universal-game-exit-btn {
+  display: flex;
+}
+</style>
 
 <style>
 /* ============================================================
@@ -115,8 +150,14 @@ html, body {
 }
 
 /* Desktop sidebar indent */
-body.nav-open #app-container {
-  padding-left: var(--nav-w);
+@media (min-width: 768px) {
+  #app-container {
+    padding-left: var(--nav-w);
+    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .nav-collapsed #app-container {
+    padding-left: 0 !important;
+  }
 }
 
 /* ============================================================
@@ -182,8 +223,19 @@ body.nav-open #app-container {
     border-top: none; border-right: 1px solid var(--border);
     padding-top: 2rem; right: auto;
     overflow-y: auto; overflow-x: hidden;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+    z-index: 1000;
+  }
+  .nav-collapsed #bottom-nav {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .nav-collapsed #app-container {
+    padding-left: 0 !important;
   }
   .nav-btn {
+    width: 100%;
     flex: none; flex-direction: row; justify-content: flex-start;
     padding: 1rem 1.5rem; font-size: 0.85rem; gap: 0.9rem;
     border-left: 3px solid transparent;
@@ -1373,6 +1425,41 @@ body.palette-contrast .ch-sq.dark { background: #334155; }
 #floating-remote-btn:active { transform: scale(0.9); }
 body.game-mode #floating-remote-btn { display: flex; }
 
+.header-brand { 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+  font-family: 'Outfit', sans-serif; 
+  font-weight: 900; 
+  font-size: 1.25rem; 
+  letter-spacing: 0.5px;
+}
+
+.sidebar-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--sky);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: var(--sky);
+  transform: scale(1.05);
+  color: var(--sky);
+}
+
+.sidebar-toggle-btn:active {
+  transform: scale(0.95);
+}
+
 .btn-header-remote {
   background: rgba(255,255,255,0.05); border: 1px solid var(--border);
   color: var(--sky); width: 38px; height: 38px; border-radius: 10px;
@@ -1475,18 +1562,12 @@ body.game-mode #floating-remote-btn { display: flex; }
 <!-- ============================================================
      NAVIGATION
      ============================================================ -->
-<nav id="bottom-nav" class="hidden">
+<nav id="bottom-nav">
   <button class="nav-btn active" onclick="showScreen('hub')" id="nav-hub">
     <span class="icon">🎮</span>JUEGOS
   </button>
   <button class="nav-btn" onclick="showScreen('lobby')" id="nav-lobby">
     <span class="icon">♟️</span>AJEDREZ
-  </button>
-  <button class="nav-btn" onclick="showScreen('exercises')" id="nav-exercises">
-    <span class="icon">🧩</span>EJERCICIOS
-  </button>
-  <button class="nav-btn" onclick="showScreen('openings')" id="nav-openings">
-    <span class="icon">📖</span>APERTURAS
   </button>
   <button class="nav-btn" onclick="showScreen('social')" id="nav-social">
     <span class="icon">👥</span>SOCIAL
@@ -1500,6 +1581,7 @@ body.game-mode #floating-remote-btn { display: flex; }
   </a>
 </nav>
 
+<button id="universal-game-exit-btn" onclick="exitCurrentGame()" title="Salir del Juego">✕</button>
 <button id="floating-remote-btn" onclick="openRemoteModal()" title="Vincular Mando Móvil">📡</button>
 
 <!-- ============================================================
@@ -1512,7 +1594,12 @@ body.game-mode #floating-remote-btn { display: flex; }
        ====================================================== -->
   <div id="screen-hub" class="screen" style="padding-top:0;">
     <header class="hub-header">
-      <div class="header-brand">TOSITO GAMES</div>
+      <div class="header-brand">
+        <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Alternar Menú">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        TOSITO GAMES
+      </div>
       <div class="header-actions">
         <!-- New Admin Command Access (Only for Admins) -->
         <button id="hub-admin-link" class="btn btn-glass" onclick="showScreen('lobby'); switchLobbyTab('tab-admin')" style="display:none; width:auto; padding:0 15px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:var(--amber); font-weight:900; gap:8px;">
@@ -1575,7 +1662,21 @@ body.game-mode #floating-remote-btn { display: flex; }
     <div class="hub-section-container">
       <h4 class="hub-section-title"><span style="color:var(--sky)">05</span> Música y Ritmo</h4>
       <div id="grid-music" class="hub-games-grid">
-         <div class="hub-loading">Afinando instrumentos...</div>
+         <!-- VoxLab Hub Link -->
+         <div class="hub-card btn-juicy" onclick="showVoxLabScreen()">
+            <div class="card-glow" style="background:var(--sky); opacity:0.2;"></div>
+            <span class="card-emoji">⚡</span>
+            <h3 class="card-name">VoxLab Pro</h3>
+            <p class="card-desc">AutoTune & FX</p>
+         </div>
+      </div>
+    </div>
+
+    <!-- 06 DEPORTES -->
+    <div class="hub-section-container">
+      <h4 class="hub-section-title"><span style="color:var(--sky)">06</span> Deportes y Velocidad</h4>
+      <div id="grid-sports" class="hub-games-grid">
+         <div class="hub-loading">Calentando en la banda...</div>
       </div>
     </div>
   </div>
@@ -1618,6 +1719,15 @@ body.game-mode #floating-remote-btn { display: flex; }
         <h3 class="card-name" style="color:var(--amber)">BeepBox Studio</h3>
         <p class="card-desc">Editor de música chiptune. Crea bandas sonoras retro para tus juegos.</p>
         <button class="card-action" style="background:var(--amber); color:#000;">🎨 Abrir Editor →</button>
+      </div>
+
+      <!-- VoxLab Pro Card -->
+      <div class="hub-card btn-juicy card-voxlab" onclick="showVoxLabScreen()">
+        <div class="card-glow" style="background:var(--sky); opacity:0.2;"></div>
+        <span class="card-emoji">⚡</span>
+        <h3 class="card-name" style="color:var(--sky)">VoxLab Pro</h3>
+        <p class="card-desc">Motor sónico y procesador vocal. Auto-Tune profesional en tiempo real.</p>
+        <button class="card-action" style="background:var(--sky); color:#020617;">🎤 Cantar →</button>
       </div>
     </div>
   </div>
@@ -1833,14 +1943,74 @@ body.game-mode #floating-remote-btn { display: flex; }
 
     <!-- Lobby tabs -->
     <div class="tabs-wrap">
-      <button class="tab-btn active" onclick="switchLobbyTab('tab-ia')">Bot IA</button>
+      <button class="tab-btn active" id="tab-btn-chess-hub" onclick="switchLobbyTab('tab-chess-hub')">🏠 Inicio</button>
+      <button class="tab-btn" onclick="switchLobbyTab('tab-ia')">Bot IA</button>
       <button class="tab-btn" onclick="switchLobbyTab('tab-online')">Multijugador</button>
       <button class="tab-btn" onclick="switchLobbyTab('tab-history')">Historial</button>
       <button class="tab-btn admin-only" id="tab-btn-admin" style="display:none;" onclick="switchLobbyTab('tab-admin')">🛰️ Mando</button>
     </div>
 
+    <!-- CHESS HUB DASHBOARD -->
+    <div id="tab-chess-hub" class="tab-pane active">
+      <div class="hub-games-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));">
+        <!-- Play IA -->
+        <div class="hub-card btn-juicy card-chess" onclick="switchLobbyTab('tab-ia')">
+          <div class="card-glow"></div>
+          <span class="card-emoji">🤖</span>
+          <h3 class="card-name">Retar a la IA</h3>
+          <p class="card-desc">Partida rápida contra Tositron. Configura el nivel y pon a prueba tu estrategia.</p>
+          <button class="card-action">Jugar ahora →</button>
+        </div>
+
+        <!-- Play Online -->
+        <div class="hub-card btn-juicy card-chess" onclick="switchLobbyTab('tab-online')" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%);">
+          <div class="card-glow" style="background: var(--green);"></div>
+          <span class="card-emoji">🌐</span>
+          <h3 class="card-name" style="color: var(--green);">Multijugador</h3>
+          <p class="card-desc">Crea una sala o únete a una existente para jugar contra amigos en tiempo real.</p>
+          <button class="card-action" style="background: var(--green); color: white;">Buscar sala →</button>
+        </div>
+
+        <!-- Exercises -->
+        <div class="hub-card btn-juicy card-chess" onclick="showScreen('exercises')" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(139, 92, 246, 0.02) 100%);">
+          <div class="card-glow" style="background: var(--purple);"></div>
+          <span class="card-emoji">🧩</span>
+          <h3 class="card-name" style="color: var(--purple);">Ejercicios</h3>
+          <p class="card-desc">Resuelve puzzles tácticos de Lichess y mejora tu visión de juego.</p>
+          <button class="card-action" style="background: var(--purple); color: white;">Entrenar →</button>
+        </div>
+
+        <!-- Openings -->
+        <div class="hub-card btn-juicy card-chess" onclick="showScreen('openings')" style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(236, 72, 153, 0.02) 100%);">
+          <div class="card-glow" style="background: #ec4899;"></div>
+          <span class="card-emoji">📖</span>
+          <h3 class="card-name" style="color: #ec4899;">Aperturas</h3>
+          <p class="card-desc">Estudia las mejores líneas y variantes para dominar el inicio de la partida.</p>
+          <button class="card-action" style="background: #ec4899; color: white;">Explorar →</button>
+        </div>
+
+        <!-- Masters -->
+        <div class="hub-card btn-juicy card-chess" onclick="showMasterGallery()" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.02) 100%);">
+          <div class="card-glow" style="background: var(--amber);"></div>
+          <span class="card-emoji">🏆</span>
+          <h3 class="card-name" style="color: var(--amber);">Maestros</h3>
+          <p class="card-desc">Analiza partidas históricas de los grandes maestros del ajedrez.</p>
+          <button class="card-action" style="background: var(--amber); color: black;">Ver Galería →</button>
+        </div>
+
+        <!-- History -->
+        <div class="hub-card btn-juicy card-chess" onclick="switchLobbyTab('tab-history')" style="background: linear-gradient(135deg, rgba(148, 163, 184, 0.08) 0%, rgba(148, 163, 184, 0.02) 100%);">
+          <div class="card-glow" style="background: var(--muted);"></div>
+          <span class="card-emoji">📜</span>
+          <h3 class="card-name" style="color: var(--muted);">Historial</h3>
+          <p class="card-desc">Repasa tus partidas anteriores, impórtalas o analízalas de nuevo.</p>
+          <button class="card-action" style="background: var(--muted); color: white;">Mi Archivo →</button>
+        </div>
+      </div>
+    </div>
+
     <!-- IA TAB -->
-    <div id="tab-ia" class="tab-pane active">
+    <div id="tab-ia" class="tab-pane">
       <div class="glass-panel" style="max-width:800px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
           <h3 style="margin:0;font-size:1.05rem;font-weight:700;">Nivel de la IA</h3>
@@ -2361,6 +2531,28 @@ body.game-mode #floating-remote-btn { display: flex; }
 <!-- HEXA FALLS SCREEN -->
 <div id="screen-hexa-falls" class="screen">
   <iframe id="hexa-falls-frame" style="width:100%; height:100%; border:none;"></iframe>
+</div>
+
+<!-- VOXLAB SCREEN -->
+<div id="screen-voxlab" class="screen">
+  <div style="width:100%; height:100%; display:flex; flex-direction:column;">
+    <div style="padding:10px 20px; background:rgba(0,0,0,0.5); border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+      <button class="btn btn-glass" style="width:auto; padding:8px 16px;" onclick="exitVoxLab()">← Volver al Hub</button>
+      <div style="font-weight:900; color:var(--sky); letter-spacing:1px; font-size:0.8rem;">VOXLAB PRO ENGINE ⚡</div>
+    </div>
+    <iframe id="voxlab-frame" style="flex:1; width:100%; border:none;"></iframe>
+  </div>
+</div>
+
+<!-- BLOXORZ SCREEN -->
+<div id="screen-bloxorz" class="screen">
+  <div style="width:100%; height:100%; display:flex; flex-direction:column;">
+    <div style="padding:10px 20px; background:rgba(0,0,0,0.5); border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+      <button class="btn btn-glass" style="width:auto; padding:8px 16px;" onclick="exitBloxorz()">← Volver al Hub</button>
+      <div style="font-weight:900; color:var(--sky); letter-spacing:1px; font-size:0.8rem;">BLOXORZ 3D 🧱</div>
+    </div>
+    <iframe id="bloxorz-frame" style="flex:1; width:100%; border:none;"></iframe>
+  </div>
 </div>
 
 <!-- ============================================================
