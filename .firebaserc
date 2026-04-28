@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "tosito-chest"
+    "default": "tosito-games-303f5"
   },
   "targets": {
     "tosito-chest": {
@@ -10,6 +10,16 @@
         ],
         "chess-site": [
           "tosito-chest"
+        ]
+      }
+    },
+    "tosito-games-303f5": {
+      "hosting": {
+        "hub": [
+          "tosito-games-303f5"
+        ],
+        "semantika": [
+          "semantika"
         ]
       }
     }

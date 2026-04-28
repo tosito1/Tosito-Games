@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tosito Clicker: Legacy</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        :root {
+            --primary: #00f2ff;
+            --secondary: #7000ff;
+            --bg: #020617;
+            --card: rgba(15, 23, 42, 0.8);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: var(--bg); 
+            color: #fff; 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        #bg-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+        }
+
+        /* --- MAIN LAYOUT --- */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #stats {
+            position: absolute;
+            top: 40px;
+            text-align: center;
+        }
+
+        #tps-value { font-size: 3.5rem; font-weight: 900; letter-spacing: -2px; color: var(--primary); text-shadow: 0 0 30px rgba(0, 242, 255, 0.5); }
+        #tpc-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 4px; color: #64748b; margin-top: -5px; }
+
+        #main-clicker {
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle at 30% 30%, #1e293b, #0f172a);
+            border: 4px solid var(--border);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 40px rgba(255, 255, 255, 0.05);
+            transition: transform 0.1s, border-color 0.3s;
+            user-select: none;
+        }
+
+        #main-clicker:hover { border-color: var(--primary); transform: scale(1.02); }
+        #main-clicker:active { transform: scale(0.95); }
+
+        #main-clicker span { font-size: 80px; filter: drop-shadow(0 0 20px rgba(0, 242, 255, 0.8)); }
+
+        /* --- UPGRADES PANEL --- */
+        aside {
+            width: 350px;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(20px);
+            border-left: 1px solid var(--border);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 3px; color: #64748b; margin-bottom: 10px; }
+
+        .upgrade-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid var(--border);
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upgrade-card:hover { background: rgba(30, 41, 59, 0.8); border-color: var(--primary); transform: translateX(-5px); }
+        .upgrade-card.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+        .up-icon { width: 45px; height: 45px; background: #0f172a; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .up-info { flex: 1; }
+        .up-name { font-size: 0.9rem; font-weight: 700; display: block; }
+        .up-cost { font-size: 0.75rem; color: var(--primary); font-weight: 900; }
+        .up-count { font-size: 1.2rem; font-weight: 900; color: #334155; }
+
+        /* --- PARTICLES --- */
+        .click-text {
+            position: absolute;
+            pointer-events: none;
+            font-weight: 900;
+            color: var(--primary);
+            font-size: 24px;
+            z-index: 100;
+        }
+
+        /* --- NOTIF --- */
+        #notif { position: fixed; bottom: 20px; left: 20px; font-size: 0.7rem; color: #475569; opacity: 0.5; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="bg-canvas"></div>
+
+    <main>
+        <div id="stats">
+            <div id="tps-value">0</div>
+            <div id="tpc-label">Tosito Points</div>
+            <div id="auto-tps" style="font-size:0.8rem; color:#64748b; margin-top:5px;">Producción: 0/sec</div>
+        </div>
+
+        <div id="main-clicker" onclick="handleClick(event)">
+            <span>💎</span>
+        </div>
+
+        <div id="notif">Progreso guardado automáticamente • v1.0.4</div>
+    </main>
+
+    <aside>
+        <h2>POTENCIADORES</h2>
+        <div id="upgrades-list"></div>
+    </aside>
+
+    <script>
+        let points = parseFloat(localStorage.getItem('tp_points') || 0);
+        let multiplier = 1;
+        let autoTPS = 0;
+
+        const upgrades = [
+            { id: 'cursor', name: 'Click Maestro', desc: '+1 por click', cost: 15, baseCost: 15, power: 1, type: 'click', emoji: '🖱️', count: 0 },
+            { id: 'auto1', name: 'Robot Recolector', desc: '+1/sec', cost: 100, baseCost: 100, power: 1, type: 'auto', emoji: '🤖', count: 0 },
+            { id: 'auto2', name: 'Minas de Neón', desc: '+5/sec', cost: 500, baseCost: 500, power: 5, type: 'auto', emoji: '⛏️', count: 0 },
+            { id: 'auto3', name: 'Fábrica Cyber', desc: '+25/sec', cost: 2500, baseCost: 2500, power: 25, type: 'auto', emoji: '🏭', count: 0 },
+            { id: 'auto4', name: 'IA Suprema', desc: '+150/sec', cost: 12000, baseCost: 12000, power: 150, type: 'auto', emoji: '🌌', count: 0 }
+        ];
+
+        // Load saved upgrades
+        const savedUpgrades = JSON.parse(localStorage.getItem('tp_upgrades') || '[]');
+        if (savedUpgrades.length > 0) {
+            upgrades.forEach((up, i) => {
+                if (savedUpgrades[i]) {
+                    up.count = savedUpgrades[i].count;
+                    up.cost = Math.floor(up.baseCost * Math.pow(1.15, up.count));
+                    if (up.type === 'click') multiplier += (up.count * up.power);
+                    if (up.type === 'auto') autoTPS += (up.count * up.power);
+                }
+            });
+        }
+
+        function handleClick(e) {
+            points += multiplier;
+            updateUI();
+            
+            // Visual Effect
+            const text = document.createElement('div');
+            text.className = 'click-text';
+            text.innerText = `+${multiplier}`;
+            text.style.left = `${e.clientX}px`;
+            text.style.top = `${e.clientY}px`;
+            document.body.appendChild(text);
+
+            gsap.to(text, {
+                y: -100,
+                opacity: 0,
+                duration: 0.8,
+                ease: "power2.out",
+                onComplete: () => text.remove()
+            });
+
+            gsap.fromTo("#main-clicker span", { scale: 1.2 }, { scale: 1, duration: 0.2 });
+        }
+
+        function buyUpgrade(id) {
+            const up = upgrades.find(u => u.id === id);
+            if (points >= up.cost) {
+                points -= up.cost;
+                up.count++;
+                up.cost = Math.floor(up.baseCost * Math.pow(1.15, up.count));
+                
+                if (up.type === 'click') multiplier += up.power;
+                if (up.type === 'auto') autoTPS += up.power;
+
+                saveGame();
+                renderUpgrades();
+                updateUI();
+                
+                gsap.from(`.card-${id}`, { x: 20, duration: 0.3, ease: "elastic.out(1, 0.3)" });
+            }
+        }
+
+        function renderUpgrades() {
+            const list = document.getElementById('upgrades-list');
+            list.innerHTML = '';
+            upgrades.forEach(up => {
+                const card = document.createElement('div');
+                card.className = `upgrade-card card-${up.id} ${points < up.cost ? 'disabled' : ''}`;
+                card.onclick = () => buyUpgrade(up.id);
+                card.innerHTML = `
+                    <div class="up-icon">${up.emoji}</div>
+                    <div class="up-info">
+                        <span class="up-name">${up.name}</span>
+                        <span class="up-cost">💎 ${up.cost.toLocaleString()}</span>
+                    </div>
+                    <div class="up-count">${up.count}</div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function updateUI() {
+            document.getElementById('tps-value').innerText = Math.floor(points).toLocaleString();
+            document.getElementById('auto-tps').innerText = `Producción: ${autoTPS.toLocaleString()}/sec | Click: ${multiplier}`;
+            
+            // Real-time card state check
+            document.querySelectorAll('.upgrade-card').forEach((card, i) => {
+                if (points >= upgrades[i].cost) card.classList.remove('disabled');
+                else card.classList.add('disabled');
+            });
+        }
+
+        function saveGame() {
+            localStorage.setItem('tp_points', points);
+            localStorage.setItem('tp_upgrades', JSON.stringify(upgrades.map(u => ({ id: u.id, count: u.count }))));
+        }
+
+        // Auto TPS loop
+        setInterval(() => {
+            if (autoTPS > 0) {
+                points += (autoTPS / 10);
+                updateUI();
+            }
+        }, 100);
+
+        // Auto Save loop
+        setInterval(saveGame, 5000);
+
+        renderUpgrades();
+        updateUI();
+
+    </script>
+</body>
+</html>

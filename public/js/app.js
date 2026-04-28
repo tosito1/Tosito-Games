@@ -4,13 +4,13 @@
 
 // ---- Firebase Config ----
 const firebaseConfig = {
-  apiKey: "AIzaSyC1nq0H-TEep-ncVM-pV7NMiEHSdae94iw",
-  authDomain: "tosito-chest.firebaseapp.com",
-  projectId: "tosito-chest",
-  storageBucket: "tosito-chest.firebasestorage.app",
-  messagingSenderId: "645438147659",
-  appId: "1:645438147659:web:658dda24a3ee3f401f11ce",
-  measurementId: "G-9H38YSKSY4"
+  apiKey: "AIzaSyCrwGSWveA5a5W-onJzDblydfLQKPIyGLQ",
+  authDomain: "tosito-games-303f5.firebaseapp.com",
+  projectId: "tosito-games-303f5",
+  storageBucket: "tosito-games-303f5.firebasestorage.app",
+  messagingSenderId: "595440969464",
+  appId: "1:595440969464:web:450d63fa91e64b4e773d0d",
+  measurementId: "G-HWCMG00CTT"
 };
 
 if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);

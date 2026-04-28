@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- FUNCIONES DE UTILIDAD ---
+    
+    // Verifica si el usuario está autenticado
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verifica si el usuario es el propietario del documento (basado en UID)
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Verifica si el usuario tiene privilegios de administrador
+    // Nota: Requiere que el documento en /users/{uid} tenga un campo isAdmin: true
+    function isAdmin() {
+      return isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- REGLAS POR COLECCIÓN ---
+
+    // Perfiles de Usuario
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // Contenido Global del Hub (CMS)
+    match /globals/hub_content/items/{itemId} {
+      allow read: if true; // Público
+      allow write: if isAdmin();
+    }
+    
+    match /globals/{doc=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Salas Multijugador (Ajedrez y otros)
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn(); // Se podría restringir a participantes si es necesario
+    }
+
+    // Puzzles de Ajedrez
+    match /puzzles/{puzzleId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Aperturas de Ajedrez
+    match /openings/{openingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Módulo Semantika y otros artefactos
+    match /artifacts/{appId}/public/data/semantika_config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /artifacts/{appId}/public/data/semantika_fusions/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Progreso del Usuario en Semántika
+    match /artifacts/{appId}/public/data/user_progress/{userId}/days/{dayId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Ranking Global de Semántika
+    match /artifacts/{appId}/public/data/semantika_ranking/{rankingId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+    
+    // Logs de Auditoría
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn(); // Permitir que el sistema registre acciones
+      allow update, delete: if false; // Logs inmutables
+    }
+
+    // Regla por defecto: denegar todo lo demás
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

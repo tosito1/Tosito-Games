@@ -5,13 +5,13 @@ window.addEventListener('error', function (e) {
 
 // ---- Firebase Config ----
 const firebaseConfig = {
-  apiKey: "AIzaSyC1nq0H-TEep-ncVM-pV7NMiEHSdae94iw",
-  authDomain: "tosito-chest.firebaseapp.com",
-  projectId: "tosito-chest",
-  storageBucket: "tosito-chest.firebasestorage.app",
-  messagingSenderId: "645438147659",
-  appId: "1:645438147659:web:658dda24a3ee3f401f11ce",
-  measurementId: "G-9H38YSKSY4"
+  apiKey: "AIzaSyCrwGSWveA5a5W-onJzDblydfLQKPIyGLQ",
+  authDomain: "tosito-games-303f5.firebaseapp.com",
+  projectId: "tosito-games-303f5",
+  storageBucket: "tosito-games-303f5.firebasestorage.app",
+  messagingSenderId: "595440969464",
+  appId: "1:595440969464:web:450d63fa91e64b4e773d0d",
+  measurementId: "G-HWCMG00CTT"
 };
 
 try {
@@ -22,6 +22,26 @@ try {
 
 const auth = firebase.auth();
 const db = firebase.firestore();
+window.rtdb = firebase.database();
+window.auth = auth; // Exponer para iframes
+window.db = db;     // Exponer para iframes
+
+// Función puente para que los iframes guarden datos sin errores de contexto
+window.safeFirestoreSave = function(path, data) {
+  if (!db) return Promise.reject("Firestore no inicializado");
+  // Convertimos a JSON y de vuelta a Objeto para asegurar que es un "Plain Object" del contexto padre
+  const cleanData = JSON.parse(JSON.stringify(data));
+  
+  // Soporte para rutas tipo 'coleccion/doc' o colecciones anidadas
+  const parts = path.split('/');
+  let ref = db;
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) ref = ref.collection(parts[i]);
+    else ref = ref.doc(parts[i]);
+  }
+  return ref.set(cleanData, { merge: true });
+};
+
 console.log("!!! VERSION V8.1 (Debug Restoration) !!!");
 
 
@@ -109,6 +129,7 @@ let currentUser = null;
 let userProfile = {
   elo: 1200, wins: 0, losses: 0, username: '', displayName: '', isAdmin: false, friends: [], solved_puzzles: [], arcade_records: {}
 };
+window.userProfile = userProfile; // Exponer para iframes
 let remoteBackendUrl = localStorage.getItem('tosito_manual_backend') || null;
 let isManualBackend = !!localStorage.getItem('tosito_manual_backend');
 let aiLevel = 'level_3';
@@ -177,7 +198,7 @@ async function loadUserProfile() {
 function updateAdminVisibility() {
   const hubBtn = document.getElementById('hub-admin-link');
   if (hubBtn) hubBtn.style.display = userProfile.isAdmin ? 'flex' : 'none';
-  
+
   const profBtn = document.getElementById('prof-admin-btn');
   if (profBtn) profBtn.style.display = userProfile.isAdmin ? 'inline-block' : 'none';
 }
@@ -331,7 +352,7 @@ auth.onAuthStateChanged(async user => {
       hideAppLoader();
 
       await loadUserProfile();
-      
+
       // [ADMIN 2.0] Seguridad: Verificar BAN
       if (userProfile.status === 'banned') {
         alert("Tu cuenta ha sido suspendida por violar los términos del servicio.");
@@ -440,7 +461,7 @@ function switchLobbyTab(tabId) {
   document.querySelectorAll('#screen-lobby .tab-btn').forEach(b => {
     b.classList.remove('active');
   });
-  
+
   const targetBtn = document.querySelector(`#screen-lobby .tab-btn[onclick*="${tabId}"]`);
   if (targetBtn) targetBtn.classList.add('active');
 
@@ -588,7 +609,7 @@ window.showBeepBoxScreen = function () {
 
 window.exitHubGame = window.exitGame = function () {
   document.body.classList.remove('game-mode');
-  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame', 'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame'];
+  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame', 'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame', 'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame'];
   frames.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.src = 'about:blank';
@@ -769,13 +790,13 @@ function switchExTab(id) {
   if (id === 'ex-explore-view') loadCommunityPuzzles();
 }
 
-window.toggleSidebar = function() {
+window.toggleSidebar = function () {
   const isCollapsed = document.body.classList.toggle('nav-collapsed');
   localStorage.setItem('sidebar_collapsed', isCollapsed);
-  
+
   // Optional: Trigger a window resize event to notify charts or other elements
   window.dispatchEvent(new Event('resize'));
-  
+
   if (typeof gsap !== 'undefined') {
     gsap.from('.sidebar-toggle-btn svg', { rotate: isCollapsed ? 0 : 180, duration: 0.4, ease: "back.out(2)" });
   }
@@ -824,13 +845,13 @@ function showScreen(id) {
       // Depth Transition In
       const isGameFull = id === 'stack' || id === 'slither';
       const isInstant = id === 'remote-controller';
-      
+
       tl.fromTo(target,
-        { 
-          opacity: 0, 
-          scale: (isGameFull || isInstant) ? 1 : 1.1, 
-          filter: (isGameFull || isInstant) ? "none" : "blur(10px)", 
-          y: (isGameFull || isInstant) ? 0 : -30 
+        {
+          opacity: 0,
+          scale: (isGameFull || isInstant) ? 1 : 1.1,
+          filter: (isGameFull || isInstant) ? "none" : "blur(10px)",
+          y: (isGameFull || isInstant) ? 0 : -30
         },
         {
           opacity: 1,
@@ -865,13 +886,13 @@ function showScreen(id) {
   // Handle Navigation Visibility
   const nav = document.getElementById('bottom-nav');
   const gameScreens = [
-    'tictactoe', 'checkers', 'stack', 'slither', 
-    'logicmaster', 'hexa-falls', 'mario64', 'sonic', 
-    'anomalia', 'turbo-drift', 'rhythm-hero', 'neon-piano', 
-    'beepbox', 'voxlab', 'bloxorz'
+    'tictactoe', 'checkers', 'stack', 'slither',
+    'logicmaster', 'hexa-falls', 'mario64', 'sonic',
+    'anomalia', 'turbo-drift', 'rhythm-hero', 'neon-piano',
+    'beepbox', 'voxlab', 'bloxorz', 'clickers', 'badminton', 'leek_tycoon'
   ];
   const hiddenScreens = [...gameScreens];
-  
+
   // Game Mode Isolation
   if (gameScreens.includes(id)) {
     document.body.classList.add('game-mode');
@@ -891,7 +912,7 @@ function showScreen(id) {
 // ============================================================
 //  VOXLAB PRO INTEGRATION
 // ============================================================
-window.showVoxLabScreen = function() {
+window.showVoxLabScreen = function () {
   const frame = document.getElementById('voxlab-frame');
   if (frame && !frame.src) {
     frame.src = '/voxlab.html';
@@ -900,14 +921,14 @@ window.showVoxLabScreen = function() {
   if (typeof syncNavOpen === 'function') syncNavOpen(false);
 };
 
-window.exitVoxLab = function() {
+window.exitVoxLab = function () {
   showScreen('music-games');
 };
 
 // ============================================================
 //  BLOXORZ INTEGRATION
 // ============================================================
-window.showBloxorzScreen = function() {
+window.showBloxorzScreen = function () {
   const frame = document.getElementById('bloxorz-frame');
   if (frame && !frame.src) {
     frame.src = '/bloxorz.html';
@@ -916,7 +937,82 @@ window.showBloxorzScreen = function() {
   if (typeof syncNavOpen === 'function') syncNavOpen(false);
 };
 
-window.exitBloxorz = function() {
+window.showSemantikaScreen = function () {
+  if (typeof signalRemoteLayout === 'function') signalRemoteLayout('gaming');
+  syncNavOpen(false);
+  const nav = document.getElementById('bottom-nav');
+  if (nav) nav.classList.add('hidden');
+
+  showScreen('semantika');
+
+  const frame = document.getElementById('semantika-frame');
+  if (frame) {
+    const appId = 'semantika';
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig || {}));
+    const v = Date.now();
+    const name = encodeURIComponent(userProfile.displayName || userProfile.username || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Jugador');
+    const src = `/semantika.html?v=${v}&appId=${appId}&config=${config}&playerName=${name}`;
+
+    frame.src = src;
+  }
+};
+
+window.exitSemantika = function () {
+  if (typeof signalRemoteLayout === 'function') signalRemoteLayout('simple');
+  showScreen('hub');
+  const frame = document.getElementById('semantika-frame');
+  if (frame) frame.src = 'about:blank';
+};
+
+window.exitBloxorz = function () {
+  showScreen('hub');
+};
+
+// ============================================================
+//  CLICKER INTEGRATION
+// ============================================================
+window.showClickerScreen = function () {
+  const frame = document.getElementById('clicker-frame');
+  if (frame && !frame.src) {
+    frame.src = '/tosito_clicker.html';
+  }
+  showScreen('clickers');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
+window.exitClicker = function () {
+  showScreen('hub');
+};
+
+// ============================================================
+//  BADMINTON INTEGRATION
+// ============================================================
+window.showBadmintonScreen = function () {
+  const frame = document.getElementById('badminton-frame');
+  if (frame && !frame.src) {
+    frame.src = '/badminton.html';
+  }
+  showScreen('badminton');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
+window.exitBadminton = function () {
+  showScreen('hub');
+};
+
+// ============================================================
+//  LEEK FACTORY TYCOON INTEGRATION
+// ============================================================
+window.showLeekTycoonScreen = function () {
+  const frame = document.getElementById('leek-tycoon-frame');
+  if (frame && !frame.src) {
+    frame.src = '/leek-click.html';
+  }
+  showScreen('leek_tycoon');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
+window.exitLeekTycoon = function () {
   showScreen('hub');
 };
 
@@ -1010,10 +1106,10 @@ function exitGame() {
  * UNIVERSAL EXIT HANDLER
  * Centralized logic to return to the correct Hub from any game.
  */
-window.exitCurrentGame = function() {
+window.exitCurrentGame = function () {
   const current = document.querySelector('.screen.active');
   if (!current) return;
-  
+
   const id = current.id.replace('screen-', '');
   console.log(`[🚪] Universal Exit from: ${id}`);
 
@@ -1034,9 +1130,10 @@ window.exitCurrentGame = function() {
 
   // 2. ARCADE / HUB RELATED GAMES (Goes to Hub)
   const iframeIds = [
-    'stack-frame', 'slither-frame', 'logicmaster-frame', 
+    'stack-frame', 'slither-frame', 'logicmaster-frame',
     'hexa-falls-frame', 'anomalia-frame', 'turbo-drift-frame',
-    'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame'
+    'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame',
+    'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame'
   ];
 
   iframeIds.forEach(fid => {
@@ -1591,19 +1688,19 @@ function onTimeOut(color) {
 // ============================================================
 function onGameEnd(winner) {
   gameStatus = 'finished';
-  
+
   // Record result if scorable
   const current = document.querySelector('.screen.active');
   const id = current ? current.id.replace('screen-', '') : 'unknown';
   const scorable = ['game', 'checkers', 'tictactoe'];
-  
+
   if (scorable.includes(id)) {
     let result = 'draw';
     // Robust detection: check if winner string contains the player's color
     const wStr = winner.toLowerCase();
     const pColor = playerColor.toLowerCase(); // 'white' or 'black'
     const colorName = pColor === 'white' ? 'blanca' : 'negra';
-    
+
     if (wStr === 'draw' || wStr.includes('tablas') || wStr.includes('empate')) {
       result = 'draw';
     } else if (wStr.includes(pColor) || wStr.includes(colorName)) {
@@ -1611,7 +1708,7 @@ function onGameEnd(winner) {
     } else {
       result = 'loss';
     }
-    
+
     // Determine opponent name
     let opponent = isAiGame ? `IA (${aiLevel.replace('level_', 'Nivel ')})` : 'Oponente Online';
     recordMatchResult(result, opponent, id);
@@ -1714,7 +1811,7 @@ async function recordMatchResult(result, opponentName, gameType = 'chess') {
       statsUpdate.losses = userProfile.losses;
       statsUpdate.elo = userProfile.elo;
     }
-    
+
     await db.collection('users').doc(currentUser.uid).update(statsUpdate);
 
     // 2. Add to History Collection
@@ -1729,7 +1826,7 @@ async function recordMatchResult(result, opponentName, gameType = 'chess') {
     });
 
     toast(result === 'win' ? "¡Estadísticas actualizadas! +20 ELO" : "Partida guardada en el historial");
-    updateLobbyUI(); 
+    updateLobbyUI();
 
   } catch (e) {
     console.error("Error recording match result:", e);
@@ -1742,13 +1839,13 @@ async function processGameAbandonment() {
   const id = current.id.replace('screen-', '');
 
   console.log(`[⚔️] Abandonment sequence for: ${id}`);
-  
+
   // Determine Opponent String
   let opponent = isAiGame ? `IA (${aiLevel.replace('level_', 'Nivel ')})` : 'Oponente Online';
-  
+
   // Record Loss
   await recordMatchResult('loss', opponent, id);
-  
+
   // If Multiplayer, notify opponent via Room status
   if (!isAiGame && currentRoom) {
     try {
@@ -1944,7 +2041,7 @@ async function fetchAdminData() {
   if (!userProfile.isAdmin) return;
   try {
     const searchVal = document.getElementById('admin-user-search')?.value.trim().toLowerCase() || "";
-    
+
     // Total stats
     const usersAllSnap = await db.collection('users').get();
     const roomsSnap = await db.collection('games').where('status', 'in', ['waiting', 'playing']).get();
@@ -1954,7 +2051,7 @@ async function fetchAdminData() {
     // Filtered user list
     let usersQuery = db.collection('users').orderBy('elo', 'desc').limit(50);
     const usersSnap = await usersQuery.get();
-    
+
     const ul = getEl('admin-user-list');
     if (ul) {
       ul.innerHTML = '';
@@ -1962,12 +2059,12 @@ async function fetchAdminData() {
         const d = doc.data();
         const username = (d.username || '').toLowerCase();
         const email = (d.email || '').toLowerCase();
-        
+
         if (searchVal && !username.includes(searchVal) && !email.includes(searchVal)) return;
 
         const isAdmin = d.role === 'admin';
         const isBanned = d.status === 'banned';
-        
+
         const card = document.createElement('div');
         card.className = 'user-row';
         card.innerHTML = `
@@ -2000,7 +2097,7 @@ async function fetchAdminData() {
         card.className = 'room-row';
         card.innerHTML = `
           <div class="room-header">
-            <span style="font-weight:900; color:var(--sky)">Sala: ${doc.id.substring(0,8)}</span>
+            <span style="font-weight:900; color:var(--sky)">Sala: ${doc.id.substring(0, 8)}</span>
             <span class="badge ${d.status === 'playing' ? 'badge-green' : 'badge-amber'}">${d.status.toUpperCase()}</span>
             <button onclick="forceTerminateRoom('${doc.id}')" class="btn-admin-action danger" title="Cerrar Sala">❌</button>
           </div>
@@ -2015,9 +2112,9 @@ async function fetchAdminData() {
     }
 
     renderAuditLogs();
-  } catch (e) { 
-    console.error("Admin data error:", e); 
-    toast('Error en Dashboard Global: ' + e.message); 
+  } catch (e) {
+    console.error("Admin data error:", e);
+    toast('Error en Dashboard Global: ' + e.message);
   }
 }
 
@@ -2034,13 +2131,13 @@ async function addAuditLog(action, details) {
   } catch (e) { console.error("Audit error:", e); }
 }
 
-window.sendGlobalBroadcast = async function() {
+window.sendGlobalBroadcast = async function () {
   const input = document.getElementById('admin-broadcast-msg');
   const msg = input.value.trim();
   if (!msg) return;
-  
+
   if (!confirm(`¿Enviar este mensaje a TODOS los usuarios conectados?\n\n"${msg}"`)) return;
-  
+
   try {
     await db.collection('globals').doc('broadcast').set({
       msg: msg,
@@ -2053,13 +2150,13 @@ window.sendGlobalBroadcast = async function() {
   } catch (e) { toast("Error al enviar: " + e.message); }
 };
 
-window.toggleMaintenance = async function() {
+window.toggleMaintenance = async function () {
   const isEnabled = document.getElementById('tog-maintenance').checked;
   if (!confirm(`¿${isEnabled ? 'ACTIVAR' : 'DESACTIVAR'} modo mantenimiento global?`)) {
     document.getElementById('tog-maintenance').checked = !isEnabled;
     return;
   }
-  
+
   try {
     await db.collection('globals').doc('system_config').set({
       maintenance: isEnabled,
@@ -2070,10 +2167,10 @@ window.toggleMaintenance = async function() {
   } catch (e) { toast("Error: " + e.message); }
 };
 
-window.changeUserRole = async function(uid, currentRole) {
+window.changeUserRole = async function (uid, currentRole) {
   const newRole = currentRole === 'admin' ? 'player' : 'admin';
   if (!confirm(`¿Cambiar rango del usuario a ${newRole.toUpperCase()}?`)) return;
-  
+
   try {
     await db.collection('users').doc(uid).update({ role: newRole });
     addAuditLog('ROLE_CHANGE', `UID: ${uid} -> ${newRole}`);
@@ -2082,10 +2179,10 @@ window.changeUserRole = async function(uid, currentRole) {
   } catch (e) { toast("Error: " + e.message); }
 };
 
-window.toggleUserBan = async function(uid, currentlyBanned) {
+window.toggleUserBan = async function (uid, currentlyBanned) {
   const newStatus = currentlyBanned ? 'active' : 'banned';
   if (!confirm(`¿${currentlyBanned ? 'DESBANEAR' : 'BANEAR'} a este usuario?`)) return;
-  
+
   try {
     await db.collection('users').doc(uid).update({ status: newStatus });
     addAuditLog('BAN_TOGGLE', `UID: ${uid} -> ${newStatus}`);
@@ -2094,12 +2191,12 @@ window.toggleUserBan = async function(uid, currentlyBanned) {
   } catch (e) { toast("Error: " + e.message); }
 };
 
-window.resetUserStats = async function(uid) {
+window.resetUserStats = async function (uid) {
   if (!confirm("¿Resetear estadísticas de este usuario? (ELO 1200, 0 victorias)")) return;
-  
+
   try {
-    await db.collection('users').doc(uid).update({ 
-      elo: 1200, wins: 0, losses: 0 
+    await db.collection('users').doc(uid).update({
+      elo: 1200, wins: 0, losses: 0
     });
     addAuditLog('STATS_RESET', `UID: ${uid}`);
     toast("Estadísticas reseteadas ✓");
@@ -2107,9 +2204,9 @@ window.resetUserStats = async function(uid) {
   } catch (e) { toast("Error: " + e.message); }
 };
 
-window.forceTerminateRoom = async function(roomId) {
+window.forceTerminateRoom = async function (roomId) {
   if (!confirm("¿Cerrar esta sala a la fuerza?")) return;
-  
+
   try {
     await db.collection('games').doc(roomId).delete();
     addAuditLog('ROOM_TERMINATE', `ID: ${roomId}`);
@@ -3950,7 +4047,7 @@ function initRemoteController(guestName) {
 function refreshControllerUI() {
   const overlay = document.getElementById('wait-overlay-p1');
   if (!overlay) return;
-  
+
   // Show overlay if I'm not Player 1 AND we are in navigation mode
   if (_remoteSlot > 1 && _remoteLayout === 'simple') {
     overlay.classList.add('active');
@@ -3965,9 +4062,9 @@ function startHeartbeat(uid, cid) {
   _heartbeatInterval = setInterval(() => {
     db.collection('remotes').doc(uid).collection('controllers').doc(cid).update({
       lastActive: Date.now(),
-      playerSlot: _remoteSlot 
+      playerSlot: _remoteSlot
     });
-  }, 5000); 
+  }, 5000);
 }
 
 function setupVisibilityListener(uid, cid) {
@@ -4021,7 +4118,7 @@ window.toggleRemoteLayout = function () {
   // Show new
   if (layouts[_remoteLayout]) layouts[_remoteLayout].classList.add('active');
   if (btn) btn.textContent = "MODO: " + names[_remoteLayout];
-  
+
   // Refresh Input Method Visibility for new layout
   refreshInputMethodVisibility();
 
@@ -4031,7 +4128,7 @@ window.toggleRemoteLayout = function () {
 /* VIRTUAL JOYSTICK LOGIC */
 let _inputMethod = localStorage.getItem('tosito_input_method') || 'dpad';
 
-window.toggleInputMethod = function() {
+window.toggleInputMethod = function () {
   _inputMethod = (_inputMethod === 'dpad') ? 'joystick' : 'dpad';
   localStorage.setItem('tosito_input_method', _inputMethod);
   refreshInputMethodVisibility();
@@ -4041,12 +4138,12 @@ window.toggleInputMethod = function() {
 function refreshInputMethodVisibility() {
   const btn = document.getElementById('btn-toggle-input');
   if (btn) btn.textContent = _inputMethod === 'dpad' ? 'D-PAD' : 'STICK';
-  
+
   const dpadGaming = document.getElementById('gaming-dpad');
   const joyGaming = document.getElementById('gaming-joystick');
   const dpadPro = document.getElementById('pro-dpad-ring');
   const joyPro = document.getElementById('pro-joystick');
-  
+
   if (_inputMethod === 'dpad') {
     if (dpadGaming) dpadGaming.style.display = 'flex';
     if (joyGaming) joyGaming.style.display = 'none';
@@ -4070,10 +4167,10 @@ class VirtualJoystick {
     this.pointerId = null;
     this.rect = null;
     this.currentKeys = { up: false, down: false, left: false, right: false };
-    
+
     this.init();
   }
-  
+
   init() {
     this.container.style.touchAction = 'none'; // Prevent browser scrolling
     this.container.addEventListener('pointerdown', (e) => this.onStart(e));
@@ -4081,7 +4178,7 @@ class VirtualJoystick {
     this.container.addEventListener('pointerup', (e) => this.onEnd(e));
     this.container.addEventListener('pointercancel', (e) => this.onEnd(e));
   }
-  
+
   onStart(e) {
     if (this.active) return;
     this.active = true;
@@ -4090,52 +4187,52 @@ class VirtualJoystick {
     this.rect = this.container.getBoundingClientRect();
     this.onMove(e);
   }
-  
+
   onMove(e) {
     if (!this.active || e.pointerId !== this.pointerId) return;
-    
+
     const centerX = this.rect.left + this.rect.width / 2;
     const centerY = this.rect.top + this.rect.height / 2;
-    
+
     let deltaX = e.clientX - centerX;
     let deltaY = e.clientY - centerY;
-    
+
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     const maxRadius = this.rect.width / 2;
-    
+
     if (distance > maxRadius) {
       const ratio = maxRadius / distance;
       deltaX *= ratio;
       deltaY *= ratio;
       if (window.navigator.vibrate) window.navigator.vibrate(5);
     }
-    
+
     if (this.thumb) {
       this.thumb.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
     }
-    
+
     // Balanced thresholds for Mario 64
     const normX = deltaX / maxRadius;
     const normY = deltaY / maxRadius;
-    const threshold = 0.35; 
-    
+    const threshold = 0.35;
+
     this.updateKeys('ArrowUp', normY < -threshold);
     this.updateKeys('ArrowDown', normY > threshold);
     this.updateKeys('ArrowLeft', normX < -threshold);
     this.updateKeys('ArrowRight', normX > threshold);
   }
-  
+
   onEnd(e) {
     if (!this.active || (e && e.pointerId !== this.pointerId)) return;
-    
+
     this.active = false;
     if (e && e.pointerId !== null) {
-      try { this.container.releasePointerCapture(e.pointerId); } catch(err) {}
+      try { this.container.releasePointerCapture(e.pointerId); } catch (err) { }
     }
     this.pointerId = null;
-    
+
     if (this.thumb) this.thumb.style.transform = `translate(0px, 0px)`;
-    
+
     // Stop all directional keys immediately
     const directions = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
     directions.forEach(k => this.updateKeys(k, false));
@@ -4145,12 +4242,12 @@ class VirtualJoystick {
 
     // Safety Fallback: Send release again in 50ms to clear network lag "sticky" keys
     setTimeout(() => {
-        directions.forEach(k => {
-           window.remoteKey(k, false);
-        });
+      directions.forEach(k => {
+        window.remoteKey(k, false);
+      });
     }, 50);
   }
-  
+
   updateKeys(key, isPressed) {
     const internalKey = key.toLowerCase().replace('arrow', '');
     if (this.currentKeys[internalKey] !== isPressed) {
@@ -4260,8 +4357,8 @@ function pruneInactiveControllers() {
     const isStuck = (now - (ctrl.lastSeenLocal || 0)) > 3000; // 3s without heartbeat -> panic release
 
     if (isStuck) {
-        // If we haven't seen a heartbeat in 3s, assume movement might be stuck
-        releaseAllKeys(ctrl.playerSlot);
+      // If we haven't seen a heartbeat in 3s, assume movement might be stuck
+      releaseAllKeys(ctrl.playerSlot);
     }
 
     if (isVeryOld) {
@@ -4305,7 +4402,7 @@ function refreshRemotePlayersPanel() {
   const panel = document.getElementById('host-remote-players-panel');
   const modalList = document.getElementById('remote-players-list');
   const now = Date.now();
-  const timeout = 30000; 
+  const timeout = 30000;
 
   const activeCids = Object.keys(_activeControllers).filter(cid => {
     const ctrl = _activeControllers[cid];
@@ -4346,7 +4443,7 @@ function refreshRemotePlayersPanel() {
       modalList.innerHTML = '<div style="color:rgba(255,255,255,0.2); font-style:italic; font-size:0.75rem;">Ningún mando detectado aún...</div>';
     } else {
       modalList.innerHTML = '';
-      activeCids.sort((a,b) => _activeControllers[a].playerSlot - _activeControllers[b].playerSlot).forEach(cid => {
+      activeCids.sort((a, b) => _activeControllers[a].playerSlot - _activeControllers[b].playerSlot).forEach(cid => {
         const ctrl = _activeControllers[cid];
         const tag = document.createElement('div');
         tag.style.cssText = `
@@ -4459,12 +4556,12 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
   const keyCodeMap = {
     'ArrowUp': 38, 'ArrowDown': 40, 'ArrowLeft': 37, 'ArrowRight': 39,
     'Enter': 13, 'Escape': 27, ' ': 32, 'Control': 17, 'Shift': 16, 'Alt': 18,
-    'a': 65, 'b': 66, 'c': 67, 'd': 68, 'e': 69, 'f': 70, 'g': 71, 'h': 72, 'i': 73, 'j': 74, 
-    'k': 75, 'l': 76, 'm': 77, 'n': 78, 'o': 79, 'p': 80, 'q': 81, 'r': 82, 's': 83, 't': 84, 
+    'a': 65, 'b': 66, 'c': 67, 'd': 68, 'e': 69, 'f': 70, 'g': 71, 'h': 72, 'i': 73, 'j': 74,
+    'k': 75, 'l': 76, 'm': 77, 'n': 78, 'o': 79, 'p': 80, 'q': 81, 'r': 82, 's': 83, 't': 84,
     'u': 85, 'v': 86, 'w': 87, 'x': 88, 'y': 89, 'z': 90,
     '0': 48, '1': 49, '2': 50, '3': 51, '4': 52, '5': 53, '6': 54, '7': 55, '8': 56, '9': 57
   };
-  
+
   // Physical Code Names (Required for React/Cyber Stack compatibility)
   const codeDescriptionMap = {
     'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown', 'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight',
@@ -4503,8 +4600,8 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
 
   // C-STICK MODE (Transform Arrows to WASD for 3D Camera/Control)
   if (window._cStickMode && key.startsWith('Arrow')) {
-      const cStickMap = { 'ArrowUp':'w', 'ArrowDown':'s', 'ArrowLeft':'a', 'ArrowRight':'d' };
-      targetKeys = [cStickMap[key]];
+    const cStickMap = { 'ArrowUp': 'w', 'ArrowDown': 's', 'ArrowLeft': 'a', 'ArrowRight': 'd' };
+    targetKeys = [cStickMap[key]];
   }
 
 
@@ -4512,13 +4609,13 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
 
   // Handle Player Multi-Slot Mappings
   if (playerSlot === 2) {
-    const p2Map = { 'ArrowUp':'w','ArrowDown':'s','ArrowLeft':'a','ArrowRight':'d','Enter':'q','Escape':'e',' ':'f','x':'r' };
+    const p2Map = { 'ArrowUp': 'w', 'ArrowDown': 's', 'ArrowLeft': 'a', 'ArrowRight': 'd', 'Enter': 'q', 'Escape': 'e', ' ': 'f', 'x': 'r' };
     targetKeys = [p2Map[key] || key];
   } else if (playerSlot === 3) {
-    const p3Map = { 'ArrowUp':'i','ArrowDown':'k','ArrowLeft':'j','ArrowRight':'l','Enter':'u','Escape':'o',' ':'h','x':'y' };
+    const p3Map = { 'ArrowUp': 'i', 'ArrowDown': 'k', 'ArrowLeft': 'j', 'ArrowRight': 'l', 'Enter': 'u', 'Escape': 'o', ' ': 'h', 'x': 'y' };
     targetKeys = [p3Map[key] || key];
   } else if (playerSlot === 4) {
-    const p4Map = { 'ArrowUp':'8','ArrowDown':'5','ArrowLeft':'4','ArrowRight':'6','Enter':'7','Escape':'9',' ':'0','x':'v' };
+    const p4Map = { 'ArrowUp': '8', 'ArrowDown': '5', 'ArrowLeft': '4', 'ArrowRight': '6', 'Enter': '7', 'Escape': '9', ' ': '0', 'x': 'v' };
     targetKeys = [p4Map[key] || key];
   }
 
@@ -4526,7 +4623,7 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
   const hub = document.getElementById('screen-hub');
   // FIX: Use classList because showScreen toggles .active, not .style.display
   const isHubActive = hub && hub.classList.contains('active');
-  
+
   if (isHubActive && isDown && playerSlot === 1) {
     const firstKey = targetKeys[0];
     if (firstKey.startsWith('Arrow')) { handleHubRemoteNavigation(firstKey); return; }
@@ -4538,7 +4635,7 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
   if (!isHubActive && isDown && playerSlot === 1) {
     const firstKey = targetKeys[0];
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(firstKey)) {
-        handleIframeMenuNavigation(firstKey); 
+      handleIframeMenuNavigation(firstKey);
     }
   }
 
@@ -4562,13 +4659,13 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
         const win = target.defaultView || target.contentWindow || (target.ownerDocument ? target.ownerDocument.defaultView : window);
         const Constructor = win.KeyboardEvent || KeyboardEvent;
         const finalCode = codeDescriptionMap[tKey] || tKey;
-        
+
         target.dispatchEvent(new Constructor(type, {
-            ...eventData,
-            code: finalCode,
-            view: win
+          ...eventData,
+          code: finalCode,
+          view: win
         }));
-      } catch (e) {}
+      } catch (e) { }
     };
 
 
@@ -4582,21 +4679,21 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
         if (f.contentWindow) {
           // Focus the iframe on first interaction
           if (isDown && document.activeElement !== f) f.focus();
-          
+
           dispatch(f.contentWindow);
           dispatch(f.contentWindow.document);
 
           // Deep Dispatch: Send directly to the focused element or the main game canvas
           const innerDoc = f.contentWindow.document;
           if (innerDoc.activeElement) dispatch(innerDoc.activeElement);
-          
+
           const gameCanvas = innerDoc.querySelector('canvas') || innerDoc.querySelector('#canvas') || innerDoc.body;
           if (isDown && gameCanvas) {
-              gameCanvas.focus();
-              dispatch(gameCanvas);
+            gameCanvas.focus();
+            dispatch(gameCanvas);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     });
 
   });
@@ -4607,13 +4704,13 @@ function simulateRemoteKey(key, isDown, playerSlot = 1) {
  * Injects CSS into the active game iframe to show which button is selected by the remote.
  */
 function injectRemoteHighlighter(iframe) {
-    try {
-        const doc = iframe.contentWindow.document;
-        if (doc.getElementById('remote-focus-style')) return;
+  try {
+    const doc = iframe.contentWindow.document;
+    if (doc.getElementById('remote-focus-style')) return;
 
-        const style = doc.createElement('style');
-        style.id = 'remote-focus-style';
-        style.textContent = `
+    const style = doc.createElement('style');
+    style.id = 'remote-focus-style';
+    style.textContent = `
             :focus, .remote-focus-highlight {
                 outline: 4px solid #00f2ff !important;
                 outline-offset: 2px !important;
@@ -4623,24 +4720,24 @@ function injectRemoteHighlighter(iframe) {
                 position: relative !important;
             }
         `;
-        doc.head.appendChild(style);
-    } catch (e) {}
+    doc.head.appendChild(style);
+  } catch (e) { }
 }
 
 // Ensure highlighters are injected when iframes load
 document.addEventListener('DOMContentLoaded', () => {
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach(m => {
-            m.addedNodes.forEach(node => {
-                if (node.tagName === 'IFRAME') {
-                    node.addEventListener('load', () => injectRemoteHighlighter(node));
-                }
-            });
-        });
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.tagName === 'IFRAME') {
+          node.addEventListener('load', () => injectRemoteHighlighter(node));
+        }
+      });
     });
-    observer.observe(document.body, { childList: true, subtree: true });
-    // Also check existing ones
-    document.querySelectorAll('iframe').forEach(f => injectRemoteHighlighter(f));
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  // Also check existing ones
+  document.querySelectorAll('iframe').forEach(f => injectRemoteHighlighter(f));
 });
 
 
@@ -4667,19 +4764,19 @@ function triggerFocusedCard() {
   // Try hub card first
   const card = document.querySelector('.hub-card.remote-focus');
   if (card) {
-      card.click();
-      return;
+    card.click();
+    return;
   }
 
   // Try iframe focused element
   const activeIframe = document.querySelector('.screen.active iframe');
   if (activeIframe && activeIframe.contentWindow) {
-      try {
-          const innerDoc = activeIframe.contentWindow.document;
-          if (innerDoc.activeElement && typeof innerDoc.activeElement.click === 'function') {
-              innerDoc.activeElement.click();
-          }
-      } catch (e) {}
+    try {
+      const innerDoc = activeIframe.contentWindow.document;
+      if (innerDoc.activeElement && typeof innerDoc.activeElement.click === 'function') {
+        innerDoc.activeElement.click();
+      }
+    } catch (e) { }
   }
 }
 
@@ -4696,7 +4793,7 @@ function handleIframeMenuNavigation(key) {
     if (focusables.length === 0) return false;
 
     let currentIndex = focusables.indexOf(innerDoc.activeElement);
-    
+
     if (key === 'ArrowDown' || key === 'ArrowRight') {
       currentIndex = (currentIndex + 1) % focusables.length;
     } else if (key === 'ArrowUp' || key === 'ArrowLeft') {
@@ -4706,7 +4803,7 @@ function handleIframeMenuNavigation(key) {
     focusables[currentIndex].focus();
     // Add visual feedback (optional)
     if (focusables[currentIndex].scrollIntoView) {
-        focusables[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      focusables[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     return true;
   } catch (e) {
@@ -4718,11 +4815,11 @@ function handleIframeMenuNavigation(key) {
 window.remoteKey = function (key, isDown) {
   const uid = window._remoteTargetUid;
   if (!uid) return;
-  
+
   // Block non-P1 from hub navigation
   if (_remoteSlot > 1 && _remoteLayout === 'simple') {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(key)) {
-      return; 
+      return;
     }
   }
 
@@ -4752,16 +4849,16 @@ window.addEventListener('load', () => {
   loadSidebarPreference();
   checkRemoteMode();
   checkBackendHealth();
-  setInterval(checkBackendHealth, 45000); 
-  
+  setInterval(checkBackendHealth, 45000);
+
   new VirtualJoystick('gaming-joystick');
   new VirtualJoystick('pro-joystick');
   refreshInputMethodVisibility();
-  
-  // Initialize Supreme Commander 3.0 Hub
-  initHubCMS(); 
 
-  setInterval(pruneInactiveControllers, 10000); 
+  // Initialize Supreme Commander 3.0 Hub
+  initHubCMS();
+
+  setInterval(pruneInactiveControllers, 10000);
 });
 
 
@@ -4774,11 +4871,11 @@ let _hubUnsub = null;
 function initHubCMS() {
   if (_hubUnsub) return;
   console.log("[🛠️] Initializing Dynamic Hub CMS...");
-  
+
   _hubUnsub = db.collection('globals').doc('hub_content').collection('items').onSnapshot(snap => {
     if (snap.empty && userProfile.isAdmin) {
-       console.log("[⚡] Hub collection empty. Triggering Auto-Seed...");
-       autoSeedHub();
+      console.log("[⚡] Hub collection empty. Triggering Auto-Seed...");
+      autoSeedHub();
     }
     _hubItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     renderHub();
@@ -4797,11 +4894,12 @@ function renderHub() {
     puzzles: document.getElementById('grid-puzzles'),
     retro: document.getElementById('grid-retro'),
     music: document.getElementById('grid-music'),
-    sports: document.getElementById('grid-sports')
+    sports: document.getElementById('grid-sports'),
+    clickers: document.getElementById('grid-clickers')
   };
 
   // Clear grids
-  Object.values(grids).forEach(g => { if(g) g.innerHTML = ''; });
+  Object.values(grids).forEach(g => { if (g) g.innerHTML = ''; });
 
   const sorted = [..._hubItems].sort((a, b) => (a.order || 99) - (b.order || 99));
 
@@ -4814,14 +4912,14 @@ function renderHub() {
     const card = document.createElement('div');
     card.className = `hub-card btn-juicy ${!item.visible ? 'admin-hidden-card' : ''}`;
     if (item.id) card.id = `hub-card-${item.id}`;
-    
+
     // Custom styles
     if (item.color) card.style.borderColor = item.color;
 
     const glowStyle = item.color ? `background:radial-gradient(circle at center, ${item.color}, transparent 70%); opacity:0.3;` : '';
 
     card.onclick = () => {
-        try { eval(item.action); } catch(e) { console.error("Action error:", e); }
+      try { eval(item.action); } catch (e) { console.error("Action error:", e); }
     };
 
     card.innerHTML = `
@@ -4829,7 +4927,7 @@ function renderHub() {
       <span class="card-emoji">${item.emoji || '🎮'}</span>
       <h3 class="card-name">${item.title}</h3>
       <p class="card-desc">${item.desc || ''}</p>
-      <button class="card-action" style="${item.color ? 'background:'+item.color+'; color:white;' : ''}">¡Jugar Ahora! →</button>
+      <button class="card-action" style="${item.color ? 'background:' + item.color + '; color:white;' : ''}">¡Jugar Ahora! →</button>
       ${!item.visible ? '<div class="admin-only-tag">Oculto para usuarios</div>' : ''}
     `;
     grid.appendChild(card);
@@ -4850,20 +4948,20 @@ async function checkSystemHealth() {
     const host = window.location.hostname;
     const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
     const port = 5001;
-    
+
     const target = isLocal ? `${protocol}//${host}:${port}/api/health` : (remoteBackendUrl ? `${remoteBackendUrl}/api/health` : null);
-    
+
     if (!target) throw new Error("No backend configured");
 
     const res = await fetch(target, { method: 'GET', mode: 'cors' });
     const latency = Date.now() - start;
 
     if (res.ok) {
-       dot.style.background = 'var(--green)';
-       lbl.textContent = `SISTEMA ONLINE (${latency}ms)`;
-       lbl.style.color = 'var(--green)';
+      dot.style.background = 'var(--green)';
+      lbl.textContent = `SISTEMA ONLINE (${latency}ms)`;
+      lbl.style.color = 'var(--green)';
     } else {
-       throw new Error("HTTP Error");
+      throw new Error("HTTP Error");
     }
   } catch (e) {
     dot.style.background = 'var(--red)';
@@ -4874,41 +4972,47 @@ async function checkSystemHealth() {
 
 async function autoSeedHub() {
   // First, cleanup non-game items from the hub
-  try { await db.collection('globals').doc('hub_content').collection('items').doc('remote').delete(); } catch(e){}
+  try { await db.collection('globals').doc('hub_content').collection('items').doc('remote').delete(); } catch (e) { }
 
   const items = [
     // --- ESTRATEGIA Y TABLERO ---
-    { id:'chess', section:'strategy', title:'Ajedrez Pro', emoji:'♟️', desc:'Contra la IA, resuelve puzzles y compite...', action:"showScreen('lobby')", color:'', order:1, visible:true },
-    { id:'ttt', section:'strategy', title:'Tres en Raya', emoji:'❌⭕', desc:'Rápido y letal Contra la IA...', action:'showTTTScreen()', color:'', order:2, visible:true },
-    { id:'damas', section:'strategy', title:'Las Damas', emoji:'🔴', desc:'El clásico juego de estrategia español...', action:'showCheckersScreen()', color:'', order:3, visible:true },
-    
+    { id: 'chess', section: 'strategy', title: 'Ajedrez Pro', emoji: '♟️', desc: 'Contra la IA, resuelve puzzles y compite...', action: "showScreen('lobby')", color: '', order: 1, visible: true },
+    { id: 'ttt', section: 'strategy', title: 'Tres en Raya', emoji: '❌⭕', desc: 'Rápido y letal Contra la IA...', action: 'showTTTScreen()', color: '', order: 2, visible: true },
+    { id: 'damas', section: 'strategy', title: 'Las Damas', emoji: '🔴', desc: 'El clásico juego de estrategia español...', action: 'showCheckersScreen()', color: '', order: 3, visible: true },
+
     // --- ARCADE Y ACCIÓN ---
-    { id:'slither', section:'arcade', title:'Slither Neo', emoji:'🐍', desc:'Consume energía y domina la arena global...', action:'showSlitherScreen()', color:'var(--indigo)', order:1, visible:true },
-    { id:'anomalia', section:'arcade', title:'Anomalía', emoji:'🛸', desc:'Shooter arcade evolutivo de alta intensidad...', action:'showAnomaliaScreen()', color:'#ef4444', order:2, visible:true },
-    { id:'stack', section:'arcade', title:'Cyber Stack', emoji:'🧱', desc:'Desafío de equilibrio 3D con bloques de neón...', action:'showStackScreen()', color:'', order:3, visible:true },
-    { id:'hexa', section:'arcade', title:'Hexa Falls', emoji:'💠', desc:'Puzzles geométricos en caída libre multijugador...', action:'showHexaFallsScreen()', color:'var(--purple)', order:4, visible:true },
-    
+    { id: 'slither', section: 'arcade', title: 'Slither Neo', emoji: '🐍', desc: 'Consume energía y domina la arena global...', action: 'showSlitherScreen()', color: 'var(--indigo)', order: 1, visible: true },
+    { id: 'anomalia', section: 'arcade', title: 'Anomalía', emoji: '🛸', desc: 'Shooter arcade evolutivo de alta intensidad...', action: 'showAnomaliaScreen()', color: '#ef4444', order: 2, visible: true },
+    { id: 'stack', section: 'arcade', title: 'Cyber Stack', emoji: '🧱', desc: 'Desafío de equilibrio 3D con bloques de neón...', action: 'showStackScreen()', color: '', order: 3, visible: true },
+    { id: 'hexa', section: 'arcade', title: 'Hexa Falls', emoji: '💠', desc: 'Puzzles geométricos en caída libre multijugador...', action: 'showHexaFallsScreen()', color: 'var(--purple)', order: 4, visible: true },
+
     // --- DEPORTES Y VELOCIDAD ---
-    { id:'turbo', section:'sports', title:'Neon Drifter', emoji:'🏎️', desc:'Carreras arcade de alta velocidad con derrapes...', action:'showTurboDriftScreen()', color:'var(--sky)', order:1, visible:true },
-    
+    { id: 'turbo', section: 'sports', title: 'Neon Drifter', emoji: '🏎️', desc: 'Carreras arcade de alta velocidad con derrapes...', action: 'showTurboDriftScreen()', color: 'var(--sky)', order: 1, visible: true },
+    { id: 'badminton', section: 'sports', title: 'Ultra Smash 3D', emoji: '🏸', desc: 'Duelos de badminton de alta intensidad contra la IA...', action: 'showBadmintonScreen()', color: 'var(--amber)', order: 2, visible: true },
+
     // --- PUZZLES Y LÓGICA ---
-    { id:'match3', section:'puzzles', title:'Match 3', emoji:'💎', desc:'Combina gemas y genera explosiones de puntos...', action:"showLogicGame('match3')", color:'#ec4899', order:1, visible:true },
-    { id:'memory', section:'puzzles', title:'Mind Flip', emoji:'🧠', desc:'Desafía tu memoria visual con cartas mágicas...', action:"showLogicGame('memory')", color:'#818cf8', order:2, visible:true },
-    { id:'pipes', section:'puzzles', title:'Tuberías', emoji:'🔧', desc:'Conecta el flujo de energía antes de que se agote...', action:"showLogicGame('pipes')", color:'#22d3ee', order:3, visible:true },
-    { id:'2048', section:'puzzles', title:'2048 Mastery', emoji:'🔢', desc:'Suma baldosas hasta alcanzar la mítica cifra...', action:"showLogicGame('2048')", color:'#fb923c', order:4, visible:true },
-    { id:'wordle', section:'puzzles', title:'Word Quest', emoji:'📝', desc:'Adivina la palabra oculta en 6 intentos...', action:"showLogicGame('wordle')", color:'#f59e0b', order:5, visible:true },
-    { id:'sudoku', section:'puzzles', title:'Zen Sudoku', emoji:'🧩', desc:'Relaja tu mente con desafíos de lógica pura...', action:"showLogicGame('sudoku')", color:'#3b82f6', order:6, visible:true },
-    { id:'bloxorz', section:'puzzles', title:'Bloxorz 3D', emoji:'🧱', desc:'Desafío de lógica espacial. Lleva el bloque al agujero...', action:"showBloxorzScreen()", color:'var(--sky)', order:7, visible:true },
-    
+    { id: 'match3', section: 'puzzles', title: 'Match 3', emoji: '💎', desc: 'Combina gemas y genera explosiones de puntos...', action: "showLogicGame('match3')", color: '#ec4899', order: 1, visible: true },
+    { id: 'memory', section: 'puzzles', title: 'Mind Flip', emoji: '🧠', desc: 'Desafía tu memoria visual con cartas mágicas...', action: "showLogicGame('memory')", color: '#818cf8', order: 2, visible: true },
+    { id: 'pipes', section: 'puzzles', title: 'Tuberías', emoji: '🔧', desc: 'Conecta el flujo de energía antes de que se agote...', action: "showLogicGame('pipes')", color: '#22d3ee', order: 3, visible: true },
+    { id: '2048', section: 'puzzles', title: '2048 Mastery', emoji: '🔢', desc: 'Suma baldosas hasta alcanzar la mítica cifra...', action: "showLogicGame('2048')", color: '#fb923c', order: 4, visible: true },
+    { id: 'wordle', section: 'puzzles', title: 'Word Quest', emoji: '📝', desc: 'Adivina la palabra oculta en 6 intentos...', action: "showLogicGame('wordle')", color: '#f59e0b', order: 5, visible: true },
+    { id: 'sudoku', section: 'puzzles', title: 'Zen Sudoku', emoji: '🧩', desc: 'Relaja tu mente con desafíos de lógica pura...', action: "showLogicGame('sudoku')", color: '#3b82f6', order: 6, visible: true },
+    { id: 'bloxorz', section: 'puzzles', title: 'Bloxorz 3D', emoji: '🧱', desc: 'Desafío de lógica espacial. Lleva el bloque al agujero...', action: "showBloxorzScreen()", color: 'var(--sky)', order: 7, visible: true },
+    { id: 'semantika', section: 'puzzles', title: 'Semantika', emoji: '🧠', desc: 'Adivina la palabra oculta por su relevancia semántica...', action: 'showSemantikaScreen()', color: '#10b981', order: 8, visible: true },
+
     // --- NINTENDO RETRO ---
-    { id:'mario64', section:'retro', title:'Super Mario 64', emoji:'🍄', desc:'El clásico revolucionario en 3D de Nintendo...', action:'showMario64Screen()', color:'#E60012', order:1, visible:true },
-    { id:'sonic', section:'retro', title:'Sonic Mega Collection', emoji:'🦔', desc:'Gotta go fast! Clásicos de 16 bits...', action:'showSonicScreen()', color:'#005DC3', order:2, visible:true },
-    
+    { id: 'mario64', section: 'retro', title: 'Super Mario 64', emoji: '🍄', desc: 'El clásico revolucionario en 3D de Nintendo...', action: 'showMario64Screen()', color: '#E60012', order: 1, visible: true },
+    { id: 'sonic', section: 'retro', title: 'Sonic Mega Collection', emoji: '🦔', desc: 'Gotta go fast! Clásicos de 16 bits...', action: 'showSonicScreen()', color: '#005DC3', order: 2, visible: true },
+
     // --- MÚSICA Y RITMO ---
-    { id:'ritmo', section:'music', title:'Rhythm Hero', emoji:'🎸', desc:'Desafía tus reflejos al compás de la música...', action:'showRhythmHeroScreen()', color:'#f472b6', order:1, visible:true },
-    { id:'piano', section:'music', title:'Neon Piano', emoji:'🎹', desc:'Toca las baldosas al ritmo de piezas modernas...', action:'showNeonPianoScreen()', color:'var(--sky)', order:2, visible:true },
-    { id:'beepbox', section:'music', title:'BeepBox Lab', emoji:'🎼', desc:'Estudio de creación musical de 8 bits interactivo...', action:'showBeepBoxScreen()', color:'var(--amber)', order:3, visible:true },
-    { id:'voxlab', section:'music', title:'VoxLab Pro', emoji:'⚡', desc:'Motor sónico y procesador vocal. Auto-Tune profesional...', action:'showVoxLabScreen()', color:'var(--sky)', order:4, visible:true }
+    { id: 'ritmo', section: 'music', title: 'Rhythm Hero', emoji: '🎸', desc: 'Desafía tus reflejos al compás de la música...', action: 'showRhythmHeroScreen()', color: '#f472b6', order: 1, visible: true },
+    { id: 'piano', section: 'music', title: 'Neon Piano', emoji: '🎹', desc: 'Toca las baldosas al ritmo de piezas modernas...', action: 'showNeonPianoScreen()', color: 'var(--sky)', order: 2, visible: true },
+    { id: 'beepbox', section: 'music', title: 'BeepBox Lab', emoji: '🎼', desc: 'Estudio de creación musical de 8 bits interactivo...', action: 'showBeepBoxScreen()', color: 'var(--amber)', order: 3, visible: true },
+    { id: 'voxlab', section: 'music', title: 'VoxLab Pro', emoji: '⚡', desc: 'Motor sónico y procesador vocal. Auto-Tune profesional...', action: 'showVoxLabScreen()', color: 'var(--sky)', order: 4, visible: true },
+
+    // --- CLICKERS E INCREMENTAL ---
+    { id: 'tosito-clicker', section: 'clickers', title: 'Tosito Clicker', emoji: '💎', desc: 'El clicker definitivo. Construye tu imperio de gemas...', action: 'showClickerScreen()', color: 'var(--sky)', order: 1, visible: true },
+    { id: 'leek_tycoon', section: 'clickers', title: 'Leek Factory Tycoon', emoji: '🧅', desc: 'Factoría evolutiva de puerros espaciales...', action: 'showLeekTycoonScreen()', color: '#10b981', order: 2, visible: true }
   ];
   for (const item of items) {
     await db.collection('globals').doc('hub_content').collection('items').doc(item.id).set(item);
@@ -4920,12 +5024,12 @@ async function autoSeedHub() {
 function drawActivityChart() {
   const svg = document.getElementById('svg-activity');
   if (!svg) return;
-  
+
   const data = [12, 45, 23, 67, 89, 43, 21, 56, 78, 90, 110, 85, 60, 40, 30, 25, 15, 10, 5, 8, 12, 18, 25, 30];
   const max = Math.max(...data);
   const width = svg.clientWidth || 400;
   const height = 80;
-  
+
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = 100 - (v / max) * 80;
@@ -4948,16 +5052,16 @@ function drawActivityChart() {
 
 
 function renderCMSEditor() {
-    const container = document.getElementById('admin-hub-cms-list');
-    if (!container) return;
-    container.innerHTML = '';
+  const container = document.getElementById('admin-hub-cms-list');
+  if (!container) return;
+  container.innerHTML = '';
 
-    const sorted = [..._hubItems].sort((a,b) => (a.order||99) - (b.order||99));
+  const sorted = [..._hubItems].sort((a, b) => (a.order || 99) - (b.order || 99));
 
-    sorted.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'cms-item-card';
-        card.innerHTML = `
+  sorted.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'cms-item-card';
+    card.innerHTML = `
             <div class="cms-item-header">
                 <span style="font-weight:900;">${item.emoji} ${item.title}</span>
                 <label class="switch">
@@ -4967,52 +5071,52 @@ function renderCMSEditor() {
             </div>
             <div style="font-size:0.6rem; color:var(--muted);">${item.desc.substring(0, 40)}...</div>
         `;
-        container.appendChild(card);
-    });
+    container.appendChild(card);
+  });
 }
 
-window.toggleHubItemVisibility = async function(id, currentVisible) {
-    try {
-        await db.collection('globals').doc('hub_content').collection('items').doc(id).update({
-            visible: !currentVisible
-        });
-        addAuditLog('CMS_TOGGLE', `${id} -> ${!currentVisible}`);
-        toast(id + " actualizado");
-    } catch(e) { toast("Error CMS: " + e.message); }
+window.toggleHubItemVisibility = async function (id, currentVisible) {
+  try {
+    await db.collection('globals').doc('hub_content').collection('items').doc(id).update({
+      visible: !currentVisible
+    });
+    addAuditLog('CMS_TOGGLE', `${id} -> ${!currentVisible}`);
+    toast(id + " actualizado");
+  } catch (e) { toast("Error CMS: " + e.message); }
 }
 
 async function addAuditLog(action, details) {
-    if (!currentUser) return;
-    try {
-        await db.collection('globals').doc('audit_logs').collection('logs').add({
-            admin: userProfile.displayName || currentUser.email,
-            action: action,
-            details: details,
-            timestamp: Date.now()
-        });
-        renderAuditLogs();
-    } catch(e) { console.error("Log error:", e); }
+  if (!currentUser) return;
+  try {
+    await db.collection('globals').doc('audit_logs').collection('logs').add({
+      admin: userProfile.displayName || currentUser.email,
+      action: action,
+      details: details,
+      timestamp: Date.now()
+    });
+    renderAuditLogs();
+  } catch (e) { console.error("Log error:", e); }
 }
 
 async function renderAuditLogs() {
-    const list = document.getElementById('admin-audit-logs');
-    if (!list) return;
-    try {
-        const snap = await db.collection('globals').doc('audit_logs').collection('logs').orderBy('timestamp', 'desc').limit(15).get();
-        if (snap.empty) {
-            list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--muted); font-size:0.7rem;">No hay registros de actividad todavía.</div>';
-            return;
-        }
-        list.innerHTML = '';
-        snap.forEach(doc => {
-            const d = doc.data();
-            const time = new Date(d.timestamp).toLocaleTimeString();
-            const log = document.createElement('div');
-            log.style.cssText = "font-size:0.65rem; padding:6px; border-bottom:1px solid rgba(255,255,255,0.05); color:var(--muted);";
-            log.innerHTML = `<span style="color:var(--sky); font-weight:700;">[${time}]</span> <span style="color:white;">${d.admin || 'System'}</span>: ${d.action} <span style="font-style:italic;">(${d.details})</span>`;
-            list.appendChild(log);
-        });
-    } catch(e) {
-        list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--red); font-size:0.7rem;">Error cargando logs.</div>';
+  const list = document.getElementById('admin-audit-logs');
+  if (!list) return;
+  try {
+    const snap = await db.collection('globals').doc('audit_logs').collection('logs').orderBy('timestamp', 'desc').limit(15).get();
+    if (snap.empty) {
+      list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--muted); font-size:0.7rem;">No hay registros de actividad todavía.</div>';
+      return;
     }
+    list.innerHTML = '';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const time = new Date(d.timestamp).toLocaleTimeString();
+      const log = document.createElement('div');
+      log.style.cssText = "font-size:0.65rem; padding:6px; border-bottom:1px solid rgba(255,255,255,0.05); color:var(--muted);";
+      log.innerHTML = `<span style="color:var(--sky); font-weight:700;">[${time}]</span> <span style="color:white;">${d.admin || 'System'}</span>: ${d.action} <span style="font-style:italic;">(${d.details})</span>`;
+      list.appendChild(log);
+    });
+  } catch (e) {
+    list.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--red); font-size:0.7rem;">Error cargando logs.</div>';
+  }
 }

@@ -1,7 +1,10 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": [
     {
-      "target": "games-site",
+      "target": "hub",
       "public": "public",
       "ignore": [
         "firebase.json",
@@ -11,12 +14,12 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/hub_main.html"
         }
       ]
     },
     {
-      "target": "chess-site",
+      "target": "semantika",
       "public": "public",
       "ignore": [
         "firebase.json",
@@ -26,7 +29,7 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/semantika.html"
         }
       ]
     }

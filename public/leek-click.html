@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leek Factory Tycoon - Zenith Fullscreen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Orbitron:wght@500;700;900&display=swap');
+
+    :root {
+      --primary: #10b981;
+      --primary-glow: rgba(16, 185, 129, 0.5);
+      --secondary: #3b82f6;
+      --accent: #f59e0b;
+      --glass-bg: rgba(15, 23, 42, 0.75);
+      --glass-border: rgba(255, 255, 255, 0.15);
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #020617;
+      color: #f8fafc;
+      font-family: 'Nunito', sans-serif;
+      overflow: hidden;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .heading-font {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    /* Premium Glassmorphism */
+    .hud-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-top: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 28px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+    }
+
+    #game-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* Floating Text Animations */
+    .floating-text {
+      position: absolute;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      color: #4ade80;
+      font-size: 1.8rem;
+      text-shadow: 0 4px 0 #16a34a, 0 0 20px var(--primary-glow);
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .upgrade-fx {
+      position: absolute;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      color: #fbbf24;
+      font-size: 2.5rem;
+      text-shadow: 0 5px 0 #d97706, 0 0 30px rgba(251, 191, 36, 0.8);
+      pointer-events: none;
+      z-index: 100;
+      text-transform: uppercase;
+    }
+
+    /* Botones HUD Flotantes */
+    .dock-btn {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 4px 10px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .dock-btn:hover {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+      transform: translateY(-4px) scale(1.02);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .dock-btn:active {
+      transform: translateY(2px) scale(0.98);
+      box-shadow: 0 0 0 transparent;
+    }
+
+    .dock-btn.active-mult {
+      background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      border-color: #34d399;
+      box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4), 0 0 20px rgba(16, 185, 129, 0.5);
+    }
+
+    /* Modal Ultra Premium */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.8) 0%, rgba(2, 6, 23, 0.95) 100%);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content-box {
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #334155;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      transform: scale(0.9) translateY(20px);
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .modal-overlay.show .modal-content-box {
+      transform: scale(1) translateY(0);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+  </style>
+</head>
+
+<body>
+
+  <canvas id="game-canvas"></canvas>
+
+  <!-- TOP HUD -->
+  <div class="absolute top-6 left-6 right-6 flex justify-between pointer-events-none z-50">
+
+    <!-- Branding / Prestige -->
+    <div class="hud-panel p-3 px-5 flex items-center gap-5 pointer-events-auto hover:scale-[1.02] cursor-pointer">
+      <div
+        class="relative w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-700 rounded-[20px] flex items-center justify-center shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-300/50 overflow-hidden">
+        <i class="fas fa-industry text-white text-3xl drop-shadow-md z-10"></i>
+      </div>
+      <div class="flex flex-col justify-center">
+        <h1
+          class="heading-font text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-wider uppercase drop-shadow-sm leading-none mb-1">
+          Leek <span class="text-emerald-400">Zenith</span></h1>
+        <div class="flex items-center gap-3">
+          <span class="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">Factoría Evolutiva</span>
+          <span id="prestige-badge"
+            class="hidden bg-gradient-to-r from-amber-500 to-orange-600 border border-amber-300/50 text-white text-[10px] px-3 py-0.5 rounded-full font-black shadow-[0_0_10px_rgba(245,158,11,0.4)]">
+            <i class="fas fa-star mr-1"></i>+<span id="prestige-multi">0</span>%
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Economy Stats -->
+    <div class="hud-panel p-3 px-8 flex items-center gap-12 pointer-events-auto">
+      <div class="flex flex-col items-end group">
+        <span
+          class="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-1 group-hover:text-amber-400 transition-colors">Fondos
+          Globales</span>
+        <div class="flex items-center gap-3">
+          <i class="fas fa-coins text-amber-400 text-4xl drop-shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse"></i>
+          <span id="money-display"
+            class="heading-font text-5xl font-black text-white drop-shadow-md tracking-tighter">0</span>
+        </div>
+      </div>
+      <div class="w-px h-14 bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+      <div class="flex flex-col items-end group">
+        <span
+          class="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-1 group-hover:text-emerald-400 transition-colors">Rendimiento
+          /s</span>
+        <span id="income-display"
+          class="heading-font text-3xl font-black text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]">+0</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM RIGHT HUD (Multiplicadores) -->
+  <div class="absolute bottom-8 right-8 flex flex-col gap-2 pointer-events-auto z-50">
+    <div class="hud-panel p-1.5 flex flex-col gap-1 rounded-2xl shadow-2xl">
+      <button onclick="setMultiplier(1)" id="mult-1"
+        class="dock-btn active-mult px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest w-16">x1</button>
+      <button onclick="setMultiplier(10)" id="mult-10"
+        class="dock-btn text-slate-400 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest w-16">x10</button>
+      <button onclick="setMultiplier(100)" id="mult-100"
+        class="dock-btn text-slate-400 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest w-16">x100</button>
+    </div>
+  </div>
+
+  <!-- BOTTOM CENTER HUD (Toggleable Menús) -->
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-50">
+
+    <!-- Toggle Button -->
+    <button onclick="toggleDock()"
+      class="pointer-events-auto hud-panel px-8 py-1 rounded-t-xl text-slate-400 hover:text-white transition-colors border-b-0 opacity-80 hover:opacity-100 relative z-10 translate-y-[1px]">
+      <i id="dock-icon" class="fas fa-chevron-down"></i>
+    </button>
+
+    <!-- Action Menus Dock -->
+    <div id="action-dock-wrapper" class="overflow-hidden transition-all duration-500 ease-in-out pointer-events-auto"
+      style="max-height: 200px; opacity: 1;">
+      <div class="hud-panel p-2.5 flex gap-3 rounded-2xl">
+        <button onclick="openModal('research')"
+          class="dock-btn px-10 py-4 rounded-xl flex flex-col items-center gap-2 min-w-[140px]">
+          <i class="fas fa-flask text-3xl text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]"></i>
+          <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-200 mt-1">I+D Lab</span>
+        </button>
+        <button onclick="openModal('prestige')"
+          class="dock-btn px-10 py-4 rounded-xl flex flex-col items-center gap-2 min-w-[140px]">
+          <i class="fas fa-crown text-3xl text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]"></i>
+          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-200 mt-1">Prestigio</span>
+        </button>
+        <button onclick="openModal('ranking')"
+          class="dock-btn px-10 py-4 rounded-xl flex flex-col items-center gap-2 min-w-[140px]">
+          <i class="fas fa-ranking-star text-3xl text-sky-400 drop-shadow-[0_0_8px_rgba(56,189,248,0.6)]"></i>
+          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-200 mt-1">Ranking</span>
+        </button>
+        <button onclick="manualSave()"
+          class="dock-btn px-10 py-4 rounded-xl flex flex-col items-center gap-2 min-w-[140px]">
+          <i class="fas fa-cloud-arrow-up text-3xl text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]"></i>
+          <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-200 mt-1">Guardar</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL SYSTEM -->
+  <div id="modal" class="modal-overlay">
+    <div class="modal-content-box w-[550px] max-h-[85vh] rounded-3xl flex flex-col overflow-hidden">
+      <div class="p-6 bg-slate-900 border-b border-white/5 flex justify-between items-center relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10"></div>
+        <h2 id="modal-title"
+          class="heading-font text-3xl font-black uppercase text-white tracking-widest relative z-10">Título</h2>
+        <button onclick="closeModal()"
+          class="relative z-10 w-10 h-10 rounded-full bg-white/5 border border-white/10 hover:bg-red-500 hover:text-white hover:border-red-400 text-slate-400 flex items-center justify-center transition-all shadow-lg">
+          <i class="fas fa-times text-xl"></i>
+        </button>
+      </div>
+      <div id="modal-content" class="p-6 overflow-y-auto space-y-4 bg-slate-800/50">
+        <!-- Inyectado por JS -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- MATH ENGINE ---
+    const SUFFIXES = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "Ud", "Dd", "Td"];
+    function formatNum(num) {
+      if (num < 1000) return Math.floor(num).toString();
+      const tier = Math.floor(Math.log10(num) / 3);
+      if (tier >= SUFFIXES.length) return num.toExponential(2);
+      const scale = Math.pow(10, tier * 3);
+      return (num / scale).toFixed(2) + SUFFIXES[tier];
+    }
+
+    // Constantes de Balanceo Global
+    // - [x] Rebalancear constantes globales (`GROWTH_POW`, `GROWTH_COST`)
+    // - [x] Migrar el estado de un único camión a un array `trucks`
+    // - [x] Implementar la lógica de actualización para múltiples camiones
+    // - [x] Actualizar el renderizado para dibujar la flota (con desplazamiento vertical)
+    // - [x] Añadir botón de compra de nuevo camión en la UI
+    // - [x] Verificar el balanceo y la persistencia de datos
+    const GROWTH_COST = 1.20;  // Factor de encarecimiento (era 1.15)
+    const GROWTH_POW = 1.025;  // Factor de crecimiento de poder (era 1.03)
+    const MAX_LVL = 30;         // Límite de nivel para balanceo
+
+    // --- GAME STATE ---
+    const DEFAULT_STATE = {
+      money: 50, totalEarned: 50,
+      buyMultiplier: 1,
+      lastTick: Date.now(), cameraY: 0, maxCameraY: 0,
+      prestige: { seeds: 0 },
+      research: { genetics: 0, logistics: 0, marketing: 0, drones: 0 },
+
+      boostTimer: 0,
+      goldenLeek: { active: false, x: -100, y: -100, life: 0, cooldown: 120 },
+      drones: [],
+
+      warehouse: {
+        lvlSpeed: 1, lvlPrice: 1, managerLvl: 0,
+        baseSpeed: 1, baseCap: 30, basePrice: 5, baseCost: 25, stock: 0, flash: 0,
+        lvlTruckSpeed: 1, lvlTruckCap: 1, // Niveles globales para toda la flota
+        trucks: [
+           { state: 'loading', load: 0, x: 0, timer: 0, cooldown: 3, flash: 0 }
+        ],
+        truckBaseCost: 25, truckBaseSpeed: 300, truckBaseCap: 50
+      },
+      elevator: {
+        lvlSpeed: 1, lvlCap: 1, managerLvl: 0,
+        baseSpeed: 100, baseCap: 20, baseCost: 25, flash: 0,
+        elevators: [
+           { pos: 400, targetPos: 400, currentVel: 0, load: 0, state: 'idle', timer: 0 }
+        ]
+      },
+      // Generación de 12 campos con costes geométricos perfectos
+      fields: Array.from({ length: 12 }, (_, i) => ({
+        id: i, unlocked: i === 0,
+        lvlSpeed: 1, lvlCap: 1, managerLvl: 0, flash: 0,
+        baseRate: 2 * Math.pow(8, i), baseCap: 20 * Math.pow(8, i), baseCost: 25 * Math.pow(12, i),
+        stock: 0, hPos: 0, hDir: 1, harvestLoad: 0,
+        plants: Array(12).fill(1),
+        workingTimer: 15, manualBoost: 0,
+        y: 650 + i * 240,
+        color: ['#ef4444', '#3b82f6', '#a855f7', '#f97316', '#10b981', '#ec4899', '#14b8a6', '#f43f5e', '#eab308', '#6366f1', '#8b5cf6', '#d946ef'][i % 12]
+      })),
+      income: 0, particles: []
+    };
+
+    let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+    const stars = Array.from({ length: 150 }, () => ({
+      x: Math.random(), y: Math.random(), size: Math.random() * 2, speed: Math.random() * 0.05
+    }));
+    const dirtRocks = Array.from({ length: 500 }, () => ({
+      x: Math.random(), y: Math.random(), r: Math.random() * 4 + 2, color: Math.random() > 0.5 ? '#3e2723' : '#271711'
+    }));
+
+    const G = {
+      prestigeMult: () => 1 + (state.prestige.seeds * 0.05),
+      manMult: (lvl) => lvl > 0 ? Math.pow(1.5, lvl) : 1,
+      boostMult: () => state.boostTimer > 0 ? 3 : 1,
+
+      // MATH EQUILIBRADA (Progresión muy suave pero constante)
+      fieldRate: (f) => f.baseRate * f.lvlSpeed * Math.pow(GROWTH_POW, f.lvlSpeed) * G.manMult(f.managerLvl) * (1 + state.research.genetics * 0.5),
+      fieldCap: (f) => f.baseCap * f.lvlCap * Math.pow(GROWTH_POW, f.lvlCap) * G.manMult(f.managerLvl) * (1 + state.research.logistics * 0.2),
+      fieldSpeedCost: (f, mult) => calcTotalCost(f.baseCost, f.lvlSpeed, GROWTH_COST, mult),
+      fieldCapCost: (f, mult) => calcTotalCost(f.baseCost * 1.2, f.lvlCap, GROWTH_COST, mult),
+
+      eleSpeed: () => (state.elevator.baseSpeed + state.elevator.lvlSpeed * 10) * G.manMult(state.elevator.managerLvl) * (1 + state.research.logistics * 0.1) * G.boostMult(),
+      eleCap: () => state.elevator.baseCap * state.elevator.lvlCap * Math.pow(GROWTH_POW, state.elevator.lvlCap) * G.manMult(state.elevator.managerLvl),
+      eleSpeedCost: (mult) => calcTotalCost(state.elevator.baseCost, state.elevator.lvlSpeed, GROWTH_COST, mult),
+      eleCapCost: (mult) => calcTotalCost(state.elevator.baseCost * 1.2, state.elevator.lvlCap, GROWTH_COST, mult),
+      eleBuyCost: () => 5000000 * Math.pow(15, state.elevator.elevators.length - 1),
+
+      whSpeed: () => state.warehouse.baseSpeed * state.warehouse.lvlSpeed * Math.pow(GROWTH_POW, state.warehouse.lvlSpeed) * G.manMult(state.warehouse.managerLvl) * (1 + state.research.marketing * 0.2) * G.boostMult(),
+      whPrice: () => state.warehouse.basePrice * state.warehouse.lvlPrice * Math.pow(GROWTH_POW, state.warehouse.lvlPrice) * (1 + state.research.marketing * 0.5) * G.prestigeMult(),
+      whSpeedCost: (mult) => calcTotalCost(state.warehouse.baseCost, state.warehouse.lvlSpeed, GROWTH_COST, mult),
+      whPriceCost: (mult) => calcTotalCost(state.warehouse.baseCost * 1.2, state.warehouse.lvlPrice, GROWTH_COST, mult),
+
+      truckSpeed: () => (state.warehouse.truckBaseSpeed + state.warehouse.lvlTruckSpeed * 30) * G.boostMult(),
+      truckCap: () => state.warehouse.truckBaseCap * state.warehouse.lvlTruckCap * Math.pow(GROWTH_POW, state.warehouse.lvlTruckCap),
+      truckSpeedCost: (mult) => calcTotalCost(state.warehouse.truckBaseCost, state.warehouse.lvlTruckSpeed, GROWTH_COST, mult),
+      truckCapCost: (mult) => calcTotalCost(state.warehouse.truckBaseCost * 1.2, state.warehouse.lvlTruckCap, GROWTH_COST, mult),
+      truckBuyCost: () => 1000000 * Math.pow(10, state.warehouse.trucks.length - 1),
+
+      // Costes exponenciales de gerentes
+      manCostField: (f) => f.baseCost * 10 * Math.pow(5, f.managerLvl),
+      manCostEle: () => state.elevator.baseCost * 20 * Math.pow(5, state.elevator.managerLvl),
+      manCostWh: () => state.warehouse.baseCost * 20 * Math.pow(5, state.warehouse.managerLvl),
+      resCost: (type, lvl) => type === 'drones' ? 100000 * Math.pow(10, lvl) : 5000 * Math.pow(10, lvl)
+    };
+
+    function calcTotalCost(base, currentLvl, growth, amount) {
+      let total = 0; for (let i = 0; i < amount; i++) total += base * Math.pow(growth, currentLvl + i - 1); return total;
+    }
+
+    function getVisualTier(lvl1, lvl2) { return Math.max(0, Math.min(3, Math.floor((lvl1 + lvl2 - 2) / 12))); }
+
+    // --- CANVAS & INPUT SYSTEM ---
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+
+    let isDragging = false, startY = 0, startCameraY = 0, mouseX = 0, mouseY = 0, isMouseDown = false;
+    let clickZones = [];
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true; isMouseDown = true; startY = e.clientY; startCameraY = state.cameraY;
+      handleCanvasClick();
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; isMouseDown = false; });
+    window.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
+      if (isDragging) {
+        const dy = e.clientY - startY;
+        if (Math.abs(dy) > 5) { state.cameraY = startCameraY - dy; clampCamera(); }
+      }
+    });
+    canvas.addEventListener('wheel', (e) => { state.cameraY += e.deltaY * 0.8; clampCamera(); });
+    function clampCamera() { state.cameraY = Math.max(0, Math.min(state.cameraY, state.maxCameraY)); }
+
+    function registerZone(x, y, w, h, action, id, disabled, text, subtext, baseColor, glowColor) {
+      clickZones.push({ x, y, w, h, action, id, disabled, text, subtext, baseColor, glowColor });
+    }
+
+    function handleCanvasClick() {
+      const mY = mouseY + state.cameraY;
+      for (let z of clickZones) {
+        if (!z.disabled && mouseX >= z.x && mouseX <= z.x + z.w && mY >= z.y && mY <= z.y + z.h) {
+          purchase(z.action, z.id);
+          isDragging = false;
+          break;
+        }
+      }
+    }
+
+    function drawCanvasButton(x, y, w, h, text, subtext, color, shadowColor, disabled, action, id = null) {
+      registerZone(x, y, w, h, action, id, disabled, text, subtext, color, shadowColor);
+
+      const mY = mouseY + state.cameraY;
+      const isHover = mouseX >= x && mouseX <= x + w && mY >= y && mY <= y + h;
+      const offset = (isHover && !disabled && isMouseDown) ? 4 : (isHover && !disabled ? -2 : 0);
+
+      ctx.save();
+      if (isHover && !disabled) { ctx.shadowBlur = 20; ctx.shadowColor = color; }
+
+      ctx.fillStyle = disabled ? '#1e293b' : shadowColor;
+      ctx.beginPath(); ctx.roundRect(x, y + 6, w, h, 14); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = disabled ? '#334155' : (isHover && !disabled ? adjustColor(color, 20) : color);
+      ctx.globalAlpha = disabled ? 0.8 : (isHover ? 1 : 0.85);
+      ctx.beginPath(); ctx.roundRect(x, y + offset, w, h, 14); ctx.fill();
+
+      ctx.strokeStyle = disabled ? '#475569' : color;
+      ctx.lineWidth = isHover && !disabled ? 2 : 1;
+      ctx.stroke(); ctx.globalAlpha = 1;
+
+      ctx.fillStyle = disabled ? '#94a3b8' : '#ffffff';
+      ctx.font = '900 13px Orbitron'; ctx.textAlign = 'center';
+      ctx.fillText(text, x + w / 2, y + 22 + offset);
+
+      ctx.font = '700 12px Nunito';
+      ctx.fillStyle = disabled ? '#64748b' : '#fbbf24';
+      ctx.fillText(subtext, x + w / 2, y + 40 + offset);
+      ctx.textAlign = 'center';
+      ctx.restore();
+    }
+
+    function adjustColor(color, amount) {
+      return '#' + color.replace(/^#/, '').replace(/../g, color => ('0' + Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).slice(-2));
+    }
+
+    function spawnFX(x, y, text, type = 'money') {
+      const el = document.createElement('div');
+      el.className = type === 'money' ? 'floating-text' : 'upgrade-fx';
+      el.innerText = text;
+      if (type === 'money') {
+        const rect = document.querySelector('.fa-coins').getBoundingClientRect();
+        el.style.left = (rect.left + 60 + Math.random() * 40) + 'px'; el.style.top = (rect.top + 10) + 'px';
+        gsap.to(el, { y: -80, opacity: 0, duration: 1.5, ease: "power2.out" });
+      } else {
+        el.style.left = (window.innerWidth / 2 - 150) + 'px'; el.style.top = (window.innerHeight / 2) + 'px';
+        gsap.fromTo(el, { scale: 0.2, opacity: 1, y: 50 }, { scale: 1.2, opacity: 0, y: -200, duration: 2.5, ease: "back.out(1.5)" });
+      }
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2500);
+    }
+
+    function setMultiplier(val) {
+      state.buyMultiplier = val;
+      [1, 10, 100].forEach(n => {
+        const b = document.getElementById('mult-' + n);
+        if (n === val) { b.classList.add('active-mult'); b.classList.remove('text-slate-400'); }
+        else { b.classList.remove('active-mult'); b.classList.add('text-slate-400'); }
+      });
+    }
+
+    function toggleDock() {
+      const dockWrapper = document.getElementById('action-dock-wrapper');
+      const icon = document.getElementById('dock-icon');
+      if (dockWrapper.style.maxHeight === '0px') {
+        dockWrapper.style.maxHeight = '200px';
+        dockWrapper.style.opacity = '1';
+        icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+      } else {
+        dockWrapper.style.maxHeight = '0px';
+        dockWrapper.style.opacity = '0';
+        icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+      }
+    }
+
+    function purchase(action, id = null) {
+      let cost = 0; const mult = state.buyMultiplier;
+      let oldTier = 0, newTier = 0;
+
+      if (action === 'fieldUnlock') {
+        const f = state.fields[id]; cost = f.baseCost;
+        if (state.money >= cost) { state.money -= cost; f.unlocked = true; f.flash = 1; f.workingTimer = 15; spawnFX(0, 0, "¡SECTOR ACTIVO!", "fx"); }
+      } else if (action === 'fieldSpeed') {
+        if (state.fields[id].lvlSpeed >= MAX_LVL) return;
+        cost = G.fieldSpeedCost(state.fields[id], mult);
+        oldTier = getVisualTier(state.fields[id].lvlSpeed, state.fields[id].lvlCap);
+        if (state.money >= cost) { state.money -= cost; state.fields[id].lvlSpeed = Math.min(MAX_LVL, state.fields[id].lvlSpeed + mult); state.fields[id].flash = 1; }
+        newTier = getVisualTier(state.fields[id].lvlSpeed, state.fields[id].lvlCap);
+      } else if (action === 'fieldCap') {
+        if (state.fields[id].lvlCap >= MAX_LVL) return;
+        cost = G.fieldCapCost(state.fields[id], mult);
+        oldTier = getVisualTier(state.fields[id].lvlSpeed, state.fields[id].lvlCap);
+        if (state.money >= cost) { state.money -= cost; state.fields[id].lvlCap = Math.min(MAX_LVL, state.fields[id].lvlCap + mult); state.fields[id].flash = 1; }
+        newTier = getVisualTier(state.fields[id].lvlSpeed, state.fields[id].lvlCap);
+      } else if (action === 'eleSpeed') {
+        if (state.elevator.lvlSpeed >= MAX_LVL) return;
+        cost = G.eleSpeedCost(mult);
+        oldTier = getVisualTier(state.elevator.lvlSpeed, state.elevator.lvlCap);
+        if (state.money >= cost) { state.money -= cost; state.elevator.lvlSpeed = Math.min(MAX_LVL, state.elevator.lvlSpeed + mult); state.elevator.flash = 1; }
+        newTier = getVisualTier(state.elevator.lvlSpeed, state.elevator.lvlCap);
+      } else if (action === 'eleCap') {
+        if (state.elevator.lvlCap >= MAX_LVL) return;
+        cost = G.eleCapCost(mult);
+        oldTier = getVisualTier(state.elevator.lvlSpeed, state.elevator.lvlCap);
+        if (state.money >= cost) { state.money -= cost; state.elevator.lvlCap = Math.min(MAX_LVL, state.elevator.lvlCap + mult); state.elevator.elevators.forEach(e => e.flash = 1); }
+        newTier = getVisualTier(state.elevator.lvlSpeed, state.elevator.lvlCap);
+      }
+      else if (action === 'buyEle') {
+        if (state.elevator.elevators.length >= 4) return;
+        cost = G.eleBuyCost();
+        if (state.money >= cost) {
+            state.money -= cost;
+            state.elevator.elevators.push({ pos: 400, targetPos: 400, currentVel: 0, load: 0, state: 'idle', timer: 0, flash: 1 });
+            spawnFX(0, 0, "¡NUEVA CABINA INSTALADA!", "fx");
+        }
+      }
+      else if (action === 'whSpeed') {
+        cost = G.whSpeedCost(mult);
+        oldTier = getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice);
+        if (state.money >= cost) { state.money -= cost; state.warehouse.lvlSpeed += mult; state.warehouse.flash = 1; }
+        newTier = getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice);
+      } else if (action === 'whPrice') {
+        cost = G.whPriceCost(mult);
+        oldTier = getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice);
+        if (state.money >= cost) { state.money -= cost; state.warehouse.lvlPrice += mult; state.warehouse.flash = 1; }
+        newTier = getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice);
+      } else if (action === 'truckSpeed') {
+        if (state.warehouse.lvlTruckSpeed >= MAX_LVL) return;
+        cost = G.truckSpeedCost(mult);
+        oldTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+        if (state.money >= cost) { state.money -= cost; state.warehouse.lvlTruckSpeed = Math.min(MAX_LVL, state.warehouse.lvlTruckSpeed + mult); state.warehouse.trucks.forEach(t => t.flash = 1); }
+        newTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+      } else if (action === 'truckCap') {
+        if (state.warehouse.lvlTruckCap >= MAX_LVL) return;
+        cost = G.truckCapCost(mult);
+        oldTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+        if (state.money >= cost) { state.money -= cost; state.warehouse.lvlTruckCap = Math.min(MAX_LVL, state.warehouse.lvlTruckCap + mult); state.warehouse.trucks.forEach(t => t.flash = 1); }
+        newTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+      }
+      else if (action === 'buyTruck') {
+        if (state.warehouse.trucks.length >= 4) return;
+        cost = G.truckBuyCost();
+        if (state.money >= cost) {
+            state.money -= cost;
+            state.warehouse.trucks.push({ state: 'loading', load: 0, x: 0, timer: 0, cooldown: 3, flash: 1 });
+            spawnFX(0, 0, "¡NUEVO CAMIÓN COMPRADO!", "fx");
+        }
+      }
+      // Gerentes (Mejora Infinita y Auto-Wake)
+      else if (action === 'manField') {
+        if (state.fields[id].managerLvl >= 5) return;
+        cost = G.manCostField(state.fields[id]);
+        if (state.money >= cost) { state.money -= cost; state.fields[id].managerLvl++; state.fields[id].flash = 1; spawnFX(0, 0, "¡GERENTE MEJORADO!", "fx"); }
+      } else if (action === 'manEle') {
+        if (state.elevator.managerLvl >= 5) return;
+        cost = G.manCostEle();
+        if (state.money >= cost) { state.money -= cost; state.elevator.managerLvl++; state.elevator.flash = 1; spawnFX(0, 0, "¡LOGÍSTICA MEJORADA!", "fx"); }
+      } else if (action === 'manWh') {
+        if (state.warehouse.managerLvl >= 5) return;
+        cost = G.manCostWh();
+        if (state.money >= cost) { state.money -= cost; state.warehouse.managerLvl++; state.warehouse.flash = 1; spawnFX(0, 0, "¡VENTAS MEJORADAS!", "fx"); }
+      }
+      // Interactive Clicking
+      else if (action === 'wakeUp') {
+        state.fields[id].workingTimer = 15;
+        spawnFX(0, 0, "¡A TRABAJAR!", "fx");
+      }
+      else if (action === 'boostHarvester') {
+        state.fields[id].manualBoost = 3;
+        state.fields[id].workingTimer = 15;
+        state.particles.push({ x: mouseX, y: mouseY + state.cameraY, text: "⚡", life: 1, type: 'text', color: '#3b82f6' });
+      }
+      else if (action === 'goldenLeek') {
+        state.goldenLeek.active = false;
+        state.boostTimer = 30;
+        spawnFX(0, 0, "¡FIEBRE DEL PUERRO!", "fx");
+      }
+      // Modals
+      else if (action === 'res') {
+        cost = G.resCost(id, state.research[id]);
+        if (state.money >= cost) { state.money -= cost; state.research[id]++; spawnFX(0, 0, "¡I+D COMPLETADO!", "fx"); closeModal(); }
+      } else if (action === 'prestige') {
+        const seedsToGain = Math.floor(Math.pow(state.totalEarned / 1000000, 0.4));
+        if (seedsToGain > 0) {
+          const currentSeeds = state.prestige.seeds + seedsToGain;
+          const res = JSON.parse(JSON.stringify(state.research));
+          Object.assign(state, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+          state.prestige.seeds = currentSeeds; state.research = res;
+          spawnFX(0, 0, "¡RENACIMIENTO!", "fx"); closeModal();
+        }
+      }
+
+      if (newTier > oldTier && action !== 'wakeUp' && action !== 'goldenLeek' && action !== 'boostHarvester') {
+        spawnFX(0, 0, "¡EVOLUCIÓN TECNOLÓGICA!", "fx");
+        gsap.fromTo(canvas, { x: -15, y: 15 }, { x: 0, y: 0, duration: 0.6, ease: "elastic.out(1, 0.2)", clearProps: "all" });
+      }
+
+      if (action !== 'wakeUp' && action !== 'goldenLeek' && action !== 'boostHarvester') gsap.fromTo("#money-display", { scale: 1.15 }, { scale: 1, duration: 0.3, ease: "back.out(2)" });
+      updateMoneyDisplay(); save();
+    }
+
+    function updateMoneyDisplay() {
+      document.getElementById('money-display').innerText = formatNum(state.money);
+      const pBadge = document.getElementById('prestige-badge');
+      if (state.prestige.seeds > 0) { pBadge.classList.remove('hidden'); document.getElementById('prestige-multi').innerText = (state.prestige.seeds * 5); }
+      else { pBadge.classList.add('hidden'); }
+    }
+
+    // --- MODALS ---
+    function openModal(type) {
+      const modal = document.getElementById('modal');
+      const title = document.getElementById('modal-title');
+      const content = document.getElementById('modal-content');
+      let html = '';
+
+      if (type === 'research') {
+        title.innerText = 'Laboratorio I+D';
+        html += createModalBtn('Genética Botánica', `Producción Global +50% (Nvl ${state.research.genetics})`, G.resCost('genetics', state.research.genetics), "purchase('res', 'genetics')", state.money < G.resCost('genetics', state.research.genetics), 'fa-dna', 'text-purple-400');
+        html += createModalBtn('Logística Cuántica', `Capacidad Ascensor +10% (Nvl ${state.research.logistics})`, G.resCost('logistics', state.research.logistics), "purchase('res', 'logistics')", state.money < G.resCost('logistics', state.research.logistics), 'fa-truck-fast', 'text-purple-400');
+        html += createModalBtn('Marketing Viral', `Precio Venta +50% (Nvl ${state.research.marketing})`, G.resCost('marketing', state.research.marketing), "purchase('res', 'marketing')", state.money < G.resCost('marketing', state.research.marketing), 'fa-chart-line', 'text-purple-400');
+        html += createModalBtn('Enjambre de Drones', `Drones Asistentes Roban Puerros (Nvl ${state.research.drones || 0})`, G.resCost('drones', state.research.drones || 0), "purchase('res', 'drones')", state.money < G.resCost('drones', state.research.drones || 0), 'fa-plane-up', 'text-blue-400');
+      }
+      else if (type === 'prestige') {
+        title.innerText = 'Vender Instalaciones';
+        const seedsGain = Math.floor(Math.pow(state.totalEarned / 1000000, 0.4));
+        html += `
+                    <div class="text-center">
+                        <i class="fas fa-crown text-6xl text-amber-400 mb-4 drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]"></i>
+                        <p class="text-sm text-slate-300 mb-6 leading-relaxed">Reinicia todo tu progreso (excepto I+D) para atraer inversores y obtener Semillas Doradas. Cada semilla otorga un <span class="text-amber-400 font-black">+5% de beneficio global permanente.</span></p>
+                        <div class="bg-slate-900 p-5 rounded-2xl border border-slate-700 mb-6 shadow-inner">
+                            <div class="text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-1">Ganas al reiniciar</div>
+                            <div class="text-5xl font-black text-amber-400 heading-font drop-shadow-md">+${formatNum(seedsGain)} <i class="fas fa-star text-3xl"></i></div>
+                        </div>
+                        <button onclick="purchase('prestige')" ${seedsGain <= 0 ? 'disabled' : ''} class="w-full bg-gradient-to-b from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 font-black py-4 rounded-xl text-lg transition-all disabled:opacity-50 disabled:grayscale uppercase tracking-widest shadow-[0_4px_15px_rgba(245,158,11,0.4)]">
+                            Confirmar Renacimiento
+                        </button>
+                    </div>`;
+      }
+      else if (type === 'ranking') {
+        title.innerText = 'Ranking Global';
+        content.innerHTML = '<div class="text-center py-10"><i class="fas fa-circle-notch fa-spin text-4xl text-sky-400"></i><p class="mt-4 text-slate-300 font-bold tracking-widest text-sm uppercase">Consultando Firestore...</p></div>';
+        modal.classList.add('show');
+        
+        save().then(() => {
+            if (window.parent && window.parent.db) {
+               window.parent.db.collection('leaderboard_leek_tycoon')
+                 .orderBy('score', 'desc')
+                 .limit(50)
+                 .get()
+                 .then(snap => {
+                   if (snap.empty) {
+                       content.innerHTML = '<div class="text-center py-8 text-slate-400 font-bold tracking-widest uppercase">Nadie ha cosechado puerros aún...</div>';
+                       return;
+                   }
+                   const users = [];
+                   snap.forEach(doc => { users.push(doc.data()); });
+                   
+                   let tableHtml = `
+                        <div class="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-inner">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-800 text-[10px] uppercase font-black tracking-widest text-slate-500 border-b border-slate-700">
+                                        <th class="p-4 text-center">Pos</th>
+                                        <th class="p-4">Magnate Espacial</th>
+                                        <th class="p-4 text-right">Riqueza Histórica</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                   `;
+                   users.forEach((u, idx) => {
+                       let posHtml = idx + 1;
+                       if (idx === 0) posHtml = `<i class="fas fa-trophy text-yellow-400 text-lg drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]"></i>`;
+                       else if (idx === 1) posHtml = `<i class="fas fa-award text-slate-300 text-lg drop-shadow-[0_0_8px_rgba(203,213,225,0.6)]"></i>`;
+                       else if (idx === 2) posHtml = `<i class="fas fa-award text-amber-600 text-lg drop-shadow-[0_0_8px_rgba(217,119,6,0.6)]"></i>`;
+                       
+                       tableHtml += `
+                           <tr class="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
+                               <td class="p-4 text-center font-black ${idx < 3 ? '' : 'text-slate-400'}">${posHtml}</td>
+                               <td class="p-4 font-bold text-white flex items-center gap-2">
+                                   <span>${u.name}</span>
+                                   ${u.seeds > 0 ? `<span class="bg-amber-500/20 text-amber-400 text-[9px] px-2 py-0.5 rounded-full font-black ml-2" title="Semillas de Prestigio">+${u.seeds} <i class="fas fa-star ml-0.5"></i></span>` : ''}
+                               </td>
+                               <td class="p-4 text-right heading-font font-black text-emerald-400 tracking-wider">
+                                   $${formatNum(u.score)}
+                               </td>
+                           </tr>
+                       `;
+                   });
+                   tableHtml += `</tbody></table></div>`;
+                   content.innerHTML = tableHtml;
+               }).catch(err => {
+                   content.innerHTML = `<div class="text-center py-8 text-red-400 font-bold">Error Firestore: ${err.message}</div>`;
+               });
+            } else {
+                content.innerHTML = '<div class="text-center py-8 text-red-400 font-bold uppercase tracking-widest">Sin conexión a Tosito Games Hub</div>';
+            }
+        });
+        return; 
+      }
+
+      content.innerHTML = html;
+      modal.classList.add('show');
+    }
+
+    function createModalBtn(title, sub, cost, action, disabled, icon, iconColor) {
+      return `
+                <div class="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl flex justify-between items-center hover:bg-slate-800 transition-colors">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 rounded-xl bg-slate-900 flex items-center justify-center border border-slate-700 shadow-inner"><i class="fas ${icon} ${iconColor} text-3xl drop-shadow-md"></i></div>
+                        <div>
+                            <h4 class="font-black text-white uppercase tracking-widest text-sm heading-font">${title}</h4>
+                            <p class="text-xs text-slate-400 font-bold mt-1">${sub}</p>
+                        </div>
+                    </div>
+                    <button onclick="${action}" ${disabled ? 'disabled' : ''} class="bg-blue-500 hover:bg-blue-400 disabled:bg-slate-700 disabled:text-slate-500 text-white px-6 py-3.5 rounded-xl font-black text-sm transition-all shadow-[0_4px_0_#1d4ed8] active:translate-y-1 active:shadow-none disabled:shadow-none min-w-[120px]">
+                        $${formatNum(cost)}
+                    </button>
+                </div>
+            `;
+    }
+
+    function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+    // --- ART DRAWING FUNCTIONS ---
+    function drawRoundedRect(x, y, w, h, r, color, shadowColor, strokeColor = null) {
+      if (shadowColor) { ctx.fillStyle = shadowColor; ctx.beginPath(); ctx.roundRect(x, y + 6, w, h, r); ctx.fill(); }
+      ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+      if (strokeColor) { ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.stroke(); }
+    }
+
+    function drawLeek(x, y, tier, scale = 1) {
+      if (scale <= 0) return;
+      ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+      if (tier === 0 || tier === 1) {
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(-3, -20, 6, 20);
+        ctx.fillStyle = tier === 0 ? '#22c55e' : '#15803d'; ctx.beginPath();
+        ctx.moveTo(-5, -20); ctx.lineTo(-14, -40); ctx.lineTo(0, -25); ctx.lineTo(14, -40); ctx.lineTo(5, -20); ctx.fill();
+      } else if (tier === 2) {
+        ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-4, -22, 8, 22);
+        ctx.fillStyle = '#4ade80'; ctx.beginPath();
+        ctx.moveTo(-6, -22); ctx.lineTo(-16, -45); ctx.lineTo(0, -28); ctx.lineTo(16, -45); ctx.lineTo(6, -22); ctx.fill();
+        ctx.fillStyle = 'rgba(74, 222, 128, 0.5)'; ctx.beginPath(); ctx.arc(0, -30, 15, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = '#f8fafc'; ctx.fillRect(-3, -25, 6, 25);
+        ctx.fillStyle = '#a855f7'; ctx.beginPath();
+        ctx.moveTo(-6, -25); ctx.lineTo(-18, -50); ctx.lineTo(0, -30); ctx.lineTo(18, -50); ctx.lineTo(6, -25); ctx.fill();
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.6)'; ctx.shadowBlur = 15; ctx.shadowColor = '#a855f7';
+        ctx.beginPath(); ctx.arc(0, -35, 20, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
+
+    function drawCharacter(x, y, scale, stateStr) {
+      const t = Date.now() / 150;
+      const bob = stateStr === 'working' ? Math.abs(Math.sin(t)) * 4 : 0;
+      const armSwing = stateStr === 'working' ? Math.sin(t) * 15 : 0;
+
+      ctx.save();
+      ctx.translate(x, y - bob);
+      ctx.scale(scale, scale);
+
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(-6, -10, 4, 10); ctx.fillRect(2, -10, 4, 10);
+
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath(); ctx.roundRect(-8, -25, 16, 15, 4); ctx.fill();
+
+      ctx.fillStyle = '#fca5a5';
+      ctx.save(); ctx.translate(-8, -22); ctx.rotate(armSwing * Math.PI / 180); ctx.fillRect(-3, 0, 4, 12); ctx.restore();
+      ctx.save(); ctx.translate(8, -22); ctx.rotate(-armSwing * Math.PI / 180); ctx.fillRect(-1, 0, 4, 12); ctx.restore();
+
+      ctx.fillStyle = '#fca5a5';
+      ctx.beginPath(); ctx.arc(0, -30, 8, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = 'black';
+      ctx.beginPath(); ctx.arc(-3, -31, 1.5, 0, Math.PI * 2); ctx.arc(3, -31, 1.5, 0, Math.PI * 2); ctx.fill();
+      if (stateStr === 'sleep') {
+        ctx.fillStyle = '#cbd5e1'; ctx.fillRect(-4, -32, 3, 1); ctx.fillRect(2, -32, 3, 1);
+      }
+
+      ctx.fillStyle = '#fcd34d';
+      ctx.beginPath(); ctx.arc(0, -32, 9, Math.PI, 0); ctx.fill();
+      ctx.fillRect(-12, -32, 24, 3);
+
+      ctx.restore();
+    }
+
+    function drawHarvester(x, y, color, tier, hasManager, isBoosted) {
+      const bounce = Math.sin(Date.now() / 80) * 2;
+      const my = y + bounce;
+
+      if (tier === 0) {
+        ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.roundRect(x - 5, my + 25, 70, 20, 10); ctx.fill();
+        ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.arc(x + 15, my + 35, 6, 0, Math.PI * 2); ctx.arc(x + 45, my + 35, 6, 0, Math.PI * 2); ctx.fill();
+        drawRoundedRect(x, my, 60, 30, 8, color, 'rgba(0,0,0,0.4)');
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.roundRect(x + 15, my - 8, 20, 16, 4); ctx.fill();
+      }
+      else if (tier === 1) {
+        ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.roundRect(x - 8, my + 25, 76, 20, 4); ctx.fill();
+        const wheelRot = (x / 20) % (Math.PI * 2);
+        ctx.fillStyle = '#64748b';
+        ctx.save(); ctx.translate(x + 10, my + 35); ctx.rotate(wheelRot); ctx.fillRect(-8, -2, 16, 4); ctx.fillRect(-2, -8, 4, 16); ctx.restore();
+        ctx.save(); ctx.translate(x + 50, my + 35); ctx.rotate(wheelRot); ctx.fillRect(-8, -2, 16, 4); ctx.fillRect(-2, -8, 4, 16); ctx.restore();
+
+        drawRoundedRect(x, my, 60, 32, 6, color, 'rgba(0,0,0,0.5)');
+        ctx.fillStyle = '#94a3b8'; ctx.fillRect(x + 12, my - 20, 30, 24);
+        ctx.fillStyle = '#e0e7ff'; ctx.fillRect(x + 15, my - 16, 20, 14);
+        ctx.fillStyle = '#475569'; ctx.fillRect(x + 46, my - 12, 8, 20);
+        if (Math.random() < 0.6) state.particles.push({ x: x + 50, y: my - 12, vy: -2, vx: -1.5, life: 1, color: 'rgba(148, 163, 184, 0.6)', type: 'smoke' });
+      }
+      else if (tier === 2) {
+        ctx.fillStyle = '#0ea5e9'; ctx.shadowBlur = 20; ctx.shadowColor = '#0ea5e9';
+        ctx.beginPath(); ctx.ellipse(x + 30, my + 40, 35, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+        drawRoundedRect(x - 5, my - 8, 70, 38, 16, '#f8fafc', 'rgba(0,0,0,0.3)');
+        ctx.fillStyle = color; ctx.fillRect(x, my + 5, 60, 10);
+        ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(x + 30, my + 12, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.6)'; ctx.beginPath(); ctx.arc(x + 30, my - 8, 20, Math.PI, 0); ctx.fill();
+      }
+      else {
+        ctx.fillStyle = '#a855f7'; ctx.shadowBlur = 30; ctx.shadowColor = '#a855f7';
+        ctx.beginPath(); ctx.ellipse(x + 35, my + 35, 45, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+
+        drawRoundedRect(x, my - 15, 70, 40, 4, '#0f172a', 'rgba(0,0,0,0.8)', color);
+        ctx.fillStyle = '#a855f7'; ctx.beginPath(); ctx.arc(x + 35, my + 5, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 35, my + 5, 4, 0, Math.PI * 2); ctx.fill();
+      }
+
+      drawCharacter(x + 25, my + 5, 0.8, hasManager ? 'working' : 'sleep');
+
+      if (isBoosted) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; ctx.beginPath(); ctx.roundRect(x - 10, my - 20, 80, 60, 10); ctx.fill();
+      }
+    }
+
+    // --- GAME LOOP ---
+    function update() {
+      const now = Date.now();
+      const dt = (now - state.lastTick) / 1000;
+      state.lastTick = now;
+      clickZones = [];
+
+      if (state.boostTimer > 0) state.boostTimer -= dt;
+
+      if (state.goldenLeek.cooldown === undefined) state.goldenLeek.cooldown = 120 + Math.random() * 120;
+
+      if (state.goldenLeek.active) {
+        state.goldenLeek.x += 150 * dt;
+        state.goldenLeek.y += Math.sin(now / 300) * 3;
+        state.goldenLeek.life -= dt;
+        if (state.goldenLeek.life <= 0 || state.goldenLeek.x > canvas.width + 100) {
+          state.goldenLeek.active = false;
+        }
+        registerZone(state.goldenLeek.x - 40, state.goldenLeek.y - 40 + state.cameraY, 80, 80, 'goldenLeek', null, false, '', '', 'transparent', 'transparent');
+      } else {
+        state.goldenLeek.cooldown -= dt;
+        if (state.goldenLeek.cooldown <= 0) {
+          state.goldenLeek.active = true;
+          state.goldenLeek.x = -100;
+          state.goldenLeek.y = Math.random() * (canvas.height / 2) + 100;
+          state.goldenLeek.life = 20;
+          state.goldenLeek.cooldown = 120 + Math.random() * 120;
+        }
+      }
+
+      if (!state.drones) state.drones = [];
+      const activeFieldsArr = state.fields.filter(f => f.unlocked);
+      if (state.research.drones > 0 && activeFieldsArr.length > 0) {
+        if (Math.random() < 0.05 * state.research.drones) {
+          const target = activeFieldsArr[Math.floor(Math.random() * activeFieldsArr.length)];
+          if (target.stock > 5) {
+            state.drones.push({ x: canvas.width / 2, y: -100 + state.cameraY, targetId: target.id, phase: 'seek', load: 0 });
+          }
+        }
+      }
+
+      state.drones.forEach(d => {
+        const WAREHOUSE_Y = 400;
+        if (d.phase === 'seek') {
+          const f = state.fields[d.targetId];
+          const tx = 320 + 20;
+          const ty = f.y - 50;
+          const dx = tx - d.x; const dy = ty - d.y; const dist = Math.hypot(dx, dy);
+          if (dist < 10) {
+            d.phase = 'return';
+            const take = Math.min(f.stock, 50 * state.research.drones);
+            f.stock -= take; d.load = take;
+          } else { d.x += (dx / dist) * 400 * dt; d.y += (dy / dist) * 400 * dt; }
+        } else if (d.phase === 'return') {
+          const tx = canvas.width - 550 + 225;
+          const ty = WAREHOUSE_Y - 100;
+          const dx = tx - d.x; const dy = ty - d.y; const dist = Math.hypot(dx, dy);
+          if (dist < 10) {
+            state.warehouse.stock += d.load; d.phase = 'done';
+          } else { d.x += (dx / dist) * 500 * dt; d.y += (dy / dist) * 500 * dt; }
+        }
+      });
+      state.drones = state.drones.filter(d => d.phase !== 'done');
+
+
+    if (state.warehouse.flash > 0) state.warehouse.flash = Math.max(0, state.warehouse.flash - dt * 2);
+    state.warehouse.trucks.forEach(tr => { if (tr.flash > 0) tr.flash = Math.max(0, tr.flash - dt * 2); });
+    state.elevator.elevators.forEach(el => { if (el.flash > 0) el.flash = Math.max(0, el.flash - dt * 2); });
+    if (state.elevator.flash > 0) state.elevator.flash = Math.max(0, state.elevator.flash - dt * 2);
+
+      // 1. Campos
+      state.fields.forEach((f, i) => {
+        if (f.flash > 0) f.flash = Math.max(0, f.flash - dt * 2);
+        if (f.manualBoost > 0) f.manualBoost -= dt;
+
+        if (!f.unlocked) return;
+
+        const bMult = G.boostMult() * (f.manualBoost > 0 ? 3 : 1);
+        const plantSpeed = (0.4 + Math.min(2.0, f.lvlSpeed * 0.03)) * bMult;
+        for (let p = 0; p < 12; p++) if (f.plants[p] < 1) f.plants[p] += dt * plantSpeed;
+
+        if (f.managerLvl === 0 && f.manualBoost <= 0) {
+          if (f.workingTimer > 0) {
+            f.workingTimer -= dt;
+          } else {
+            f.workingTimer = 0;
+            if (Math.random() < 0.02) {
+              const FIELD_X = 320;
+              const hX = FIELD_X + 150 + f.hPos * (canvas.width - FIELD_X - 350);
+              state.particles.push({ x: hX + 30, y: f.y - 80, vy: -1, vx: (Math.random() - 0.5) * 0.5, text: "Zzz", life: 1.5, type: 'sleep' });
+            }
+            const hX = 320 + 150 + f.hPos * (canvas.width - 320 - 350);
+            registerZone(hX - 10, f.y - 120, 120, 45, 'wakeUp', i, false, '¡DESPERTAR!', 'Trabajar 15s', '#f59e0b', '#b45309');
+            return;
+          }
+        }
+
+        const hX = 320 + 150 + f.hPos * (canvas.width - 320 - 350);
+        registerZone(hX, f.y - 80, 80, 80, 'boostHarvester', i, false, '', '', 'transparent', 'transparent');
+
+        const harvesterSpeed = (0.3 + Math.min(2.0, f.lvlSpeed * 0.025)) * bMult;
+        f.hPos += dt * harvesterSpeed * f.hDir;
+
+        const currentPlant = Math.floor(f.hPos * 12);
+        if (f.hDir === 1 && currentPlant >= 0 && currentPlant < 12) {
+          if (f.plants[currentPlant] > 0.5) {
+            f.plants[currentPlant] = 0;
+            const w = canvas.width;
+            const FIELD_X = 320;
+            const pX = FIELD_X + 200 + currentPlant * (getVisualTier(f.lvlSpeed, f.lvlCap) >= 1 ? 55 : 75);
+            state.particles.push({ x: pX, y: f.y + 30, tx: hX + 30, ty: f.y - 30, life: 1, type: 'leekDrop', tier: getVisualTier(f.lvlSpeed, f.lvlCap) });
+            f.harvestLoad += G.fieldRate(f) / 12 * (f.manualBoost > 0 ? 3 : 1);
+          }
+        }
+
+        if (f.hPos >= 1) { f.hPos = 1; f.hDir = -1; }
+        if (f.hPos <= 0) {
+          f.hPos = 0; f.hDir = 1;
+          f.stock += f.harvestLoad; f.harvestLoad = 0;
+          if (f.stock > G.fieldCap(f)) f.stock = G.fieldCap(f);
+          const FIELD_X = 320;
+          for (let k = 0; k < 6; k++) state.particles.push({ x: FIELD_X + 150, y: f.y - 30, tx: FIELD_X + 60, ty: f.y - 50, life: 1, type: 'leekDrop', tier: getVisualTier(f.lvlSpeed, f.lvlCap) });
+        }
+      });
+
+      // 2. Ascensores (Flota Coordinada)
+      const eCap = G.eleCap();
+      const WAREHOUSE_Y = 400;
+
+      // Seguimiento de pisos ya atendidos por otras cabinas
+      const reservedFloors = state.elevator.elevators
+          .filter(el => el.state !== 'idle' && typeof el.targetFloor !== 'undefined')
+          .map(el => el.targetFloor);
+
+      state.elevator.elevators.forEach((e, idx) => {
+        if (e.state === 'idle') {
+          let targetFloor = -1;
+
+          for (let i = state.fields.length - 1; i >= 0; i--) {
+            if (state.fields[i].unlocked && state.fields[i].stock >= 1 && !reservedFloors.includes(i)) {
+              targetFloor = i;
+              break;
+            }
+          }
+          
+          // Si no hay pisos libres pero hay stock en alguno, ir al que tenga más stock aunque esté reservado
+          if (targetFloor === -1) {
+              for (let i = state.fields.length - 1; i >= 0; i--) {
+                  if (state.fields[i].unlocked && state.fields[i].stock >= 100) { targetFloor = i; break; }
+              }
+          }
+
+          if (e.load >= eCap || (e.load > 0 && targetFloor === -1)) {
+            e.targetPos = WAREHOUSE_Y; e.state = 'moving'; e.targetFloor = -1;
+          } else if (targetFloor !== -1) {
+            e.targetPos = state.fields[targetFloor].y; e.state = 'moving'; e.targetFloor = targetFloor;
+            reservedFloors.push(targetFloor);
+          }
+        } else if (e.state === 'moving') {
+          const dist = e.targetPos - e.pos;
+          const dir = Math.sign(dist);
+          const maxSpd = G.eleSpeed();
+          const step = maxSpd * dt;
+
+          if (Math.abs(dist) <= step) {
+            e.pos = e.targetPos;
+            e.state = 'loading';
+            e.timer = 0;
+            if (Math.random() > 0.4) for (let s = 0; s < 5; s++) state.particles.push({ x: 250 + (idx * 20), y: e.pos, vy: -6 - Math.random() * 6, vx: (Math.random() - 0.5) * 20, life: 1, color: '#fbbf24', type: 'spark' });
+          } else {
+            e.pos += dir * step;
+          }
+        } else if (e.state === 'loading') {
+          if (e.pos === WAREHOUSE_Y) {
+            const unloadRate = eCap * 2 * dt * G.boostMult();
+            const actualUnload = Math.min(e.load, unloadRate);
+            if (actualUnload > 0) {
+              state.warehouse.stock += actualUnload; e.load -= actualUnload;
+            } else { e.load = 0; e.state = 'idle'; e.targetFloor = undefined; }
+          } else {
+            const field = state.fields.find(f => Math.abs(f.y - e.pos) < 5);
+            if (field) {
+              const canTake = eCap - e.load;
+              const loadRate = eCap * 2 * dt * G.boostMult();
+              const take = Math.min(field.stock, canTake, loadRate);
+              if (take > 0) { field.stock -= take; e.load += take; }
+              e.timer += dt * G.boostMult();
+              if (e.load >= eCap || field.stock <= 0.1 || e.timer > 0.5) { e.state = 'idle'; e.targetFloor = undefined; }
+            } else { e.state = 'idle'; e.targetFloor = undefined; }
+          }
+        }
+      });
+
+      // 3. Ventas (Flota de Camiones)
+      const trCap = G.truckCap();
+      state.warehouse.trucks.forEach((tr, i) => {
+        if (tr.state === 'loading') {
+          if (state.warehouse.stock > 0 && tr.load < trCap) {
+            const loadRate = dt * 50 * G.whSpeed();
+            const actual = Math.min(state.warehouse.stock, trCap - tr.load, loadRate);
+            state.warehouse.stock -= actual; tr.load += actual;
+            if (Math.random() < 0.2) state.particles.push({ x: 350, y: WAREHOUSE_Y - 25, vx: 250, life: 3, type: 'box', tier: getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice) });
+          }
+          if (tr.load >= trCap || (tr.load > 0 && state.warehouse.stock === 0 && tr.timer > 1.5)) { 
+             tr.state = 'leaving'; tr.timer = 0; 
+          }
+          else if (state.warehouse.stock === 0) { tr.timer += dt; } else { tr.timer = 0; }
+        } else if (tr.state === 'leaving') {
+          const truckSpeed = G.truckSpeed();
+          tr.x += truckSpeed * dt;
+          if (Math.random() < 0.4) {
+            const tTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+            const fxColor = tTier >= 2 ? '#00f2ff' : 'rgba(255,255,255,0.4)';
+            state.particles.push({ x: canvas.width - 350 + tr.x, y: WAREHOUSE_Y + 40 + (i * 40), vy: -1, vx: -80, life: 1.5, color: fxColor, type: 'smoke' });
+          }
+          if (tr.x > 500) {
+            const profit = tr.load * G.whPrice();
+            state.money += profit; state.totalEarned += profit;
+            if (profit > 0) state.particles.push({ x: canvas.width - 400 + Math.random() * 150, y: WAREHOUSE_Y + 40 + (i * 40), vy: -4 - Math.random() * 5, text: `+$${formatNum(profit)}`, life: 2, type: 'text', color: '#4ade80' });
+            tr.load = 0; tr.state = 'cooldown'; tr.timer = 2;
+          }
+        } else if (tr.state === 'cooldown') {
+          tr.timer -= dt * G.boostMult(); if (tr.timer <= 0) tr.state = 'returning';
+        } else if (tr.state === 'returning') {
+          const truckSpeed = G.truckSpeed();
+          tr.x -= truckSpeed * dt; if (tr.x <= 0) { tr.x = 0; tr.state = 'loading'; tr.timer = 0; }
+        }
+      });
+
+      state.income = (G.whSpeed() * 30 * G.whPrice());
+
+      state.particles.forEach(p => {
+        if (p.type === 'leekDrop') { p.x += (p.tx - p.x) * 0.15; p.y += (p.ty - p.y) * 0.15; p.life -= dt * 4; }
+        else if (p.type === 'box') { p.x += p.vx * dt; p.life -= dt * 0.5; }
+        else if (p.type === 'spark') { p.x += p.vx; p.y += p.vy; p.vy += GRAVITY * dt * 80; p.life -= dt * 2.5; }
+        else if (p.type === 'smoke') { p.x += p.vx * dt; p.y += p.vy; p.life -= dt; }
+        else if (p.type === 'sleep') { p.y += p.vy; p.life -= dt; }
+        else { p.y += p.vy; p.life -= dt * (p.type === 'text' ? 0.8 : 1.5); }
+      });
+      state.particles = state.particles.filter(p => p.life > 0);
+
+      document.getElementById('income-display').innerText = `+${formatNum(state.income)}/s`;
+      const activeFields = state.fields.filter(f => f.unlocked).length;
+      state.maxCameraY = Math.max(0, (activeFields * 240) - canvas.height + 800);
+    }
+
+    const GRAVITY = 9.8;
+
+    // --- RENDERIZADO VISUAL ---
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // FIEBRE OVERLAY
+      if (state.boostTimer > 0) {
+        ctx.resetTransform();
+        ctx.strokeStyle = `rgba(251, 191, 36, ${Math.sin(Date.now() / 100) * 0.4 + 0.4})`;
+        ctx.lineWidth = 15;
+        ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#fbbf24'; ctx.font = '900 24px Orbitron'; ctx.textAlign = 'center';
+        ctx.shadowBlur = 15; ctx.shadowColor = '#fbbf24';
+        ctx.fillText(`🔥 FIEBRE x3: ${Math.ceil(state.boostTimer)}s 🔥`, canvas.width / 2, 140);
+        ctx.shadowBlur = 0; ctx.textAlign = 'left';
+      }
+
+      ctx.save();
+      ctx.translate(0, -state.cameraY);
+
+      const w = canvas.width; const h = canvas.height;
+      const m = state.buyMultiplier;
+
+      // CIELO PARALAJE
+      const skyGrad = ctx.createLinearGradient(0, state.cameraY, 0, state.cameraY + 600);
+      skyGrad.addColorStop(0, '#0f172a'); skyGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = skyGrad; ctx.fillRect(0, state.cameraY, w, Math.max(450, h));
+
+      ctx.fillStyle = '#fff';
+      stars.forEach(s => {
+        const sy = (s.y * 1000 + state.cameraY * s.speed) % 1000;
+        if (sy > state.cameraY && sy < state.cameraY + h && sy < 450) {
+          ctx.globalAlpha = Math.sin(Date.now() * 0.001 + s.x * 10) * 0.5 + 0.5;
+          ctx.fillRect(s.x * w, sy, s.size, s.size);
+        }
+      });
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      const cOff = state.cameraY * 0.3;
+      ctx.beginPath(); ctx.arc(w - 300, cOff + 150, 120, 0, Math.PI * 2); ctx.arc(w - 150, cOff + 180, 160, 0, Math.PI * 2); ctx.arc(w - 50, cOff + 150, 100, 0, Math.PI * 2); ctx.fill();
+
+      // TIERRA PROFUNDA
+      ctx.fillStyle = '#1c1917'; ctx.fillRect(0, 500, w, 5000);
+      dirtRocks.forEach(r => {
+        const ry = 500 + r.y * 4000;
+        if (ry > state.cameraY && ry < state.cameraY + h) {
+          ctx.fillStyle = r.color; ctx.beginPath(); ctx.arc(r.x * w, ry, r.r, 0, Math.PI * 2); ctx.fill();
+        }
+      });
+
+      // WAREHOUSE (Nivel 0) => 400
+      const WAREHOUSE_Y = 400;
+      const wTier = getVisualTier(state.warehouse.lvlSpeed, state.warehouse.lvlPrice);
+
+      ctx.fillStyle = wTier >= 3 ? '#0f172a' : '#292524'; ctx.fillRect(0, WAREHOUSE_Y + 80, w, 60);
+      ctx.fillStyle = wTier >= 2 ? '#3b82f6' : '#4ade80'; ctx.fillRect(0, WAREHOUSE_Y + 60, w, 20);
+
+      const wX = w - 550;
+
+      if (wTier === 0) {
+        drawRoundedRect(wX, WAREHOUSE_Y - 120, 450, 180, 16, '#e2e8f0', '#94a3b8');
+        drawRoundedRect(wX - 20, WAREHOUSE_Y - 140, 490, 40, 8, '#ef4444', '#b91c1c');
+      } else if (wTier === 1) {
+        drawRoundedRect(wX - 30, WAREHOUSE_Y - 150, 510, 210, 12, '#94a3b8', '#475569');
+        drawRoundedRect(wX - 40, WAREHOUSE_Y - 170, 530, 40, 6, '#3b82f6', '#1d4ed8');
+      } else if (wTier === 2) {
+        drawRoundedRect(wX - 60, WAREHOUSE_Y - 150, 570, 210, 30, '#f8fafc', '#cbd5e1', '#3b82f6');
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.2)'; ctx.beginPath(); ctx.arc(wX + 225, WAREHOUSE_Y - 150, 200, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 6; ctx.stroke();
+      } else {
+        ctx.shadowBlur = 40; ctx.shadowColor = '#a855f7';
+        drawRoundedRect(wX - 80, WAREHOUSE_Y - 180, 610, 240, 40, '#020617', '#0f172a', '#a855f7');
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.3)'; ctx.beginPath(); ctx.arc(wX + 225, WAREHOUSE_Y - 180, 250, Math.PI, 0); ctx.fill();
+      }
+
+      if (state.warehouse.flash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${state.warehouse.flash})`;
+        ctx.beginPath(); ctx.roundRect(wX - 80, WAREHOUSE_Y - 180, 610, 240, 40); ctx.fill();
+      }
+
+      drawCanvasButton(wX + 10, WAREHOUSE_Y - 260, 100, 60, `PROC (${state.warehouse.lvlSpeed})`, `+$${formatNum(G.whSpeedCost(m))}`, '#3b82f6', '#1d4ed8', state.money < G.whSpeedCost(m), "whSpeed");
+      drawCanvasButton(wX + 120, WAREHOUSE_Y - 260, 100, 60, `VAL (${state.warehouse.lvlPrice})`, `+$${formatNum(G.whPriceCost(m))}`, '#ec4899', '#be185d', state.money < G.whPriceCost(m), "whPrice");
+      
+      const tSpeedMax = state.warehouse.lvlTruckSpeed >= MAX_LVL;
+      drawCanvasButton(wX + 230, WAREHOUSE_Y - 260, 100, 60, tSpeedMax ? "T.VEL (MAX)" : `T.VEL (${state.warehouse.lvlTruckSpeed})`, tSpeedMax ? "---" : `+$${formatNum(G.truckSpeedCost(m))}`, '#f59e0b', '#b45309', tSpeedMax || state.money < G.truckSpeedCost(m), "truckSpeed");
+      
+      const tCapMax = state.warehouse.lvlTruckCap >= MAX_LVL;
+      drawCanvasButton(wX + 340, WAREHOUSE_Y - 260, 100, 60, tCapMax ? "T.CAP (MAX)" : `T.CAP (${state.warehouse.lvlTruckCap})`, tCapMax ? "---" : `+$${formatNum(G.truckCapCost(m))}`, '#8b5cf6', '#6d28d9', tCapMax || state.money < G.truckCapCost(m), "truckCap");
+
+      const canBuyTruck = state.warehouse.trucks.length < 4;
+      drawCanvasButton(wX + 450, WAREHOUSE_Y - 260, 110, 60, canBuyTruck ? `NUEVO CAMIÓN` : "FLOTA MAX", canBuyTruck ? `$${formatNum(G.truckBuyCost())}` : "MAX", '#f97316', '#c2410c', !canBuyTruck || state.money < G.truckBuyCost(), "buyTruck");
+
+      const whManMax = state.warehouse.managerLvl >= 5;
+      drawCanvasButton(wX + 570, WAREHOUSE_Y - 260, 110, 60, whManMax ? "GERENTE (MAX)" : (state.warehouse.managerLvl > 0 ? `GERENTE (${state.warehouse.managerLvl})` : "GERENTE"), whManMax ? "---" : `$${formatNum(G.manCostWh())}`, '#10b981', '#047857', whManMax || state.money < G.manCostWh(), "manWh");
+
+      drawCharacter(wX + 80, WAREHOUSE_Y - 20, 1.2, state.warehouse.managerLvl > 0 ? 'working' : 'idle');
+
+      const tTier = getVisualTier(state.warehouse.lvlTruckSpeed, state.warehouse.lvlTruckCap);
+
+      state.warehouse.trucks.forEach((tr, i) => {
+          const yOff = i * 45;
+          const trBaseX = w - 300 + tr.x;
+
+          ctx.save();
+          ctx.translate(0, yOff);
+
+          if (tTier === 0) {
+            drawRoundedRect(trBaseX + 20, WAREHOUSE_Y, 200, 80, 12, '#2563eb', '#1e3a8a');
+            ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(trBaseX + 50, WAREHOUSE_Y + 85, 20, 0, Math.PI * 2); ctx.arc(trBaseX + 190, WAREHOUSE_Y + 85, 20, 0, Math.PI * 2); ctx.fill();
+          } else if (tTier === 1) {
+            drawRoundedRect(trBaseX + 30, WAREHOUSE_Y - 20, 220, 100, 6, '#f59e0b', '#b45309');
+            ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(trBaseX + 70, WAREHOUSE_Y + 85, 22, 0, Math.PI * 2); ctx.arc(trBaseX + 160, WAREHOUSE_Y + 85, 22, 0, Math.PI * 2); ctx.arc(trBaseX + 210, WAREHOUSE_Y + 85, 22, 0, Math.PI * 2); ctx.fill();
+          } else if (tTier === 2) {
+            ctx.fillStyle = '#00f2ff'; ctx.shadowBlur = 30; ctx.shadowColor = '#00f2ff';
+            ctx.beginPath(); ctx.ellipse(trBaseX + 130, WAREHOUSE_Y + 70, 110, 15, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+            drawRoundedRect(trBaseX, WAREHOUSE_Y - 40, 260, 90, 35, '#f8fafc', '#cbd5e1');
+          } else {
+            ctx.fillStyle = '#a855f7'; ctx.shadowBlur = 40; ctx.shadowColor = '#a855f7';
+            ctx.beginPath(); ctx.ellipse(trBaseX + 150, WAREHOUSE_Y + 80, 130, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+            drawRoundedRect(trBaseX - 20, WAREHOUSE_Y - 60, 300, 110, 10, '#0f172a', '#020617', '#a855f7');
+          }
+
+          if (tr.flash > 0) {
+            ctx.fillStyle = `rgba(255,255,255,${tr.flash})`;
+            ctx.beginPath(); ctx.roundRect(trBaseX, WAREHOUSE_Y - 40, 260, 90, 12); ctx.fill();
+          }
+
+          if (tr.state === 'loading') {
+            const loadPct = tr.load / G.truckCap();
+            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(trBaseX + 60, WAREHOUSE_Y - 60, 140, 12);
+            ctx.fillStyle = tTier >= 3 ? '#a855f7' : '#4ade80'; ctx.shadowBlur = 10; ctx.shadowColor = tTier >= 3 ? '#a855f7' : '#4ade80';
+            ctx.fillRect(trBaseX + 62, WAREHOUSE_Y - 58, 136 * loadPct, 8); ctx.shadowBlur = 0;
+          } else if (tr.state === 'cooldown') {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '900 18px Orbitron';
+            ctx.fillText(`Llegada: ${Math.ceil(tr.timer)}s`, w - 250, WAREHOUSE_Y + 30);
+          }
+          ctx.restore();
+      });
+
+      // Cinta
+      ctx.fillStyle = '#475569'; ctx.fillRect(320, WAREHOUSE_Y + 35, w - 600, 35);
+      const beltOff = (Date.now() / (25 / Math.max(1, G.whSpeed() * 0.1))) % 35;
+      ctx.fillStyle = '#1e293b';
+      for (let i = 320 - beltOff; i < w - 280; i += 35) { if (i > 320) ctx.fillRect(i, WAREHOUSE_Y + 35, 15, 35); }
+
+      state.particles.forEach(p => {
+        if (p.type === 'box' && p.x < w - 300) {
+          if (p.tier >= 2) {
+            drawRoundedRect(p.x, WAREHOUSE_Y - 15, 45, 45, 10, '#f8fafc', '#cbd5e1');
+            ctx.fillStyle = p.tier >= 3 ? '#a855f7' : '#00f2ff'; ctx.fillRect(p.x + 10, WAREHOUSE_Y - 5, 25, 10);
+          } else {
+            drawRoundedRect(p.x, WAREHOUSE_Y - 10, 45, 45, 6, '#b45309', '#78350f');
+            ctx.fillStyle = '#4ade80'; ctx.fillRect(p.x + 8, WAREHOUSE_Y - 18, 30, 10);
+          }
+        }
+      });
+
+      ctx.fillStyle = '#ffffff'; ctx.font = '900 24px Orbitron';
+      ctx.fillText(`Stock: ${formatNum(state.warehouse.stock)}`, wX + 40, WAREHOUSE_Y - 70);
+      ctx.fillStyle = tTier >= 3 ? '#a855f7' : '#4ade80'; ctx.font = '900 16px Nunito';
+      const totalTruckLoad = state.warehouse.trucks.reduce((sum, t) => sum + t.load, 0);
+      ctx.fillText(`Carga Flota: ${formatNum(totalTruckLoad)} / ${formatNum(G.truckCap() * state.warehouse.trucks.length)}`, wX + 40, WAREHOUSE_Y - 45);
+
+      // ASCENSOR EJE
+      const SHAFT_X = 120, SHAFT_W = 200; // Ensanchado y movido a la izquierda
+      const eTier = getVisualTier(state.elevator.lvlSpeed, state.elevator.lvlCap);
+      ctx.fillStyle = eTier >= 3 ? '#020617' : '#0f172a'; ctx.fillRect(SHAFT_X, WAREHOUSE_Y, SHAFT_W, 4000);
+      ctx.fillStyle = eTier >= 3 ? '#1e293b' : '#020617'; ctx.fillRect(SHAFT_X + 20, WAREHOUSE_Y, 25, 4000); ctx.fillRect(SHAFT_X + SHAFT_W - 45, WAREHOUSE_Y, 25, 4000);
+
+      // UI In-Map: Mejoras Ascensor
+      const eSpeedMax = state.elevator.lvlSpeed >= MAX_LVL;
+      drawCanvasButton(SHAFT_X - 110, WAREHOUSE_Y + 120, 100, 60, eSpeedMax ? "VEL (MAX)" : `VEL (${state.elevator.lvlSpeed})`, eSpeedMax ? "---" : `+$${formatNum(G.eleSpeedCost(m))}`, '#3b82f6', '#1d4ed8', eSpeedMax || state.money < G.eleSpeedCost(m), "eleSpeed");
+      
+      const eCapMax = state.elevator.lvlCap >= MAX_LVL;
+      drawCanvasButton(SHAFT_X - 110, WAREHOUSE_Y + 190, 100, 60, eCapMax ? "CARGA (MAX)" : `CARGA (${state.elevator.lvlCap})`, eCapMax ? "---" : `+$${formatNum(G.eleCapCost(m))}`, '#ec4899', '#be185d', eCapMax || state.money < G.eleCapCost(m), "eleCap");
+
+      const canBuyEle = state.elevator.elevators.length < 4;
+      drawCanvasButton(SHAFT_X - 110, WAREHOUSE_Y + 260, 100, 60, canBuyEle ? "NUEVA CABINA" : "POZO LLENO", canBuyEle ? `$${formatNum(G.eleBuyCost())}` : "MAX", '#8b5cf6', '#6d28d9', !canBuyEle || state.money < G.eleBuyCost(), "buyEle");
+
+      const eleManMax = state.elevator.managerLvl >= 5;
+      drawCanvasButton(SHAFT_X - 110, WAREHOUSE_Y + 330, 100, 60, eleManMax ? "GERENTE (MAX)" : (state.elevator.managerLvl > 0 ? `GERENTE (${state.elevator.managerLvl})` : "GERENTE"), eleManMax ? "---" : `$${formatNum(G.manCostEle())}`, '#10b981', '#047857', eleManMax || state.money < G.manCostEle(), "manEle");
+
+      state.elevator.elevators.forEach((e, idx) => {
+          const ew = 40;
+          const ex = SHAFT_X + 5 + (idx * 48);
+          const ey = e.pos - 80;
+          const eLoad = e.load / G.eleCap();
+
+          if (eTier === 0) {
+            drawRoundedRect(ex, ey, ew, 110, 8, '#f59e0b', '#b45309');
+            ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.roundRect(ex + 6, ey + 20, ew - 12, 65, 4); ctx.fill();
+            ctx.fillStyle = '#4ade80'; ctx.fillRect(ex + 8, ey + 83 - (eLoad * 61), ew - 16, eLoad * 61);
+          } else if (eTier === 1) {
+            drawRoundedRect(ex - 2, ey - 5, ew + 4, 120, 12, '#94a3b8', '#475569');
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.4)'; ctx.beginPath(); ctx.roundRect(ex + 2, ey + 10, ew - 4, 80, 6); ctx.fill();
+            ctx.fillStyle = '#22c55e'; ctx.fillRect(ex + 2, ey + 90 - (eLoad * 80), ew - 4, eLoad * 80);
+          } else if (eTier === 2) {
+            ctx.fillStyle = '#0ea5e9'; ctx.shadowBlur = 15; ctx.shadowColor = '#0ea5e9';
+            ctx.beginPath(); ctx.roundRect(ex - 4, ey - 10, ew + 8, 130, 20); ctx.fill(); ctx.shadowBlur = 0;
+            drawRoundedRect(ex, ey, ew, 110, 20, '#f8fafc', '#cbd5e1');
+            ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(ex + ew / 2, ey + 55, Math.min(ew/2 - 4, eLoad * 18), 0, Math.PI * 2); ctx.fill();
+          } else {
+            ctx.fillStyle = '#a855f7'; ctx.shadowBlur = 25; ctx.shadowColor = '#a855f7';
+            ctx.fillRect(ex, ey - 40, ew, 180); ctx.shadowBlur = 0;
+            ctx.fillStyle = '#fff'; ctx.fillRect(ex + ew / 2 - 2, ey - 80, 4, 250);
+          }
+
+          drawCharacter(ex + ew / 2, ey - 5, 0.7, e.state !== 'idle' ? 'working' : 'idle');
+
+          if (e.flash > 0) {
+            ctx.fillStyle = `rgba(255,255,255,${e.flash})`;
+            ctx.beginPath(); ctx.roundRect(ex - 5, ey - 10, ew + 10, 130, 10); ctx.fill();
+          }
+      });
+
+      // CAMPOS
+      state.fields.forEach((f, i) => {
+        const FIELD_X = SHAFT_X + SHAFT_W;
+        const fTier = getVisualTier(f.lvlSpeed, f.lvlCap);
+
+        ctx.fillStyle = fTier >= 1 ? '#271711' : '#5d4037'; ctx.fillRect(FIELD_X, f.y, w, 100);
+
+        if (fTier >= 2) {
+          ctx.fillStyle = '#0f172a'; ctx.fillRect(FIELD_X, f.y, w, 35);
+          ctx.fillStyle = '#a855f7'; ctx.shadowBlur = 15; ctx.shadowColor = '#a855f7';
+          ctx.fillRect(FIELD_X, f.y + 28, w, 7); ctx.shadowBlur = 0;
+        } else {
+          ctx.fillStyle = '#65a30d'; ctx.fillRect(FIELD_X, f.y, w, 25);
+          ctx.fillStyle = '#4d7c0f'; ctx.fillRect(FIELD_X, f.y + 25, w, 10);
+        }
+
+        if (f.unlocked) {
+          const fSpeedMax = f.lvlSpeed >= MAX_LVL;
+          drawCanvasButton(FIELD_X + 20, f.y - 140, 110, 60, fSpeedMax ? "VEL (MAX)" : `VEL (${f.lvlSpeed})`, fSpeedMax ? "---" : `+$${formatNum(G.fieldSpeedCost(f, m))}`, '#3b82f6', '#1d4ed8', fSpeedMax || state.money < G.fieldSpeedCost(f, m), "fieldSpeed", i);
+          
+          const fCapMax = f.lvlCap >= MAX_LVL;
+          drawCanvasButton(FIELD_X + 140, f.y - 140, 110, 60, fCapMax ? "CAP (MAX)" : `CAP (${f.lvlCap})`, fCapMax ? "---" : `+$${formatNum(G.fieldCapCost(f, m))}`, '#ec4899', '#be185d', fCapMax || state.money < G.fieldCapCost(f, m), "fieldCap", i);
+
+          const manMax = f.managerLvl >= 5;
+          drawCanvasButton(FIELD_X + 260, f.y - 140, 120, 60, manMax ? "GERENTE (MAX)" : (f.managerLvl > 0 ? `GERENTE (${f.managerLvl})` : "GERENTE"), manMax ? "---" : `$${formatNum(G.manCostField(f))}`, '#10b981', '#047857', manMax || state.money < G.manCostField(f), "manField", i);
+
+          const spacing = fTier >= 1 ? 55 : 75;
+          for (let px = 0; px < 12; px++) {
+            const posX = FIELD_X + 200 + px * spacing;
+            drawLeek(posX, f.y, fTier, f.plants[px]);
+          }
+
+          const hX = FIELD_X + 150 + f.hPos * (w - FIELD_X - 350);
+          drawHarvester(hX, f.y - 70, f.color, fTier, f.managerLvl > 0, f.manualBoost > 0);
+
+          const BIN_X = FIELD_X + 20;
+          if (fTier < 2) {
+            drawRoundedRect(BIN_X, f.y - 70, 80, 70, 10, fTier === 1 ? '#1e293b' : '#64748b', fTier === 1 ? '#0f172a' : '#475569');
+            ctx.fillStyle = '#4ade80';
+            const fillH = Math.min(64, (f.stock / G.fieldCap(f)) * 64);
+            ctx.fillRect(BIN_X + 4, f.y - 3 - fillH, 72, fillH);
+          } else {
+            drawRoundedRect(BIN_X, f.y - 80, 90, 80, 20, '#f8fafc', '#cbd5e1', fTier >= 3 ? '#a855f7' : '#0ea5e9');
+            ctx.fillStyle = fTier >= 3 ? 'rgba(168, 85, 247, 0.4)' : 'rgba(14, 165, 233, 0.4)';
+            const fillH = Math.min(74, (f.stock / G.fieldCap(f)) * 74);
+            ctx.fillRect(BIN_X + 4, f.y - 3 - fillH, 82, fillH);
+          }
+
+          ctx.fillStyle = fTier >= 2 ? '#0f172a' : 'white'; ctx.font = '900 20px Orbitron'; ctx.textAlign = 'center';
+          ctx.fillText(formatNum(f.stock), BIN_X + 45, f.y - 25); ctx.textAlign = 'left';
+
+          if (f.flash > 0) {
+            ctx.fillStyle = `rgba(255,255,255,${f.flash})`;
+            ctx.fillRect(FIELD_X, f.y - 100, w, 140);
+          }
+        } else {
+          ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(FIELD_X, f.y - 100, w, 200);
+          if (i === 0 || state.fields[i - 1].unlocked) {
+            drawCanvasButton(FIELD_X + 150, f.y - 60, 300, 75, "DESBLOQUEAR SECTOR " + (i + 1), "$" + formatNum(f.baseCost), '#10b981', '#047857', state.money < f.baseCost, "fieldUnlock", i);
+          } else {
+            ctx.fillStyle = '#475569'; ctx.font = '900 24px Orbitron'; ctx.textAlign = 'center';
+            ctx.fillText("SECTOR BLOQUEADO", FIELD_X + 300, f.y - 20); ctx.textAlign = 'left';
+          }
+        }
+      });
+
+      // Drones
+      if (state.drones) {
+        state.drones.forEach(d => {
+          ctx.save(); ctx.translate(d.x, d.y);
+          ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#0ea5e9'; ctx.fillRect(-10, -2, 20, 4);
+          if (d.load > 0) drawLeek(0, 15, 1, 0.5);
+          ctx.restore();
+        });
+      }
+
+      // Puerro Dorado (Boost)
+      if (state.goldenLeek.active) {
+        ctx.save();
+        ctx.translate(state.goldenLeek.x, state.goldenLeek.y + state.cameraY);
+        ctx.shadowBlur = 30; ctx.shadowColor = '#fbbf24';
+
+        ctx.fillStyle = '#fef08a'; ctx.fillRect(-5, -30, 10, 30);
+        ctx.fillStyle = '#fbbf24'; ctx.beginPath();
+        ctx.moveTo(-10, -30); ctx.lineTo(-25, -60); ctx.lineTo(0, -40); ctx.lineTo(25, -60); ctx.lineTo(10, -30); ctx.fill();
+
+        ctx.fillStyle = '#fff'; ctx.globalAlpha = Math.sin(Date.now() / 100) * 0.5 + 0.5;
+        ctx.beginPath(); ctx.arc(0, -45, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      state.particles.forEach(p => {
+        if (p.type === 'text') {
+          ctx.fillStyle = p.color || '#4ade80'; ctx.font = '900 36px Orbitron';
+          ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+          ctx.fillText(p.text, p.x, p.y); ctx.shadowBlur = 0;
+        } else if (p.type === 'leekDrop') {
+          drawLeek(p.x, p.y, p.tier || 0, 0.8 * p.life);
+        } else if (p.type === 'spark') {
+          ctx.fillStyle = p.color; ctx.globalAlpha = p.life;
+          ctx.shadowBlur = 5; ctx.shadowColor = p.color;
+          ctx.fillRect(p.x, p.y, 6, 6); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        } else if (p.type === 'smoke') {
+          ctx.fillStyle = p.color; ctx.globalAlpha = p.life;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 16 * (2 - p.life), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        } else if (p.type === 'sleep') {
+          ctx.fillStyle = '#cbd5e1'; ctx.font = '800 24px Nunito';
+          ctx.globalAlpha = p.life; ctx.fillText(p.text, p.x, p.y); ctx.globalAlpha = 1;
+        }
+      });
+
+      ctx.restore();
+    }
+
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+    let rtdbRef = null;
+    let uid = null;
+
+    function applySaveState(data) {
+      if (!data) return;
+      // Migración de camión único a flota
+      if (data.warehouse && data.warehouse.truck && !data.warehouse.trucks) {
+          data.warehouse.lvlTruckSpeed = data.warehouse.truck.lvlSpeed || 1;
+          data.warehouse.lvlTruckCap = data.warehouse.truck.lvlCap || 1;
+          data.warehouse.trucks = [{ 
+              state: data.warehouse.truck.state || 'loading', 
+              load: data.warehouse.truck.load || 0, 
+              x: data.warehouse.truck.x || 0, 
+              timer: data.warehouse.truck.timer || 0, 
+              cooldown: data.warehouse.truck.cooldown || 3, 
+              flash: 0 
+          }];
+          delete data.warehouse.truck;
+      }
+      // Migración de ascensor único a flota
+      if (data.elevator && !data.elevator.elevators) {
+          data.elevator.elevators = [{ 
+              pos: data.elevator.pos || 400, 
+              state: data.elevator.state || 'idle', 
+              load: data.elevator.load || 0, 
+              timer: data.elevator.timer || 0, 
+              flash: 0 
+          }];
+          delete data.elevator.pos;
+          delete data.elevator.state;
+          delete data.elevator.load;
+          delete data.elevator.timer;
+      }
+      Object.assign(state, data);
+        if (state.warehouse.manager === true) state.warehouse.managerLvl = 1;
+        if (typeof state.warehouse.managerLvl === 'undefined') state.warehouse.managerLvl = 0;
+        if (state.elevator.manager === true) state.elevator.managerLvl = 1;
+        if (typeof state.elevator.managerLvl === 'undefined') state.elevator.managerLvl = 0;
+        if (typeof state.boostTimer === 'undefined') state.boostTimer = 0;
+        if (typeof state.goldenLeek === 'undefined') state.goldenLeek = { active: false, x: -100, y: -100, life: 0, cooldown: 120 };
+
+        state.fields.forEach((f, i) => {
+          f.y = 650 + i * 240;
+          if (!f.plants) f.plants = Array(12).fill(1);
+          f.harvestLoad = 0; f.flash = 0;
+          if (f.workingTimer === undefined) f.workingTimer = 15;
+          if (f.manualBoost === undefined) f.manualBoost = 0;
+
+          if (f.manager === true) f.managerLvl = 1;
+          if (typeof f.managerLvl === 'undefined') f.managerLvl = 0;
+        });
+
+        if (state.fields.every(f => !f.unlocked)) {
+          state.fields[0].unlocked = true;
+        }
+
+        if (!state.warehouse.truck) {
+          state.warehouse.truck = { lvlSpeed: 1, lvlCap: 1, baseSpeed: 600, baseCap: 150, baseCost: 150, state: 'loading', load: 0, x: 0, timer: 0, cooldown: 3, flash: 0 };
+        } else {
+          if (!state.warehouse.truck.lvlSpeed) {
+            state.warehouse.truck.lvlSpeed = 1; state.warehouse.truck.lvlCap = 1;
+            state.warehouse.truck.baseSpeed = 600; state.warehouse.truck.baseCap = 150; state.warehouse.truck.baseCost = 150;
+          }
+        }
+        state.warehouse.flash = 0; state.elevator.flash = 0;
+    }
+
+    function initSaveSystem() {
+      // Intentar cargar localmente primero
+      const s = localStorage.getItem('leek_ultra_save4');
+      if (s) { try { applySaveState(JSON.parse(s)); } catch(e) {} }
+
+      // Conectar con Firestore del Hub
+      if (window.parent && window.parent.auth && window.parent.db) {
+        window.parent.auth.onAuthStateChanged((user) => {
+          if (user) {
+            uid = user.uid;
+            // Cargar desde Firestore (Colección users -> uid -> saves -> leek)
+            window.parent.db.collection('users').doc(uid).collection('saves').doc('leek_tycoon').get().then((doc) => {
+              if (doc.exists) {
+                applySaveState(doc.data());
+                updateMoneyDisplay();
+              }
+            });
+          } else { uid = null; }
+        });
+      }
+    }
+
+    let saveTimeout = null;
+    let lastSaveTime = 0;
+
+    async function save(force = false) { 
+      const saveStr = JSON.stringify(state);
+      localStorage.setItem('leek_ultra_save4', saveStr); 
+      
+      const p = window.parent;
+      if (!p || !p.db) return;
+
+      if (!uid && p.auth && p.auth.currentUser) uid = p.auth.currentUser.uid;
+      if (!uid) return;
+
+      // Debounce: Si no es forzado, esperar 2 segundos antes de enviar a la nube
+      if (!force) {
+          if (saveTimeout) clearTimeout(saveTimeout);
+          const now = Date.now();
+          if (now - lastSaveTime < 2000) {
+              saveTimeout = setTimeout(() => save(true), 2000);
+              return;
+          }
+      }
+
+      lastSaveTime = Date.now();
+      try {
+          const rawData = JSON.parse(saveStr);
+          const leaderboardData = {
+              name: (p.userProfile && (p.userProfile.username || p.userProfile.displayName)) || 
+                    (p.auth && p.auth.currentUser && p.auth.currentUser.displayName) || 
+                    'Agricultor Anónimo',
+              score: Number(state.totalEarned) || 0,
+              seeds: Number(state.prestige.seeds) || 0,
+              lastUpdate: Date.now()
+          };
+
+          if (p.safeFirestoreSave) {
+            p.safeFirestoreSave(`users/${uid}/saves/leek_tycoon`, rawData);
+            p.safeFirestoreSave(`leaderboard_leek_tycoon/${uid}`, leaderboardData);
+          }
+      } catch(e) { console.error("Error Firestore bridge:", e); }
+    }
+
+    function manualSave() {
+        save(true); // Forzado inmediato
+        spawnFX(0, 0, "¡PROGRESO GUARDADO!", "fx");
+        state.particles.push({ 
+           x: window.innerWidth / 2, 
+           y: window.innerHeight - 200, 
+           text: "☁️ NUBE SINCRONIZADA ☁️", 
+           life: 1.5, type: 'text', color: '#10b981' 
+        });
+    }
+    
+    // Auto-save inteligente
+    setInterval(() => save(false), 30000);
+
+    window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+    initSaveSystem();
+    window.dispatchEvent(new Event('resize'));
+    updateMoneyDisplay();
+    loop();
+
+  </script>
+</body>
+
+</html>

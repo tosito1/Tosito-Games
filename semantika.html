@@ -1,0 +1,665 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Target, Trophy, Send, HelpCircle, Share2, Sparkles, Zap, BrainCircuit, Activity, Database, CloudFog, Cpu, Orbit, Terminal, Crosshair, Beaker, Radar, ShieldAlert, FileJson, User, LogOut, BarChart3, RefreshCw } from 'lucide-react';
+
+// --- FIREBASE IMPORTS ---
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+
+// --- FIREBASE SETUP ---
+let app: any, auth: any, db: any;
+let globalAppId = 'default-app-id';
+
+try {
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    const firebaseConfig = JSON.parse(__firebase_config);
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    globalAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+  }
+} catch (e) {
+  console.warn("Firebase no detectado.");
+}
+
+// --- TABLAS DE DATOS ESTÁTICOS ---
+const LOCAL_ALCHEMY: Record<string, string> = {
+  "AGUA_FUEGO": "VAPOR", "AGUA_AIRE": "NIEBLA", "AIRE_FUEGO": "ENERGIA", "TIEMPO_ESPACIO": "UNIVERSO",
+  "TIEMPO_RELOJ": "HORA", "TIEMPO_VIDA": "HISTORIA", "SOL_LUNA": "ECLIPSE", "RELOJ_ARENA": "CLEPSIDRA",
+  "CIELO_AGUA": "LLUVIA", "TIERRA_AGUA": "LODO", "FUEGO_TIERRA": "LAVA", "MUERTE_TIEMPO": "ETERNIDAD"
+};
+
+// --- VARIABLE GLOBAL DEL PUZZLE (Mutable por Firebase) ---
+let GLOBAL_PUZZLE = {
+  day: 1,
+  targetWord: "TIEMPO",
+  maxRank: 50000,
+  dictionary: {
+    "TIEMPO": 1, "HORA": 2, "RELOJ": 3, "MINUTO": 4, "SEGUNDO": 5, "DIA": 6, "ANO": 7, "MES": 8, "SEMANA": 9, "PASADO": 10,
+    "PRESENTE": 11, "MOMENTO": 12, "CRONOMETRO": 13, "EDAD": 14, "EPOCA": 15, "PERIODO": 16, "DURACION": 17, "RATO": 18, "ETAPA": 19, "LAPSO": 20,
+    "DECADA": 21, "SIGLO": 22, "MILENIO": 23, "ERA": 24, "CALENDARIO": 25, "FECHA": 26, "HORARIO": 27, "MADRUGADA": 28, "MANANA": 29, "TARDE": 30,
+    "NOCHE": 31, "AMANECER": 32, "ANOCHECER": 33, "MEDIODIA": 34, "MEDIANOCHE": 35, "HOY": 36, "AYER": 37, "SIEMPRE": 38, "NUNCA": 39, "JAMAS": 40,
+    "PRONTO": 41, "TEMPRANO": 42, "RETRASO": 43, "DEMORA": 44, "PUNTUALIDAD": 45, "ALBA": 46, "OCASO": 47, "CREPUSCULO": 48, "LUNES": 49, "MARTES": 50,
+    "CLIMA": 251, "LLUVIA": 280, "SOL": 300, "NIEVE": 320, "FISICA": 420, "EINSTEIN": 450
+  } as Record<string, number>
+};
+
+type ProcessStatus = '' | 'LOCAL' | 'FIREBASE' | 'HASH' | 'FUSION_CACHE' | 'MORPH' | 'PROBE';
+
+interface Guess { word: string; score: number; number: number; source?: ProcessStatus; isNew?: boolean; }
+
+// --- FUNCIONES DE UTILIDAD ---
+function getScoreTheme(score: number) {
+  if (score === 1) return { color: '#10b981', label: 'OBJETIVO', borderClass: 'border-emerald-500/80', textClass: 'text-emerald-400', rgb: '16, 185, 129' };
+  if (score <= 50) return { color: '#f43f5e', label: 'CRÍTICO', borderClass: 'border-rose-500/80', textClass: 'text-rose-400', rgb: '244, 63, 94' };
+  if (score <= 500) return { color: '#f59e0b', label: 'ALERTA', borderClass: 'border-amber-500/50', textClass: 'text-amber-400', rgb: '245, 158, 11' };
+  if (score <= 5000) return { color: '#8b5cf6', label: 'ESTABLE', borderClass: 'border-purple-500/40', textClass: 'text-purple-400', rgb: '139, 92, 246' };
+  return { color: '#06b6d4', label: 'FRÍO', borderClass: 'border-cyan-500/30', textClass: 'text-cyan-500', rgb: '6, 182, 212' };
+}
+
+function loadGSAP(callback: () => void) {
+  if ((window as any).gsap) { callback(); return; }
+  const script = document.createElement('script'); script.src = "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js";
+  script.onload = callback; document.head.appendChild(script);
+}
+
+function getStem(word: string): string {
+  let stem = word.toUpperCase().trim();
+  const suffixes = ["S", "ES", "ITO", "ITA", "EROS", "ERIA", "ACION", "ADO", "IDO", "MENTE"];
+  for (const s of suffixes) if (stem.length > 4 && stem.endsWith(s)) return stem.substring(0, stem.length - s.length);
+  return stem;
+}
+
+// Algoritmo matemático rápido para palabras desconocidas
+function getFallbackRank(word: string): number {
+    let hash = 0; for (let i = 0; i < word.length; i++) hash = word.charCodeAt(i) + ((hash << 5) - hash);
+    return (Math.abs(hash) % (GLOBAL_PUZZLE.maxRank - 10000)) + 10000;
+}
+
+// --- MOTOR DE RESOLUCIÓN 100% LOCAL / FIREBASE ---
+
+async function resolveSemanticData(target: string, guess: string, currentUser: any, onStatusChange: (s: ProcessStatus) => void, log: (s:string)=>void): Promise<{isValid: boolean, rank: number, source: ProcessStatus}> {
+  const cleanTarget = target.trim().toUpperCase(); 
+  const cleanGuess = guess.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/Ñ/g, "N");
+  
+  onStatusChange('LOCAL'); 
+  await new Promise(r => setTimeout(r, 100)); // Efecto cinemático breve
+  if (GLOBAL_PUZZLE.dictionary[cleanGuess] !== undefined) {
+    log(`> MATCH ENCONTRADO EN NÚCLEO LOCAL.`); 
+    return { isValid: true, rank: GLOBAL_PUZZLE.dictionary[cleanGuess], source: 'LOCAL' };
+  }
+
+  const stem = getStem(cleanGuess);
+  if (stem !== cleanGuess && GLOBAL_PUZZLE.dictionary[stem] !== undefined) { 
+    log(`> RAÍZ [${stem}] HALLADA EN EL NÚCLEO.`); 
+    return { isValid: true, rank: GLOBAL_PUZZLE.dictionary[stem] + 5, source: 'MORPH' }; 
+  }
+
+  // Fallback a Cálculo Matemático Local si no está en Firebase
+  onStatusChange('HASH'); 
+  log(`> TÉRMINO DESCONOCIDO. GENERANDO FIRMA HASHTAG...`);
+  await new Promise(r => setTimeout(r, 200)); 
+  const fallbackRank = getFallbackRank(cleanGuess);
+  return { isValid: true, rank: fallbackRank, source: 'HASH' };
+}
+
+async function resolveFusionResult(w1: string, w2: string, currentUser: any, onStatusChange: (s: ProcessStatus) => void, log: (s:string)=>void): Promise<string> {
+  const words = [w1.toUpperCase(), w2.toUpperCase()].sort(); 
+  const fusionKey = `${words[0]}_${words[1]}`;
+  
+  if (LOCAL_ALCHEMY[fusionKey]) {
+      log(`> ALQUIMIA LOCAL ACTIVA.`);
+      return LOCAL_ALCHEMY[fusionKey];
+  }
+
+  onStatusChange('FUSION_CACHE');
+  if (db && currentUser) { 
+      try { 
+          const docSnap = await getDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'semantika_fusions', fusionKey)); 
+          if (docSnap.exists()) {
+              log(`> SÍNTESIS RECUPERADA DE LA NUBE.`);
+              return docSnap.data().result; 
+          }
+      } catch (e) {} 
+  }
+
+  // Si no está en alquimia local ni en Firebase, falla elegante
+  log(`> SÍNTESIS FALLIDA. ENLACE MOLECULAR INCOMPATIBLE.`);
+  return "ANOMALIA";
+}
+
+
+// --- MOTOR GRÁFICO: UNIVERSO 6.0 (CLEAN) ---
+function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, combo, energy, trigger }: { guesses: Guess[], hasWon: boolean, isProcessing: boolean, isTyping: boolean, onFusion: (w1:string, w2:string)=>void, combo: number, energy: number, trigger: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nodesRef = useRef<any[]>([]); 
+  const mouseRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, mx: 0, my: 0, draggedNode: null as any }); 
+  const isComboActive = combo >= 3;
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => { 
+      mouseRef.current.targetX = (e.clientX - window.innerWidth / 2) / (window.innerWidth / 2);
+      mouseRef.current.targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
+      mouseRef.current.mx = e.clientX; mouseRef.current.my = e.clientY;
+    };
+    const handleMouseDown = (e: MouseEvent) => {
+      const clicked = nodesRef.current.find(n => Math.hypot(n.drawX - e.clientX, n.drawY - e.clientY) < (n.size || 10) + 20);
+      if (clicked) mouseRef.current.draggedNode = clicked;
+    };
+    const handleMouseUp = (e: MouseEvent) => {
+      const d = mouseRef.current.draggedNode;
+      if (d) {
+        const target = nodesRef.current.find(n => n !== d && Math.hypot(n.drawX - e.clientX, n.drawY - e.clientY) < (n.size || 10) + 40);
+        if (target) onFusion(d.word, target.word);
+        mouseRef.current.draggedNode = null;
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [onFusion]);
+
+  useEffect(() => {
+    nodesRef.current = []; 
+  }, [trigger]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    let frameId: number; let time = 0;
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    window.addEventListener('resize', resize); resize();
+    const maxLog = Math.log10(GLOBAL_PUZZLE.maxRank);
+
+    const stars = Array.from({length: 150}, () => ({ x: Math.random() * canvas.width * 2 - canvas.width/2, y: Math.random() * canvas.height * 2 - canvas.height/2, size: Math.random() * 1.5, alpha: Math.random() * 0.5 + 0.1 }));
+
+    const draw = () => {
+      time++;
+      mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.05;
+      mouseRef.current.y += (mouseRef.current.targetY - mouseRef.current.y) * 0.05;
+      const pX = mouseRef.current.x * 40; const pY = mouseRef.current.y * 40;
+
+      ctx.fillStyle = isComboActive ? '#0f0a02' : '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const cX = canvas.width / 2 - pX; const cY = canvas.height * 0.4 - pY;
+      const absR = Math.min(canvas.width, canvas.height) * 0.7;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      for(let gx = (cX % 40) - 40; gx < canvas.width; gx+=40) {
+        for(let gy = (cY % 40) - 40; gy < canvas.height; gy+=40) { ctx.fillRect(gx, gy, 1, 1); }
+      }
+
+      stars.forEach(s => { ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha * (Math.sin(time*0.05 + s.x) * 0.5 + 0.5)})`; ctx.fillRect(s.x - pX*0.3, s.y - pY*0.3, s.size, s.size); });
+
+      ctx.lineWidth = 1;
+      const zones = [{ score: 50, color: '#f43f5e', dash: [4, 8] }, { score: 500, color: '#f59e0b', dash: [2, 10] }, { score: 5000, color: '#8b5cf6', dash: [2, 20] }, { score: 50000, color: '#06b6d4', dash: [1, 30] }];
+      zones.forEach(zone => {
+        const r = (Math.log10(zone.score) / maxLog) * absR;
+        ctx.beginPath(); ctx.arc(cX, cY, r, 0, Math.PI * 2); ctx.setLineDash(zone.dash); ctx.strokeStyle = `${zone.color}20`; ctx.stroke();
+      });
+      ctx.setLineDash([]);
+
+      guesses.forEach(g => {
+        let n = nodesRef.current.find(node => node.word === g.word);
+        if (!n) {
+          const rP = g.score === 1 ? 0 : Math.max(0.06, Math.log10(g.score) / maxLog);
+          n = { word: g.word, theme: getScoreTheme(g.score), tRP: rP, cRP: 1.5, angle: Math.random()*Math.PI*2, speed: (Math.random()-0.5)*0.0015, drawX: 0, drawY: 0, pulseOffset: Math.random() * Math.PI*2 };
+          nodesRef.current.push(n);
+        }
+        if (n.cRP > n.tRP) n.cRP -= (n.cRP - n.tRP) * 0.08; 
+        n.angle += n.speed * (isProcessing ? 4 : (isComboActive ? 1.5 : 1));
+        
+        if (mouseRef.current.draggedNode === n) { n.drawX = mouseRef.current.mx; n.drawY = mouseRef.current.my; }
+        else { n.drawX = cX + Math.cos(n.angle) * (n.cRP * absR); n.drawY = cY + Math.sin(n.angle) * (n.cRP * absR); }
+        n.size = Math.max(3, 7 - (n.tRP * 4));
+      });
+
+      ctx.beginPath();
+      for (let i = 0; i < nodesRef.current.length; i++) {
+        for (let j = i + 1; j < nodesRef.current.length; j++) {
+          const n1 = nodesRef.current[i]; const n2 = nodesRef.current[j];
+          if (Math.abs(n1.score - n2.score) < 500) { ctx.moveTo(n1.drawX, n1.drawY); ctx.lineTo(n2.drawX, n2.drawY); }
+        }
+      }
+      ctx.strokeStyle = isComboActive ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 1; ctx.stroke();
+
+      if (mouseRef.current.draggedNode) {
+        const dNode = mouseRef.current.draggedNode;
+        ctx.beginPath(); ctx.moveTo(dNode.drawX, dNode.drawY);
+        const target = nodesRef.current.find(n => n !== dNode && Math.hypot(n.drawX - mouseRef.current.mx, n.drawY - mouseRef.current.my) < 40);
+        if (target) { ctx.lineTo(target.drawX, target.drawY); ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 3; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]); }
+      }
+
+      nodesRef.current.forEach((n) => {
+        if (mouseRef.current.draggedNode !== n && n.cRP <= n.tRP + 0.05) {
+          ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(n.drawX, n.drawY); ctx.strokeStyle = `${n.theme.color}15`; ctx.lineWidth = 1; ctx.stroke();
+        }
+        const size = n.size + Math.sin(time*0.05 + n.pulseOffset) * 0.5;
+        ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size, 0, Math.PI*2); ctx.fillStyle = n.theme.color; ctx.shadowBlur = 15; ctx.shadowColor = n.theme.color; ctx.fill(); ctx.shadowBlur = 0;
+        ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size * 0.4, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
+        if (mouseRef.current.draggedNode === n) { ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size + 10, 0, Math.PI*2); ctx.strokeStyle = '#f43f5e'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); }
+        
+        ctx.font = '700 11px "Rajdhani"'; ctx.fillStyle = '#ffffff'; ctx.textAlign = Math.cos(n.angle) > 0 ? 'left' : 'right';
+        const textOffX = Math.cos(n.angle) > 0 ? size + 6 : -(size + 6);
+        ctx.fillText(n.word, n.drawX + textOffX, n.drawY - 2);
+        ctx.font = '500 9px "JetBrains Mono"'; ctx.fillStyle = n.theme.color;
+        ctx.fillText(`[${n.score}]`, n.drawX + textOffX, n.drawY + 8);
+      });
+
+      ctx.save(); ctx.translate(cX, cY); 
+      const themeColor = isProcessing ? '#a855f7' : (isComboActive ? '#f59e0b' : '#10b981');
+      const pulse = Math.sin(time * 0.05) * 0.1 + 1;
+
+      ctx.rotate(time * (isComboActive ? 0.05 : 0.01));
+      ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI*2); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 6; ctx.stroke();
+      if (energy > 0) {
+        ctx.beginPath(); ctx.arc(0, 0, 45, -Math.PI/2, (-Math.PI/2) + (Math.PI*2*(energy/100)));
+        ctx.strokeStyle = energy === 100 ? '#f59e0b' : '#0ea5e9'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        ctx.shadowBlur = 15; ctx.shadowColor = ctx.strokeStyle; ctx.stroke(); ctx.shadowBlur = 0;
+      }
+
+      ctx.rotate(-time * (isComboActive ? 0.08 : 0.02));
+      ctx.beginPath(); ctx.setLineDash([10, 15]); ctx.strokeStyle = `${themeColor}80`; ctx.lineWidth = 2;
+      ctx.arc(0, 0, 32 * pulse, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+
+      ctx.beginPath(); ctx.arc(0, 0, 22 * pulse, 0, Math.PI*2); ctx.fillStyle = hasWon ? '#10b981' : '#020617'; ctx.shadowBlur = 30; ctx.shadowColor = themeColor; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = themeColor; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 25 * pulse, 0, Math.PI*2); ctx.strokeStyle = `${themeColor}40`; ctx.lineWidth = 1; ctx.stroke();
+
+      if (hasWon) {
+        ctx.fillStyle = '#ffffff'; ctx.font = '900 36px "Rajdhani"'; ctx.textAlign = 'center';
+        ctx.shadowBlur = 20; ctx.shadowColor = '#10b981'; ctx.fillText(GLOBAL_PUZZLE.targetWord, 0, -55); ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+
+      frameId = requestAnimationFrame(draw);
+    };
+    draw(); return () => cancelAnimationFrame(frameId);
+  }, [guesses, isProcessing, hasWon, isTyping, isComboActive, energy, trigger]);
+
+  return <canvas ref={canvasRef} className={`fixed inset-0 z-0 cursor-crosshair touch-none transition-colors duration-1000`} />;
+}
+
+// --- COMPONENTES UI ---
+function CipherText({ text, isNew, colorClass }: { text: string|number, isNew: boolean, colorClass: string }) {
+  const [displayValue, setDisplayValue] = useState<string>(isNew ? '----' : text.toString());
+  useEffect(() => {
+    if (!isNew) { setDisplayValue(text.toString()); return; }
+    let iterations = 0; const maxIterations = 15; const chars = "ABCDEF01234!@#X%"; const textStr = text.toString();
+    const interval = setInterval(() => {
+      if (iterations >= maxIterations) { clearInterval(interval); setDisplayValue(textStr); } 
+      else { setDisplayValue(textStr.split('').map((char, i) => i < (iterations / maxIterations) * textStr.length ? textStr[i] : chars[Math.floor(Math.random() * chars.length)]).join('')); iterations++; }
+    }, 30);
+    return () => clearInterval(interval);
+  }, [text, isNew]);
+  return <span className={colorClass}>{displayValue}</span>;
+}
+
+// --- APLICACIÓN PRINCIPAL ---
+export default function App() {
+  const [guesses, setGuesses] = useState<Guess[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [showInfo, setShowInfo] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [hasWon, setHasWon] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processStatus, setProcessStatus] = useState<ProcessStatus>('');
+  const [puzzleTrigger, setPuzzleTrigger] = useState(0); 
+  
+  const [energy, setEnergy] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [freeHintUsed, setFreeHintUsed] = useState(false);
+  
+  const [showProfile, setShowProfile] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
+  
+  const [user, setUser] = useState<any>(null);
+  const [logs, setLogs] = useState<string[]>(['> INICIANDO SISTEMA LOCAL...', '> CARGANDO DICCIONARIO...']);
+  
+  // Admin State (AHORA SIN IA, SOLO TEXTO JSON)
+  const [adminWord, setAdminWord] = useState('');
+  const [adminDay, setAdminDay] = useState(1);
+  const [adminDictJSON, setAdminDictJSON] = useState('{\n  "TIEMPO": 1,\n  "HORA": 2\n}');
+  const [adminStatus, setAdminStatus] = useState('');
+
+  const addLog = useCallback((msg: string) => setLogs(p => [...p, `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`].slice(-6)), []);
+
+  useEffect(() => {
+    loadGSAP(() => {});
+    if (auth) { 
+        signInAnonymously(auth).then(async () => {
+            if (db) {
+                try {
+                    const configRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'semantika_config', 'current');
+                    const snap = await getDoc(configRef);
+                    if (snap.exists()) {
+                        GLOBAL_PUZZLE = snap.data() as any;
+                        setAdminWord(GLOBAL_PUZZLE.targetWord);
+                        setAdminDay(GLOBAL_PUZZLE.day);
+                        setAdminDictJSON(JSON.stringify(GLOBAL_PUZZLE.dictionary, null, 2));
+                        setPuzzleTrigger(Date.now()); 
+                        addLog("> PARÁMETROS DEL DÍA OBTENIDOS.");
+                    }
+                } catch(e) { console.warn("No se pudo cargar la config global"); }
+            }
+        }).catch(() => {}); 
+        onAuthStateChanged(auth, setUser); 
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    if (puzzleTrigger === 0) return; 
+    const saved = localStorage.getItem('semantika_v12');
+    if (saved) {
+      const p = JSON.parse(saved);
+      if (p.day === GLOBAL_PUZZLE.day) {
+        setGuesses(p.guesses); setEnergy(p.energy || 0); setCombo(p.combo || 0); setFreeHintUsed(p.freeHintUsed || false);
+        if (p.guesses.some((g:any) => g.score === 1)) setHasWon(true);
+      } else {
+        localStorage.removeItem('semantika_v12');
+      }
+    }
+  }, [puzzleTrigger]);
+
+  useEffect(() => {
+    if (guesses.length > 0) localStorage.setItem('semantika_v12', JSON.stringify({ day: GLOBAL_PUZZLE.day, guesses, energy, combo, freeHintUsed }));
+  }, [guesses, energy, combo, freeHintUsed]);
+
+  const bestScore = guesses.length > 0 ? Math.min(...guesses.map(g => g.score)) : GLOBAL_PUZZLE.maxRank;
+
+  const injectWord = async (wordInput: string, isFusion = false) => {
+    const raw = wordInput.trim().toUpperCase();
+    if (!raw || guesses.some(g => g.word === raw)) { setIsProcessing(false); return; }
+    
+    const res = await resolveSemanticData(GLOBAL_PUZZLE.targetWord, raw, user, setProcessStatus, addLog);
+    if (!res.isValid) { setErrorMsg('PALABRA INVÁLIDA'); setIsProcessing(false); return; }
+
+    const newG = { word: raw, score: res.rank, number: guesses.length + 1, source: res.source, isNew: true };
+    setGuesses(p => [...p.map(g=>({...g, isNew:false})), newG].sort((a,b)=>a.score - b.score));
+    
+    if (res.rank < bestScore) {
+        const newCombo = combo + 1; setCombo(newCombo);
+        if (newCombo >= 3) addLog(`> 🔥 RACHA DE SINCRONIZACIÓN: x${newCombo}!`);
+        setEnergy(e => Math.min(100, e + (isFusion ? 30 : 15) + (newCombo * 5)));
+    } else {
+        setCombo(0); setEnergy(e => Math.min(100, e + (isFusion ? 20 : 10)));
+    }
+
+    setInputValue(''); setIsProcessing(false); setProcessStatus('');
+    if (res.rank === 1) setHasWon(true);
+  };
+
+  const handleFusion = async (w1: string, w2: string) => {
+    if (isProcessing) return; setIsProcessing(true);
+    const fusionResult = await resolveFusionResult(w1, w2, user, setProcessStatus, addLog);
+    if (fusionResult === "ANOMALIA") { setErrorMsg("ENLACE INCOMPATIBLE"); addLog(`> SÍNTESIS RECHAZADA.`); setIsProcessing(false); return; }
+    addLog(`> SÍNTESIS EXITOSA: [${fusionResult}]`);
+    await injectWord(fusionResult, true);
+  };
+
+  const handleHint = (type: 'free' | '50' | '100') => {
+    if (isProcessing || hasWon) return;
+    let maxRank = 1000;
+    if (type === 'free') {
+        if (freeHintUsed) return;
+        setFreeHintUsed(true);
+        maxRank = 2000;
+    } else if (type === '50') {
+        if (energy < 50) return;
+        setEnergy(e => e - 50);
+        maxRank = 500;
+    } else if (type === '100') {
+        if (energy < 100) return;
+        setEnergy(0);
+        maxRank = 50;
+    }
+    
+    setIsProcessing(true); setProcessStatus('PROBE');
+    addLog(`> DESPLEGANDO SONDA TIPO: ${type.toUpperCase()}...`);
+
+    const available = Object.entries(GLOBAL_PUZZLE.dictionary).filter(([w, r]) => r <= maxRank && !guesses.some(g => g.word === w));
+    setTimeout(() => {
+        if (available.length > 0) {
+            const hint = available[Math.floor(Math.random() * Math.min(10, available.length))];
+            const newG: Guess = { word: hint[0], score: hint[1], number: guesses.length + 1, source: 'PROBE', isNew: true };
+            setGuesses(p => [...p.map(g=>({...g, isNew:false})), newG].sort((a,b)=>a.score - b.score));
+            addLog(`> SONDA RECUPERADA: DATO [${hint[0]}] EXTRAÍDO.`);
+            if (hint[1] < bestScore) setCombo(c => c + 1);
+            if (hint[1] === 1) setHasWon(true);
+        } else { addLog("> ERROR: SIN DATOS DISPONIBLES EN ESA ZONA."); }
+        setIsProcessing(false); setProcessStatus('');
+    }, 1500);
+  };
+
+  // --- NUEVA LÓGICA DEL PANEL DE ADMINISTRADOR (MANUAL Y LOCAL) ---
+  const handleSaveAdmin = async () => {
+    if (!adminWord.trim()) return;
+    const newTarget = adminWord.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/Ñ/g, "N");
+    setAdminStatus("Validando y procesando JSON local...");
+    
+    try {
+        let parsedDict = JSON.parse(adminDictJSON);
+        parsedDict[newTarget] = 1; // Asegurar que la palabra objetivo es el rank 1
+        
+        const newPuzzleConfig = { day: adminDay, targetWord: newTarget, maxRank: 50000, dictionary: parsedDict };
+        
+        setAdminStatus("Subiendo a Firebase...");
+        if (db) await setDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'semantika_config', 'current'), newPuzzleConfig);
+        
+        GLOBAL_PUZZLE = newPuzzleConfig;
+        setPuzzleTrigger(Date.now()); 
+        setGuesses([]); setEnergy(0); setCombo(0); setHasWon(false);
+        setAdminStatus("¡Diccionario actualizado con éxito!");
+        setTimeout(() => { setShowAdmin(false); setAdminStatus(''); }, 2000);
+        addLog(`> ALERTA MAESTRA: NUEVO DICCIONARIO CARGADO (${Object.keys(parsedDict).length} palabras).`);
+        
+    } catch(e: any) {
+        setAdminStatus("Error de formato JSON: Asegúrate de que las comillas sean válidas.");
+    }
+  };
+
+  const thermo = 100 - (Math.log10(Math.max(1, bestScore)) / Math.log10(GLOBAL_PUZZLE.maxRank)) * 100;
+
+  return (
+    <div className="fixed inset-0 bg-[#020617] text-slate-100 overflow-hidden font-sans">
+      <SemanticUniverse guesses={guesses} hasWon={hasWon} isProcessing={isProcessing} isTyping={!!inputValue} onFusion={handleFusion} combo={combo} energy={energy} trigger={puzzleTrigger}/>
+      
+      <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-6">
+        
+        <div className="flex justify-between items-start pointer-events-auto">
+          <div className="flex flex-col items-start gap-2">
+            <div className={`bg-[#030712]/60 backdrop-blur-xl border p-4 rounded-2xl transition-colors duration-500 ${combo >= 3 ? 'border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-white/5'}`}>
+                <h1 className="text-xl font-black tracking-widest flex items-center gap-3">
+                <BrainCircuit className={combo >= 3 ? "text-amber-400" : "text-cyan-400"} /> 
+                SEMÁNTIKA <span className={`text-[8px] px-1.5 py-0.5 rounded border ${combo >= 3 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>DÍA {GLOBAL_PUZZLE.day}</span>
+                </h1>
+                {combo > 1 && <div className="text-[10px] font-black text-amber-400 tracking-widest mt-1 animate-pulse">RACHA x{combo}</div>}
+            </div>
+            <button onClick={() => setShowAdmin(true)} className="ml-2 w-8 h-8 flex items-center justify-center bg-slate-900/50 border border-slate-800 rounded-lg text-slate-600 hover:text-emerald-500 hover:border-emerald-500/50 transition-colors">
+                <ShieldAlert className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-2 relative">
+            <button onClick={()=>setShowRanking(true)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-amber-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Trophy className="w-5 h-5"/></button>
+            <button onClick={()=>setShowProfile(!showProfile)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-emerald-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><User className="w-5 h-5"/></button>
+            <button onClick={()=>setShowInfo(true)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-slate-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><HelpCircle className="w-5 h-5"/></button>
+            
+            {showProfile && (
+              <div className="absolute top-12 right-0 z-50 bg-[#030b14] border border-emerald-500/30 p-4 rounded-2xl shadow-2xl pointer-events-auto min-w-[200px] animate-in fade-in slide-in-from-top-4">
+                  <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/10">
+                      <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/50">
+                          <User className="w-5 h-5 text-emerald-400" />
+                      </div>
+                      <div>
+                          <div className="text-xs font-bold text-white">{user?.displayName || 'Jugador'}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{user?.uid?.substring(0,8) || 'Sesión Anónima'}</div>
+                      </div>
+                  </div>
+                  <div className="space-y-2">
+                      <button className="w-full text-left px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/5 rounded-lg flex items-center gap-2"><BarChart3 className="w-4 h-4"/> Mis Estadísticas</button>
+                      <button onClick={() => { auth?.signOut(); setShowProfile(false); }} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-400 hover:bg-rose-500/10 rounded-lg flex items-center gap-2"><LogOut className="w-4 h-4"/> Cerrar Sesión</button>
+                  </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="absolute right-6 top-24 bottom-32 w-52 pointer-events-auto hidden md:flex flex-col">
+          <div className="bg-[#030712]/40 backdrop-blur-xl border border-white/5 rounded-2xl h-full flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-white/5 text-[9px] font-black text-slate-500 uppercase tracking-widest bg-black/40 text-center">Registro de Datos</div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+              {guesses.map(g => {
+                const sTheme = getScoreTheme(g.score);
+                return (
+                <div key={g.word} className="p-2 border rounded-lg bg-black/40 border-white/5 relative overflow-hidden">
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{backgroundColor: sTheme.color}}></div>
+                  <div className="flex justify-between items-center">
+                    <div className="text-[10px] font-bold text-white truncate max-w-[100px]">{g.word}</div>
+                    {g.source === 'PROBE' && <Radar className="w-3 h-3 text-amber-400"/>}
+                  </div>
+                  <div className="text-[12px] font-mono text-slate-500">{g.score.toLocaleString()}</div>
+                </div>
+              )})}
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute left-6 bottom-32 max-w-[280px] font-mono text-[9px] text-cyan-500/50 space-y-1">
+          {logs.map((l, i) => <div key={i} className={l.includes('🔥') || l.includes('SONDA') || l.includes('MAESTRA') ? 'text-amber-400' : ''}>{l}</div>)}
+        </div>
+
+        <div className="max-w-xl mx-auto w-full pointer-events-auto">
+          <div className="mb-4 flex items-center gap-3">
+             <div className="flex-1 h-1.5 bg-slate-900 overflow-hidden relative rounded-full">
+                <div className="absolute top-0 bottom-0 left-0 transition-all duration-1000 ease-out bg-white shadow-[0_0_15px_white]" style={{ width: `${thermo}%` }}></div>
+             </div>
+          </div>
+
+          <div className="flex gap-2 mb-3 pointer-events-auto justify-center">
+            <button onClick={()=>handleHint('free')} disabled={freeHintUsed || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${freeHintUsed ? 'bg-slate-800/50 text-slate-600' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'}`}>
+                <Sparkles className="w-3 h-3"/> GRATIS {freeHintUsed ? '(0/1)' : '(1/1)'}
+            </button>
+            <button onClick={()=>handleHint('50')} disabled={energy < 50 || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${energy < 50 ? 'bg-slate-800/50 text-slate-600' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'}`}>
+                <Zap className="w-3 h-3"/> PISTA 50%
+            </button>
+            <button onClick={()=>handleHint('100')} disabled={energy < 100 || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${energy < 100 ? 'bg-slate-800/50 text-slate-600 border border-transparent' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)] animate-pulse'}`}>
+                <Radar className="w-3 h-3"/> PISTA 100%
+            </button>
+          </div>
+
+          <form onSubmit={(e)=>{e.preventDefault(); if(!isProcessing && inputValue) { setIsProcessing(true); injectWord(inputValue); }}} 
+                className={`relative flex items-center bg-[#050914]/90 backdrop-blur-2xl border-2 rounded-2xl p-1.5 shadow-2xl transition-all ${isProcessing ? 'border-emerald-500/50' : (combo >= 3 ? 'border-amber-500/50' : 'border-white/10')}`}>
+            <input type="text" value={inputValue} onChange={(e)=>setInputValue(e.target.value)} disabled={hasWon || isProcessing}
+                   placeholder={isProcessing ? "PROCESANDO..." : "INYECTAR CONCEPTO..."}
+                   className="w-full bg-transparent px-4 py-3 text-xl outline-none font-black uppercase tracking-widest text-white" />
+            <button type="submit" disabled={!inputValue.trim() || isProcessing} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${inputValue.trim() ? 'bg-cyan-500 text-cyan-950 hover:bg-cyan-400' : 'bg-slate-800/50 text-slate-600'}`}>
+              <Send className="w-5 h-5"/>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {hasWon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-2xl animate-in fade-in duration-1000 pointer-events-auto text-center">
+          <div className="bg-[#030b14] border border-emerald-500/50 p-12 max-w-sm w-full rounded-3xl relative shadow-[0_0_100px_rgba(16,185,129,0.3)]">
+            <Trophy className="w-16 h-16 text-emerald-400 mx-auto mb-6" />
+            <h2 className="text-3xl font-black text-emerald-400 mb-2 uppercase tracking-tighter">Sincronizado</h2>
+            <div className="bg-black/80 p-6 rounded-2xl mb-8 border border-white/5 font-black text-4xl text-white tracking-widest">{GLOBAL_PUZZLE.targetWord}</div>
+            <button onClick={()=>{const t=`SEMÁNTIKA #${GLOBAL_PUZZLE.day}\nOBJETIVO: ${guesses.length} NODOS\nCOMBO MÁX: x${combo}\n-> semantika.es`; navigator.clipboard.writeText(t);}} className="w-full bg-emerald-500 text-emerald-950 rounded-xl font-black py-4 flex items-center justify-center gap-3"><Share2/> COMPARTIR</button>
+          </div>
+        </div>
+      )}
+
+      {showInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-[#030b14] border border-cyan-500/30 p-10 rounded-3xl max-w-lg w-full text-sm">
+            <h2 className="text-xl font-black mb-6 text-cyan-400 tracking-widest uppercase">Protocolo V12.0 Local</h2>
+            <div className="space-y-4 text-slate-300 font-semibold">
+              <p>Halla la <strong className="text-white">Singularidad</strong> del día inyectando palabras.</p>
+              <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl">
+                <h3 className="font-black text-emerald-400 flex items-center gap-2 mb-1"><Beaker className="w-4 h-4"/> FUSIÓN CUÁNTICA</h3>
+                <p className="text-[11px]">Arrastra un planeta sobre otro para sintetizar un nuevo concepto si existe un enlace lógico directo.</p>
+              </div>
+            </div>
+            <button onClick={()=>setShowInfo(false)} className="w-full mt-8 bg-white/10 text-white font-black py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {showRanking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-[#0a0f1c] border-2 border-amber-500/50 p-8 rounded-3xl max-w-lg w-full shadow-[0_0_50px_rgba(245,158,11,0.2)]">
+            <h2 className="text-xl font-black mb-6 text-amber-400 tracking-widest uppercase flex items-center gap-2">
+              <Trophy className="w-6 h-6" /> RANKING GLOBAL
+            </h2>
+            <div className="space-y-2 mb-6">
+                {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
+                        <div className="flex items-center gap-3">
+                            <span className="text-amber-500 font-black">#{i}</span>
+                            <span className="text-white font-bold">Jugador_{Math.floor(Math.random()*1000)}</span>
+                        </div>
+                        <span className="text-emerald-400 font-mono text-xs">{Math.floor(Math.random()*20 + 5)} intentos</span>
+                    </div>
+                ))}
+            </div>
+            <button onClick={()=>setShowRanking(false)} className="w-full bg-white/10 text-white font-black py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ADMIN ACTUALIZADO (SÓLO TEXTO LOCAL) */}
+      {showAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-[#0a0f1c] border-2 border-emerald-500/50 p-8 rounded-3xl max-w-lg w-full shadow-[0_0_50px_rgba(16,185,129,0.2)]">
+            <h2 className="text-xl font-black mb-2 text-emerald-500 tracking-widest uppercase flex items-center gap-2">
+              <ShieldAlert className="w-6 h-6" /> ADMINISTRADOR LOCAL
+            </h2>
+            <p className="text-xs text-slate-400 mb-6 uppercase tracking-widest">Inyección Directa de Diccionario (Coste 0€)</p>
+            
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">DÍA</label>
+                  <input type="number" value={adminDay} onChange={e => setAdminDay(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-mono outline-none focus:border-emerald-500" />
+                </div>
+                <div className="flex-[2]">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">PALABRA SECRETA</label>
+                  <input type="text" value={adminWord} onChange={e => setAdminWord(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-black tracking-widest uppercase outline-none focus:border-emerald-500" />
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">
+                  DICCIONARIO JSON PRECALCULADO (Pega aquí la salida de tu script)
+                </label>
+                <textarea 
+                  value={adminDictJSON} 
+                  onChange={e => setAdminDictJSON(e.target.value)} 
+                  className="w-full h-40 bg-black/50 border border-white/10 rounded-xl p-3 text-emerald-400 font-mono text-[10px] outline-none focus:border-emerald-500 custom-scrollbar resize-none leading-relaxed" 
+                  spellCheck="false"
+                />
+              </div>
+              
+              {adminStatus && (
+                <div className="text-[10px] font-mono text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/30 flex items-center gap-2">
+                  {adminStatus.includes('procesando') ? <RefreshCw className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}
+                  {adminStatus}
+                </div>
+              )}
+
+              <div className="pt-4 flex gap-3">
+                <button onClick={() => setShowAdmin(false)} className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl uppercase text-xs tracking-widest hover:bg-slate-700">Cancelar</button>
+                <button onClick={handleSaveAdmin} disabled={!!adminStatus && !adminStatus.includes('éxito')} className="flex-1 bg-emerald-600 text-white font-black py-3 rounded-xl uppercase text-xs tracking-widest hover:bg-emerald-500 disabled:opacity-50 flex items-center justify-center gap-2">
+                  <FileJson className="w-4 h-4" /> INYECTAR DATOS
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{__html: `.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }`}} />
+    </div>
+  );
+}

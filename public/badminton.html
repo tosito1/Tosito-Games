@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ultra Smash 3D - Cyber Olympic Arena</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap');
+
+    :root {
+      --neon-blue: #00f2ff;
+      --neon-pink: #ff00e1;
+      --neon-gold: #fbbf24;
+      --arena-dark: #02040a;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Rajdhani', sans-serif;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    #game-container {
+      position: relative;
+      width: 1100px;
+      height: 600px;
+      border: 1px solid #1e293b;
+      background: var(--arena-dark);
+      box-shadow: 0 0 150px rgba(0, 0, 0, 1), 0 0 40px rgba(0, 242, 255, 0.1);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .heading-font {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    .menu-overlay {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(5, 10, 20, 0.9) 0%, rgba(0, 0, 0, 0.98) 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      backdrop-filter: blur(15px);
+    }
+
+    .btn-mode {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 24px 48px;
+      margin: 12px;
+      width: 460px;
+      transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+      cursor: pointer;
+      border-radius: 12px;
+      text-align: left;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-mode:hover {
+      border-color: var(--neon-gold);
+      background: rgba(251, 191, 36, 0.05);
+      transform: scale(1.02) translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn-mode::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+      transition: 0.5s;
+    }
+
+    .btn-mode:hover::after {
+      left: 100%;
+    }
+
+    .difficulty-container {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 20px;
+      width: 350px;
+    }
+
+    .btn-diff {
+      padding: 16px;
+      border-radius: 8px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      transition: 0.3s;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    #game-msg {
+      position: absolute;
+      top: 35%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 80px;
+      font-weight: 900;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 50;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 0 20px var(--neon-gold);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div id="game-msg">SMASH!</div>
+
+    <!-- HUD -->
+    <div id="ui-overlay"
+      class="absolute top-0 left-0 w-full pointer-events-none p-10 flex justify-between heading-font z-20">
+      <div style="color: var(--neon-blue);" class="flex flex-col items-center">
+        <span class="text-[10px] tracking-[0.6em] opacity-40 mb-1">LOCAL CHAMP</span>
+        <span id="score1" class="text-9xl font-black leading-none">0</span>
+      </div>
+      <div style="color: var(--neon-pink);" class="flex flex-col items-center">
+        <span id="p2-label" class="text-[10px] tracking-[0.6em] opacity-40 mb-1 text-right">MASTER AI</span>
+        <span id="score2" class="text-9xl font-black leading-none">0</span>
+      </div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="main-menu" class="menu-overlay">
+      <div id="menu-initial" class="text-center">
+        <div class="mb-20">
+          <h1 class="heading-font text-8xl font-black text-white italic tracking-tighter">CYBER<span
+              class="text-amber-400">SMASH</span></h1>
+          <div class="w-32 h-1 bg-amber-400 mx-auto mt-2"></div>
+          <p class="text-slate-500 uppercase tracking-[1.2em] text-[10px] mt-4 font-bold">World Championship Arena</p>
+        </div>
+
+        <div class="flex flex-col items-center">
+          <button onclick="toggleDifficulty(true)" class="btn-mode group">
+            <div class="flex items-center gap-8">
+              <span class="text-5xl group-hover:scale-110 transition duration-500">🏆</span>
+              <div>
+                <div class="font-black text-2xl heading-font text-white uppercase tracking-tighter">Pro Campaign</div>
+                <div class="text-xs text-slate-500 uppercase tracking-widest mt-1">Enfréntate a los maestros de la IA
+                </div>
+              </div>
+            </div>
+          </button>
+          <button onclick="startMode('local')" class="btn-mode group">
+            <div class="flex items-center gap-8">
+              <span class="text-5xl group-hover:scale-110 transition duration-500">🎮</span>
+              <div>
+                <div class="font-black text-2xl heading-font text-white uppercase tracking-tighter">Local Versus</div>
+                <div class="text-xs text-slate-500 uppercase tracking-widest mt-1">Duelo en el mismo dispositivo</div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div id="difficulty-menu" class="difficulty-container">
+        <h3 class="heading-font text-center text-amber-400 mb-8 tracking-[0.5em] text-xl font-bold uppercase">Select
+          Rank</h3>
+        <button onclick="startMode('bot', 'easy')"
+          class="btn-diff bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-white border-cyan-500/20 mb-2">Novato</button>
+        <button onclick="startMode('bot', 'medium')"
+          class="btn-diff bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border-amber-500/20 mb-2">Profesional</button>
+        <button onclick="startMode('bot', 'elite')"
+          class="btn-diff bg-rose-600/20 hover:bg-rose-600 text-rose-500 hover:text-white font-black border-rose-500/30">Olympic
+          Elite</button>
+        <button onclick="toggleDifficulty(false)"
+          class="text-[10px] text-slate-500 underline mt-10 uppercase text-center cursor-pointer tracking-widest font-bold">Return
+          to hub</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const WIDTH = 1100;
+    const HEIGHT = 600;
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+
+    // --- MOTOR DE PROYECCIÓN ---
+    const FOCAL_LENGTH = 800;
+    const CAM_HEIGHT = 650;
+    const CAM_Z_OFFSET = -550;
+    const HORIZON_Y = 100;
+
+    function project(x, y, z) {
+      const scale = FOCAL_LENGTH / (FOCAL_LENGTH + z - CAM_Z_OFFSET);
+      return {
+        x: WIDTH / 2 + x * scale,
+        y: (HORIZON_Y + CAM_HEIGHT * scale) - (y * scale),
+        scale: scale
+      };
+    }
+
+    // --- CONFIGURACIÓN FÍSICA ---
+    const GRAVITY = 1.05;
+    const COURT_WIDTH = 900;
+    const COURT_DEPTH = 1300;
+    const NET_Z = COURT_DEPTH / 2;
+    const JUMP_FORCE = -22;
+
+    const BOT_CONFIGS = {
+      easy: { speed: 10, errorX: 120, errorZ: 80 },
+      medium: { speed: 18, errorX: 45, errorZ: 30 },
+      elite: { speed: 28, errorX: 0, errorZ: 0 }
+    };
+
+    let mode = 'bot', botLevel = 'medium', gameActive = false;
+    let score1 = 0, score2 = 0;
+    let particles = [], beams = [];
+    const keys = {};
+
+    // --- NETWORKING STATE ---
+    let networkRoom = null, playerSide = 'white'; // white=left, black=right
+    let db = null, rtdb = null;
+    
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('room')) {
+        networkRoom = params.get('room');
+        playerSide = params.get('color') || 'white';
+        mode = 'online';
+        console.log(`[📡] ONLINE MODE: Room ${networkRoom} Side ${playerSide}`);
+        
+        // Firebase Config (shared with hub)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCrwGSWveA5a5W-onJzDblydfLQKPIyGLQ",
+            authDomain: "tosito-games-303f5.firebaseapp.com",
+            projectId: "tosito-games-303f5",
+            storageBucket: "tosito-games-303f5.firebasestorage.app",
+            messagingSenderId: "595440969464",
+            appId: "1:595440969464:web:450d63fa91e64b4e773d0d"
+        };
+        if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        rtdb = firebase.database();
+    }
+
+    // Vigas de estadio y luces
+    for (let i = 0; i < 6; i++) {
+      beams.push({
+        x: -2000 + i * 800,
+        z: 2200,
+        opacity: 0.1 + Math.random() * 0.1
+      });
+    }
+
+    class Athlete {
+      constructor(x, z, color) {
+        this.x = x; this.z = z; this.y = 0;
+        this.vx = 0; this.vz = 0; this.vy = 0;
+        this.color = color; this.armRot = -0.5;
+        this.legPhase = 0; this.lastSwing = 0;
+        this.swingActive = false;
+        this.swingType = null;
+        this.scaleY = 1; // FIX: GSAP anim property
+      }
+
+      jump() {
+        if (this.y > 0) return;
+        this.vy = JUMP_FORCE;
+        gsap.to(this, { scaleY: 1.4, duration: 0.1, yoyo: true, repeat: 1 });
+      }
+
+      swing(type) {
+        if (Date.now() - this.lastSwing < 250) return;
+        this.lastSwing = Date.now();
+        this.swingActive = true;
+        this.swingType = type;
+
+        // Ventana de impacto "magnética" de 150ms
+        setTimeout(() => { this.swingActive = false; }, 150);
+
+        const rot = type === 'smash' ? -4.5 : (type === 'clear' ? 2.5 : 1.5);
+        gsap.to(this, { armRot: rot, duration: 0.08, onComplete: () => gsap.to(this, { armRot: -0.5, duration: 0.20 }) });
+      }
+
+      update() {
+        this.vy += GRAVITY; this.y -= this.vy;
+        if (this.y <= 0) { this.y = 0; this.vy = 0; }
+        this.x += this.vx; this.z += this.vz;
+        this.vx *= 0.65; this.vz *= 0.65;
+
+        const isP1 = this === p1;
+        if (isP1) this.z = Math.max(100, Math.min(NET_Z - 130, this.z));
+        else this.z = Math.max(NET_Z + 130, Math.min(COURT_DEPTH - 100, this.z));
+        this.x = Math.max(-COURT_WIDTH / 2 + 80, Math.min(COURT_WIDTH / 2 - 80, this.x));
+        if (Math.abs(this.vx) > 1 || Math.abs(this.vz) > 1) this.legPhase += 0.6;
+      }
+
+      draw(ctx, reflect = false) {
+        const p = project(this.x, reflect ? -this.y : this.y, this.z);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.scale, reflect ? -p.scale * this.scaleY : p.scale * this.scaleY);
+        if (reflect) ctx.globalAlpha = 0.2;
+        else {
+          const sb = project(this.x, 0, this.z);
+          ctx.fillStyle = `rgba(0,0,0,${Math.max(0, 0.5 - this.y / 400)})`;
+          ctx.beginPath(); ctx.ellipse(0, (sb.y - p.y) / p.scale, 70, 20, 0, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // Dibujado del Atleta Estilo Cyber
+        ctx.strokeStyle = this.color; ctx.lineWidth = 15; ctx.lineCap = 'round';
+        const lp = Math.sin(this.legPhase) * 28;
+        ctx.beginPath(); ctx.moveTo(-18, -25); ctx.lineTo(-18 + lp, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(18, -25); ctx.lineTo(18 - lp, 0); ctx.stroke();
+
+        const grad = ctx.createLinearGradient(0, -110, 0, 0);
+        grad.addColorStop(0, this.color); grad.addColorStop(0.6, '#fff'); grad.addColorStop(1, '#000');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.roundRect(-35, -110, 70, 100, 20); ctx.fill();
+        ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(0, -135, 40, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.roundRect(-25, -150, 50, 16, 8); ctx.fill();
+
+        // Raqueta
+        ctx.save(); ctx.translate(35, -90); ctx.rotate(this.armRot);
+        ctx.strokeStyle = this.color; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -70); ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(0, -70); ctx.lineTo(0, -150); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(0, -190, 42, 60, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore(); ctx.restore(); ctx.globalAlpha = 1;
+      }
+    }
+
+    class Shuttlecock {
+      constructor() { this.reset(); }
+      reset() { this.x = 0; this.y = 550; this.z = NET_Z; this.vx = 0; this.vy = 0; this.vz = 0; this.active = false; }
+      serve(w) { this.reset(); this.active = true; this.vz = w === 1 ? 12 : -12; this.vy = -30; }
+      update() {
+        if (!this.active) return;
+        this.vy += GRAVITY * 0.4; this.x += this.vx; this.y -= this.vy; this.z += this.vz;
+        this.vx *= 0.985; this.vy *= 0.985; this.vz *= 0.985;
+        if (this.y < 240 && Math.abs(this.z - NET_Z) < 30) { this.vz *= -0.5; this.z = this.z < NET_Z ? NET_Z - 31 : NET_Z + 31; }
+        if (this.y <= 0) handlePoint(this.z < NET_Z ? 2 : 1);
+      }
+      draw(ctx, isRef = false) {
+        if (!this.active) return;
+        const p = project(this.x, isRef ? -this.y : this.y, this.z);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.scale, isRef ? -p.scale : p.scale);
+        if (isRef) ctx.globalAlpha = 0.25;
+        ctx.rotate(Math.atan2(this.vy, this.vz));
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-45, -25); ctx.lineTo(-45, 25); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
+        ctx.restore(); ctx.globalAlpha = 1;
+      }
+    }
+
+    const p1 = new Athlete(0, 250, '#00f2ff'), p2 = new Athlete(0, 1050, '#ff00e1'), shuttle = new Shuttlecock();
+
+    function drawArena() {
+      // Fondo Profundo
+      const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+      bg.addColorStop(0, '#050510'); bg.addColorStop(1, '#000');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      // --- GRADAS Y PÚBLICO ---
+      ctx.fillStyle = '#0a0a1a';
+      const drawStand = (x, w, z, h) => {
+        const s1 = project(x, 0, z), s2 = project(x + w, 0, z);
+        const s3 = project(x + w, h, z), s4 = project(x, h, z);
+        ctx.beginPath(); ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y); ctx.lineTo(s3.x, s3.y); ctx.lineTo(s4.x, s4.y); ctx.fill();
+        // Simulación de multitud (puntos)
+        ctx.save(); ctx.clip();
+        for (let j = 0; j < 30; j++) {
+          ctx.fillStyle = `rgba(${100 + Math.random() * 155},${100 + Math.random() * 155},${255}, 0.2)`;
+          const pNoise = project(x + Math.random() * w, Math.random() * h, z);
+          ctx.beginPath(); ctx.arc(pNoise.x, pNoise.y, 2 * pNoise.scale, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      };
+      drawStand(-2000, 4000, 1800, 1000); // Grada trasera
+      drawStand(-2500, 800, 800, 800); // Grada lateral L
+      drawStand(1700, 800, 800, 800); // Grada lateral R
+
+      // --- ESTRUCTURA TECHO ---
+      ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 10;
+      const b1 = project(-2000, 1500, 0), b2 = project(2000, 1500, 0);
+      ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+
+      // Pista Sintética Profesional
+      const pTL = project(-COURT_WIDTH / 2, 0, 0), pTR = project(COURT_WIDTH / 2, 0, 0);
+      const pBL = project(-COURT_WIDTH / 2, 0, COURT_DEPTH), pBR = project(COURT_WIDTH / 2, 0, COURT_DEPTH);
+      ctx.fillStyle = '#0c2d5e'; ctx.beginPath();
+      ctx.moveTo(pTL.x, pTL.y); ctx.lineTo(pTR.x, pTR.y); ctx.lineTo(pBR.x, pBR.y); ctx.lineTo(pBL.x, pBL.y); ctx.fill();
+
+      // Reflejos
+      p1.draw(ctx, true); p2.draw(ctx, true); shuttle.draw(ctx, true);
+
+      // Líneas de juego (Brillo neón)
+      ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255,255,255,0.2)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(pTL.x, pTL.y); ctx.lineTo(pTR.x, pTR.y); ctx.lineTo(pBR.x, pBR.y); ctx.lineTo(pBL.x, pBL.y); ctx.closePath(); ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Red
+      const nL = project(-COURT_WIDTH / 2, 0, NET_Z), nR = project(COURT_WIDTH / 2, 0, NET_Z);
+      const nLT = project(-COURT_WIDTH / 2, 240, NET_Z), nRT = project(COURT_WIDTH / 2, 240, NET_Z);
+      ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
+      ctx.beginPath(); ctx.moveTo(nL.x, nL.y); ctx.lineTo(nR.x, nR.y); ctx.lineTo(nRT.x, nRT.y); ctx.lineTo(nLT.x, nLT.y); ctx.fill();
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(nLT.x, nLT.y); ctx.lineTo(nRT.x, nRT.y); ctx.stroke();
+    }
+
+    function checkCollisions() {
+      if (!shuttle.active) return;
+      [p1, p2].forEach(athlete => {
+        if (athlete.swingActive) {
+          const dx = Math.abs(shuttle.x - athlete.x);
+          const dz = Math.abs(shuttle.z - athlete.z);
+          const dy = shuttle.y - athlete.y;
+
+          // Hitbox indulgente para mejorar "game feel"
+          if (dx < 300 && dz < 350 && dy > -150 && dy < 500) {
+            const type = athlete.swingType;
+            athlete.swingActive = false; // Evitar doble impacto
+
+            const dirZ = athlete === p1 ? 1 : -1;
+            const hitVz = (type === 'smash' ? 42 : (type === 'clear' ? 14 : 9)) * dirZ;
+            const hitVy = type === 'smash' ? 35 : (type === 'clear' ? -45 : -25);
+            const hitVx = (shuttle.x - athlete.x) * 0.06;
+
+            if (mode === 'online' && playerSide === 'black' && athlete === p2) {
+                // Soy el Guest y he golpeado: reporto al Host vía RTDB (Súper veloz)
+                rtdb.ref('rooms/' + networkRoom).update({
+                    p2Hit: { vz: hitVz, vy: hitVy, vx: hitVx, type: type }
+                });
+            } else if (mode !== 'online' || playerSide === 'white') {
+                createExplosion(shuttle.x, shuttle.y, shuttle.z);
+                shuttle.vz = hitVz; shuttle.vy = hitVy; shuttle.vx = hitVx;
+                if (type === 'smash') { flashMsg("ULTRA SMASH!"); gsap.to("#gameCanvas", { x: 20, duration: 0.05, repeat: 10, yoyo: true }); }
+            }
+          }
+        }
+      });
+    }
+
+    function update() {
+      if (!gameActive) return;
+
+      // Movimiento Local
+      if (mode === 'online') {
+          const isP1 = playerSide === 'white';
+          const me = isP1 ? p1 : p2;
+          if (keys['KeyA'] || keys['ArrowLeft']) me.vx = -24; 
+          if (keys['KeyD'] || keys['ArrowRight']) me.vx = 24;
+          if (keys['KeyW'] || keys['ArrowUp']) me.vz = isP1 ? 24 : -24; 
+          if (keys['KeyS'] || keys['ArrowDown']) me.vz = isP1 ? -24 : 24;
+          if (keys['Space'] || keys['Enter']) me.jump();
+      } else {
+        // P1
+        if (keys['KeyA']) p1.vx = -24; if (keys['KeyD']) p1.vx = 24;
+        if (keys['KeyW']) p1.vz = 24; if (keys['KeyS']) p1.vz = -24;
+        if (keys['Space']) p1.jump();
+      }
+
+      // IA
+      if (mode === 'bot' && shuttle.active) {
+        const cfg = BOT_CONFIGS[botLevel];
+        if (shuttle.vz > 0) {
+          // Simular retraso humano en niveles bajos balanceando mediante un seno dinámico
+          let targetX = shuttle.x + (Math.sin(Date.now() * 0.005) * cfg.errorX);
+          let targetZ = shuttle.z + 130 + (Math.cos(Date.now() * 0.003) * cfg.errorZ);
+
+          targetX = Math.max(-400, Math.min(400, targetX));
+          targetZ = Math.max(NET_Z + 100, Math.min(COURT_DEPTH - 100, targetZ));
+
+          // Moverse hacia el objetivo
+          if (p2.x < targetX - 15) p2.vx = cfg.speed; else if (p2.x > targetX + 15) p2.vx = -cfg.speed; else p2.vx *= 0.5;
+          if (p2.z < targetZ - 15) p2.vz = cfg.speed; else if (p2.z > targetZ + 15) p2.vz = -cfg.speed; else p2.vz *= 0.5;
+
+          const dZ = p2.z - shuttle.z;
+          const dX = Math.abs(p2.x - shuttle.x);
+          const dY = shuttle.y - (p2.y + 130);
+
+          // Tomar la decisión de golpear basada en rangos amplios (el hitbox está en update)
+          if (shuttle.z > NET_Z && dZ > -50 && dZ < 250 && dX < 200) {
+            if (shuttle.y > 280 && p2.y === 0) p2.jump();
+            if (dY > -150 && dY < 350) {
+              p2.swing((shuttle.y > 220 || p2.y > 20) ? 'smash' : 'clear');
+            }
+          }
+        } else {
+          // Volver al centro de su pista
+          const cX = 0, cZ = 1050;
+          if (p2.x < cX - 20) p2.vx = cfg.speed * 0.6; else if (p2.x > cX + 20) p2.vx = -cfg.speed * 0.6; else p2.vx *= 0.8;
+          if (p2.z < cZ - 20) p2.vz = cfg.speed * 0.6; else if (p2.z > cZ + 20) p2.vz = -cfg.speed * 0.6; else p2.vz *= 0.8;
+        }
+      } else if (mode === 'local') {
+        if (keys['ArrowLeft']) p2.vx = -24; if (keys['ArrowRight']) p2.vx = 24;
+        if (keys['ArrowUp']) p2.vz = -24; if (keys['ArrowDown']) p2.vz = 24;
+        if (keys['Enter']) p2.jump();
+      }
+
+      p1.update(); p2.update(); 
+      // En modo Online, solo el host calcula la física del volante (Evita desincronización y lag)
+      if (mode !== 'online' || playerSide === 'white') shuttle.update();
+      checkCollisions();
+      particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.z += p.vz; p.life -= 0.05; if (p.life <= 0) particles.splice(i, 1); });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      drawArena();
+      [p1, p2, shuttle].sort((a, b) => b.z - a.z).forEach(e => e.draw(ctx));
+      particles.forEach(p => { const pt = project(p.x, p.y, p.z); ctx.globalAlpha = p.life; ctx.fillStyle = '#fbbf24'; ctx.fillRect(pt.x, pt.y, 8 * pt.scale, 8 * pt.scale); });
+      ctx.globalAlpha = 1; requestAnimationFrame(() => { update(); draw(); });
+    }
+
+    function toggleDifficulty(show) { document.getElementById('menu-initial').style.display = show ? 'none' : 'block'; document.getElementById('difficulty-menu').style.display = show ? 'flex' : 'none'; }
+    function startMode(m, d = 'medium') { mode = m; botLevel = d; document.getElementById('main-menu').style.display = 'none'; gameActive = true; score1 = 0; score2 = 0; shuttle.serve(1); }
+    
+    async function handlePoint(w) { 
+      shuttle.active = false; 
+      if (w === 1) score1++; else score2++; 
+      document.getElementById('score1').innerText = score1; 
+      document.getElementById('score2').innerText = score2; 
+      flashMsg(w === 1 ? "POINT PLAYER 1" : "POINT P2"); 
+      
+      // FIN DEL JUEGO (7 puntos)
+      if (score1 >= 7 || score2 >= 7) {
+         gameActive = false;
+         const p1Wins = score1 >= 7;
+         flashMsg(p1Wins ? "¡P1 GANA!" : "¡P2 GANA!");
+         
+         if (mode === 'online') {
+            const didIWin = (p1Wins && playerSide === 'white') || (!p1Wins && playerSide === 'black');
+            if (window.parent && window.parent.recordMatchResult) {
+                await window.parent.recordMatchResult(didIWin ? 'win' : 'loss', 'Oponente', 'badminton');
+            }
+            // Host actualiza el doc original de firestore como 'finished' para limpiar la sala
+            if (playerSide === 'white' && db) {
+                db.collection('games').doc(networkRoom).update({ status: 'finished', result: didIWin ? 'win' : 'loss' }).catch(()=>{});
+            }
+            setTimeout(() => {
+                if (window.parent && window.parent.document.getElementById('universal-game-exit-btn')) {
+                    window.parent.document.getElementById('universal-game-exit-btn').click();
+                }
+            }, 3000);
+         }
+         return;
+      }
+
+      setTimeout(() => { if (gameActive) shuttle.serve(w); }, 2200); 
+    }
+    
+    function flashMsg(t) { const m = document.getElementById('game-msg'); m.innerText = t; gsap.fromTo(m, { opacity: 1, scale: 0.5 }, { opacity: 0, scale: 3, duration: 1.5 }); }
+    function createExplosion(x, y, z) { for (let i = 0; i < 35; i++) particles.push({ x, y, z, vx: (Math.random() - 0.5) * 55, vy: (Math.random() - 0.5) * 55, vz: (Math.random() - 0.5) * 55, life: 1 }); }
+    window.addEventListener('keydown', e => { 
+      keys[e.code] = true; 
+      if (gameActive) { 
+        if (e.code === 'KeyJ') p1.swing('smash'); if (e.code === 'KeyK') p1.swing('drop'); if (e.code === 'KeyL') p1.swing('clear'); 
+        if (mode === 'local' || (mode === 'online' && playerSide === 'black')) {
+             if (e.code === 'KeyI') p2.swing('smash'); if (e.code === 'KeyO') p2.swing('drop'); if (e.code === 'KeyP') p2.swing('clear');
+        }
+      } 
+    });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // --- MULTIPLAYER CORE (Realtime Database for Game Loop) ---
+    function initNetwork() {
+        if (!networkRoom || !rtdb) return;
+        console.log("[📡] Initializing RTDB 50ms Sync Loop...");
+        
+        const roomRef = rtdb.ref('rooms/' + networkRoom);
+
+        // Listener de la sala (Super rápido 50ms/20tps)
+        roomRef.on('value', snap => {
+            const data = snap.val();
+            if (!data) return;
+            
+            if (playerSide === 'white') {
+                // Soy Host: Recibo P2 y sus golpes
+                if (data.p2Data) { p2.x = data.p2Data.x; p2.z = data.p2Data.z; p2.y = data.p2Data.y; if (data.p2Data.swing) p2.swing(data.p2Data.swing); }
+                if (data.p2Hit) {
+                    const h = data.p2Hit; shuttle.vz = h.vz; shuttle.vy = h.vy; shuttle.vx = h.vx;
+                    createExplosion(shuttle.x, shuttle.y, shuttle.z);
+                    if (h.type === 'smash') flashMsg("P2 SMASH!");
+                    roomRef.update({ p2Hit: null }); // Limpiar el hit emitido
+                }
+            } else {
+                // Soy Guest: Recibo P1, Score y Volante
+                if (data.p1Data) { p1.x = data.p1Data.x; p1.z = data.p1Data.z; p1.y = data.p1Data.y; if (data.p1Data.swing) p1.swing(data.p1Data.swing); }
+                if (data.shuttleData) { shuttle.x = data.shuttleData.x; shuttle.y = data.shuttleData.y; shuttle.z = data.shuttleData.z; shuttle.active = data.shuttleData.active; }
+                if (data.score1 !== undefined) {
+                    score1 = data.score1; score2 = data.score2;
+                    document.getElementById('score1').innerText = score1; document.getElementById('score2').innerText = score2;
+                }
+            }
+        });
+
+        // Loop de transmisión
+        setInterval(() => {
+            if (!gameActive) return;
+            const isP1 = playerSide === 'white';
+            const me = isP1 ? p1 : p2;
+            const myData = { x: Math.round(me.x), y: Math.round(me.y), z: Math.round(me.z) };
+            if (Date.now() - me.lastSwing < 150) myData.swing = me.swingType;
+
+            const updateObj = {};
+            if (isP1) {
+                updateObj.p1Data = myData;
+                updateObj.shuttleData = { x: Math.round(shuttle.x), y: Math.round(shuttle.y), z: Math.round(shuttle.z), active: shuttle.active };
+                updateObj.score1 = score1; updateObj.score2 = score2;
+            } else {
+                updateObj.p2Data = myData;
+            }
+            roomRef.update(updateObj).catch(()=>{});
+        }, 50); // 20 updates per second! (Firestore would crash and charge you heavily, RTDB loves this)
+    }
+
+    if (mode === 'online') {
+        document.getElementById('main-menu').style.display = 'none';
+        document.getElementById('p2-label').innerText = "OPONENTE ONLINE";
+        gameActive = true;
+        initNetwork();
+    }
+
+    draw();
+  </script>
+</body>
+
+</html>
