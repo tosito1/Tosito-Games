@@ -260,6 +260,8 @@ function App() {
     const [diamonds, setDiamonds] = useState(50);
     const [stats, setStats] = useState({ wins: 0, totalScore: 0, gamesPlayed: 0 });
     const [friends, setFriends] = useState([]);
+    const [receivedRequests, setReceivedRequests] = useState([]);
+    const [sentRequests, setSentRequests] = useState([]);
     const [showFriends, setShowFriends] = useState(false);
 
     const handleGoogleLogin = async () => {
@@ -361,6 +363,8 @@ function App() {
                 if (data.diamonds !== undefined) setDiamonds(data.diamonds);
                 if (data.stats) setStats(data.stats);
                 if (data.friends) setFriends(data.friends);
+                if (data.receivedRequests) setReceivedRequests(data.receivedRequests);
+                if (data.sentRequests) setSentRequests(data.sentRequests);
                 if (data.unlockedThemes) setUnlockedThemes(data.unlockedThemes);
                 if (data.bio) setUserBio(data.bio);
                 
@@ -432,18 +436,97 @@ function App() {
         }
     };
 
-    const toggleFriend = async (targetUid, targetName) => {
+    const sendFriendRequest = async (targetUid, targetName) => {
         if (!user || !targetUid || targetUid === user.uid) return;
-        const isFriend = friends.find(f => f.uid === targetUid);
-        const newFriends = isFriend ? friends.filter(f => f.uid !== targetUid) : [...friends, { uid: targetUid, name: targetName }];
+        if (sentRequests.find(r => r.uid === targetUid)) return showError("Ya has enviado una solicitud");
+        if (friends.find(f => f.uid === targetUid)) return showError("Ya sois amigos");
+
         try {
-            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
-            await updateDoc(userRef, { friends: newFriends });
-            if (window.gsap) spawnFloatingText(isFriend ? "ADIÓS AMIGO" : "¡NUEVO AMIGO!", "body");
-        } catch (e) { 
-            console.error(e);
-            showError("Error al actualizar amigos"); 
-        }
+            const batch = db.batch();
+            const myRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            const targetRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', targetUid);
+
+            batch.update(myRef, { sentRequests: firebase.firestore.FieldValue.arrayUnion({ uid: targetUid, name: targetName }) });
+            batch.update(targetRef, { receivedRequests: firebase.firestore.FieldValue.arrayUnion({ uid: user.uid, name: userName }) });
+
+            await batch.commit();
+            if (window.gsap) spawnFloatingText("¡SOLICITUD ENVIADA!", "body");
+        } catch (e) { showError("Error al enviar solicitud"); }
+    };
+
+    const acceptFriendRequest = async (request) => {
+        if (!user) return;
+        try {
+            const batch = db.batch();
+            const myRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            const targetRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', request.uid);
+
+            batch.update(myRef, { 
+                friends: firebase.firestore.FieldValue.arrayUnion({ uid: request.uid, name: request.name }),
+                receivedRequests: firebase.firestore.FieldValue.arrayRemove(request)
+            });
+
+            batch.update(targetRef, { 
+                friends: firebase.firestore.FieldValue.arrayUnion({ uid: user.uid, name: userName }),
+                sentRequests: firebase.firestore.FieldValue.arrayRemove({ uid: user.uid, name: userName })
+            });
+
+            await batch.commit();
+            if (window.gsap) spawnFloatingText("¡NUEVO AMIGO!", "body");
+        } catch (e) { showError("Error al aceptar solicitud"); }
+    };
+
+    const declineFriendRequest = async (request) => {
+        if (!user) return;
+        try {
+            const myRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            const targetRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', request.uid);
+
+            await updateDoc(myRef, { receivedRequests: firebase.firestore.FieldValue.arrayRemove(request) });
+            await updateDoc(targetRef, { sentRequests: firebase.firestore.FieldValue.arrayRemove({ uid: user.uid, name: userName }) });
+            
+            if (window.gsap) spawnFloatingText("SOLICITUD RECHAZADA", "body");
+        } catch (e) { showError("Error al rechazar solicitud"); }
+    };
+
+    const removeFriend = async (targetUid, targetName) => {
+        if (!user) return;
+        if (!window.confirm(`¿Seguro que quieres eliminar a ${targetName}?`)) return;
+        try {
+            const batch = db.batch();
+            const myRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            const targetRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', targetUid);
+
+            batch.update(myRef, { friends: firebase.firestore.FieldValue.arrayRemove({ uid: targetUid, name: targetName }) });
+            batch.update(targetRef, { friends: firebase.firestore.FieldValue.arrayRemove({ uid: user.uid, name: userName }) });
+
+            await batch.commit();
+            if (window.gsap) spawnFloatingText("AMIGO ELIMINADO", "body");
+        } catch (e) { showError("Error al eliminar amigo"); }
+    };
+
+    const cancelFriendRequest = async (targetUid, targetName) => {
+        if (!user) return;
+        try {
+            const batch = db.batch();
+            const myRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            const targetRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', targetUid);
+
+            batch.update(myRef, { sentRequests: firebase.firestore.FieldValue.arrayRemove({ uid: targetUid, name: targetName }) });
+            batch.update(targetRef, { receivedRequests: firebase.firestore.FieldValue.arrayRemove({ uid: user.uid, name: userName }) });
+
+            await batch.commit();
+            if (window.gsap) spawnFloatingText("SOLICITUD CANCELADA", "body");
+        } catch (e) { showError("Error al cancelar solicitud"); }
+    };
+
+    const toggleFriend = (uid, name) => {
+        const isFriend = friends.find(f => f.uid === uid);
+        const isPending = sentRequests.find(r => r.uid === uid);
+        
+        if (isFriend) removeFriend(uid, name);
+        else if (isPending) cancelFriendRequest(uid, name);
+        else sendFriendRequest(uid, name);
     };
 
     const handleUpdateName = async (newName) => {
@@ -2192,8 +2275,9 @@ function App() {
                             <button onClick={() => setProfileTab('stats')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'stats' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                                 <Icon name="BarChart3" size={14} /> Stats
                             </button>
-                            <button onClick={() => setProfileTab('friends')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'friends' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                            <button onClick={() => setProfileTab('friends')} className={`relative flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'friends' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                                 <Icon name="Heart" size={14} /> Amigos
+                                {receivedRequests.length > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[8px] animate-bounce shadow-lg">{receivedRequests.length}</span>}
                             </button>
                             <button onClick={() => setProfileTab('search')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'search' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
                                 <Icon name="Search" size={14} /> Buscar
@@ -2257,7 +2341,32 @@ function App() {
                                                         <h4 className="font-black text-white text-sm truncate uppercase tracking-widest">{result.name}</h4>
                                                         <p className="text-[9px] text-slate-400 truncate font-bold italic opacity-70">"{result.bio || 'Sin biografía'}"</p>
                                                     </div>
-                                                    <button onClick={() => toggleFriend(result.uid, result.name)} className="bg-emerald-600 hover:bg-emerald-500 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg group-hover:rotate-6"><Icon name="UserPlus" size={18} /></button>
+                                                    {(() => {
+                                                        const isFriend = friends.find(f => f.uid === result.uid);
+                                                        const isPending = sentRequests.find(r => r.uid === result.uid);
+                                                        const hasReceived = receivedRequests.find(r => r.uid === result.uid);
+
+                                                        if (isFriend) return (
+                                                            <button onClick={() => removeFriend(result.uid, result.name)} className="bg-slate-700 hover:bg-rose-600 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg group-hover:rotate-6">
+                                                                <Icon name="UserCheck" size={18} />
+                                                            </button>
+                                                        );
+                                                        if (isPending) return (
+                                                            <button onClick={() => cancelFriendRequest(result.uid, result.name)} className="bg-amber-600 hover:bg-rose-500 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg animate-pulse">
+                                                                <Icon name="UserMinus" size={18} />
+                                                            </button>
+                                                        );
+                                                        if (hasReceived) return (
+                                                            <button onClick={() => setProfileTab('friends')} className="bg-indigo-600 hover:bg-indigo-500 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg">
+                                                                <Icon name="Bell" size={18} />
+                                                            </button>
+                                                        );
+                                                        return (
+                                                            <button onClick={() => sendFriendRequest(result.uid, result.name)} className="bg-emerald-600 hover:bg-emerald-500 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg group-hover:rotate-6">
+                                                                <Icon name="UserPlus" size={18} />
+                                                            </button>
+                                                        );
+                                                    })()}
                                                 </div>
                                             ))
                                         ) : searchQuery.trim() && !isSearching && (
@@ -2270,21 +2379,59 @@ function App() {
                                 </div>
                             )}
                             {profileTab === 'friends' && (
-                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-3">
+                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                                    {/* SECCIÓN: SOLICITUDES RECIBIDAS */}
+                                    {receivedRequests.length > 0 && (
+                                        <div className="space-y-3">
+                                            <h3 className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-3 ml-1 flex items-center gap-2">
+                                                <Icon name="Bell" size={12} className="animate-tada" /> Solicitudes Pendientes
+                                            </h3>
+                                            {receivedRequests.map(r => (
+                                                <div key={r.uid} className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-center gap-4 animate-in zoom-in-95">
+                                                    <div className="w-10 h-10 rounded-xl bg-rose-500 flex items-center justify-center text-white font-black text-sm">{r.name.substring(0, 1)}</div>
+                                                    <div className="flex-1">
+                                                        <div className="font-black text-white text-xs">{r.name}</div>
+                                                        <div className="text-[8px] font-bold text-rose-400 uppercase tracking-widest">Quiere jugar contigo</div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => acceptFriendRequest(r)} className="w-8 h-8 bg-emerald-500 hover:bg-emerald-400 text-white rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-lg"><Icon name="Check" size={16} /></button>
+                                                        <button onClick={() => declineFriendRequest(r)} className="w-8 h-8 bg-slate-700 hover:bg-slate-600 text-white rounded-lg flex items-center justify-center transition-all active:scale-90"><Icon name="X" size={16} /></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="h-px bg-white/5 my-4"></div>
+                                        </div>
+                                    )}
+
                                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Mis Amigos ({friends.length})</h3>
                                     {friends.length === 0 ? (
                                         <div className="p-8 text-center bg-white/5 rounded-3xl border border-dashed border-white/10 text-slate-500 text-xs font-bold italic">Aún no has agregado a nadie</div>
                                     ) : (
                                         friends.map(f => (
-                                            <div key={f.uid} className="bg-slate-800 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+                                            <div key={f.uid} className="bg-slate-800 border border-white/5 rounded-2xl p-4 flex items-center gap-4 hover:border-white/10 transition-colors">
                                                 <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center text-white font-black text-sm">{f.name.substring(0, 2)}</div>
                                                 <div className="flex-1">
                                                     <div className="font-black text-white text-xs">{f.name}</div>
                                                     <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Amigo</div>
                                                 </div>
-                                                <button onClick={() => toggleFriend(f.uid, f.name)} className="text-slate-500 hover:text-rose-400 transition-colors p-2"><Icon name="HeartOff" size={16} /></button>
+                                                <button onClick={() => removeFriend(f.uid, f.name)} className="text-slate-500 hover:text-rose-400 transition-colors p-2 active:scale-90"><Icon name="UserMinus" size={16} /></button>
                                             </div>
                                         ))
+                                    )}
+
+                                    {/* SECCIÓN: SOLICITUDES ENVIADAS */}
+                                    {sentRequests.length > 0 && (
+                                        <div className="pt-4 border-t border-white/5">
+                                            <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3 ml-1">Esperando respuesta...</h3>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {sentRequests.map(r => (
+                                                    <div key={r.uid} className="bg-black/20 border border-white/5 p-3 rounded-xl flex items-center gap-2">
+                                                        <div className="w-6 h-6 rounded-lg bg-slate-700 flex items-center justify-center text-white text-[10px] font-black">{r.name.substring(0, 1)}</div>
+                                                        <span className="text-[10px] font-bold text-slate-400 truncate">{r.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             )}
