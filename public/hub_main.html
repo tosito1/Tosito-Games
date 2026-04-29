@@ -87,14 +87,13 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;900&family=Orbitron:wght@600;800;900&display=swap"
     rel="stylesheet">
 
-  <!-- MOBILE DEBUGGER (ERUDA) -->
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <!-- <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>
     if (window.location.search.includes('debug=true') || window.location.hostname.startsWith('192.168.')) {
       eruda.init();
       console.log("[🛠️] Eruda Console Initialized");
     }
-  </script>
+  </script> -->
 
   <style>
     /* UNIVERSAL GAME EXIT BUTTON */
@@ -3986,6 +3985,12 @@
     <iframe id="semantika-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
   </div>
 
+  <!-- Palabritas Go -->
+  <div id="screen-palabritas_go" class="screen"
+    style="padding:0 !important; overflow:hidden !important; position:fixed !important; inset:0 !important; z-index:9999 !important; background:#020617 !important; max-width:none !important; margin:0 !important; width:100vw !important; height:100vh !important; border:none !important;">
+    <iframe id="palabritas-go-frame" src="about:blank" style="width:100%; height:100%; border:none; display:block;"></iframe>
+  </div>
+
 
   <!-- ======================================================
        TRES EN RAYA
@@ -4357,8 +4362,8 @@
             style="border-color:var(--purple);color:var(--purple);">💾 Migrar Ejercicios</button>
           <button id="btn-migrate-hist" onclick="migrateHistoricalToFirestore()" class="btn btn-glass"
             style="border-color:var(--sky);color:var(--sky);">🏆 Migrar Histórico</button>
-          <button onclick="autoSeedHub()" class="btn btn-primary"
-            style="background:var(--sky); color:black; border:none; font-weight:800;">🚀 RE-CARGAR HUB CMS</button>
+          <button onclick="rebuildHubCatalog()" class="btn btn-primary"
+            style="background:var(--sky); color:black; border:none; font-weight:800;">🚀 RE-SINCRONIZAR HUB (CMS)</button>
           <button onclick="db.collection('puzzles').get().then(s=>toast('Puzzles: '+s.size))" class="btn btn-glass">📊
             Info Puzzles</button>
           <button onclick="db.collection('users').get().then(s=>toast('Usuarios: '+s.size))" class="btn btn-glass">👤

@@ -1,0 +1,1824 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Play, RotateCcw, Shuffle, Undo2, Star, Info, Coins, Flame, Zap, User, ArrowUpRight, Target, LayoutDashboard, Crown, ZoomIn, ZoomOut, Maximize, Users, Plus, LogIn, SkipForward, Clock, Smile, Palette, ShoppingCart, Lock, Unlock, Lightbulb, CheckCircle2, Menu, BrainCircuit, BookOpen, Search, Wand2 } from 'lucide-react';
+
+// --- FIREBASE IMPORTS ---
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+
+// --- FIREBASE SETUP ---
+let app: any, auth: any, db: any;
+let globalAppId = 'default-app-id';
+
+try {
+    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        const firebaseConfig = JSON.parse(__firebase_config);
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        globalAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    }
+} catch (e) {
+    console.warn("Firebase no detectado.");
+}
+
+// --- DICCIONARIO LOCAL COMPRIMIDO (100% OFFLINE, NO API, NO TOKENS) ---
+// Contiene las palabras más comunes de Scrabble Español, incluyendo todas las conectivas vitales de 2 y 3 letras.
+const LOCAL_DICT_STRING = "A,AH,AL,AS,AY,BE,CE,CH,DA,DE,DI,DO,EA,EL,EN,ES,EX,FA,FE,HA,HE,IR,LA,LE,LL,LO,ME,MI,NI,NO,OA,OC,OH,OR,OS,PE,PI,RE,RR,SE,SI,SO,SU,TA,TE,TI,TU,UF,UN,YA,YO,MAR,SAL,LUZ,PAN,FIN,SUR,NOR,OLA,OSO,UCA,TIO,TIA,REY,LEY,AJO,ALA,AMA,AMO,ANA,ANO,ARA,ARO,AVE,CAR,COL,CON,DAR,DEL,DIA,DOS,ECO,EJE,ESA,ESE,ESO,FIN,FUE,FUI,GOL,HAZ,IBA,IDA,IDO,IRA,IVA,LAR,LEO,LIO,LIS,LUZ,MAL,MAR,MAS,MIA,MIO,MIR,MIS,MUY,NOE,NON,NOS,OIR,OJO,OLA,OLE,ORO,OSO,PAN,PAR,PAZ,PEZ,PIE,PIN,PIO,POR,PUS,QUE,RED,REO,RES,REY,RIO,RON,ROS,ROU,SAL,SAN,SED,SER,SIN,SOL,SON,SOR,SOS,SOY,SUR,SUS,TAL,TAN,TAS,TAZ,TEN,TIA,TIO,TOS,UÑA,UNO,USO,UTO,UVA,VAN,VAS,VAZ,VEN,VER,VES,VEZ,VIA,VIO,VOS,VOZ,ZAR,ZEN,ZAS,ZOO,HOLA,CASA,GATO,PERRO,PATO,JUEGO,LETRAS,PALABRA,ROSA,LUNA,MESA,SILLA,COCHE,MOTO,REINA,PLATA,AMOR,AGUA,FUEGO,TIERRA,AIRE,VIDA,TIEMPO,HORA,NOCHE,SIGLO,HOY,AYER,MANANA,SIEMPRE,NUNCA,TODO,NADA,ALGO,MUCHO,POCO,MENOS,BIEN,BUENO,MALO,MEJOR,PEOR,GRANDE,PEQUENO,ALTO,BAJO,LARGO,CORTO,ANCHO,ESTRECHO,GORDO,FLACO,BELLO,FEO,LINDO,HERMOSO,PRECIOSO,HORRIBLE,BLANCO,NEGRO,ROJO,AZUL,VERDE,AMARILLO,NARANJA,MORADO,MARRON,GRIS,CERO,TRES,CUATRO,CINCO,SEIS,SIETE,OCHO,NUEVE,DIEZ,BINGO,ESTAR,TENER,HACER,DECIR,PODER,SABER,QUERER,LLEGAR,PASAR,DEBER,PONER,PARECER,QUEDAR,CREER,HABLAR,LLEVAR,DEJAR,SEGUIR,ENCONTRAR,LLAMAR,VENIR,PENSAR,SALIR,VOLVER,TOMAR,CONOCER,VIVIR,SENTIR,TRATAR,MIRAR,CONTAR,EMPEZAR,ESPERAR,BUSCAR,EXISTIR,ENTRAR,TRABAJAR,ESCRIBIR,PERDER,PRODUCIR,OCURRIR,ENTENDER,PEDIR,RECIBIR,RECORDAR,TERMINAR,PERMITIR,APARECER,CONSEGUIR,COMENZAR,SERVIR,SACAR,NECESITAR,MANTENER,RESULTAR,LEER,CAER,CAMBIAR,PRESENTAR,CREAR,ABRIR,CONSIDERAR,ACABAR,CONVERTIR,GANAR,FORMAR,TRAER,PARTIR,MORIR,ACEPTAR,REALIZAR,SUPONER,COMPRENDER,LOGRAR,EXPLICAR,PREGUNTAR,TOCAR,RECONOCER,ESTUDIAR,ALCANZAR,NACER,DIRIGIR,CORRER,UTILIZAR,PAGAR,AYUDAR,GUSTAR,JUGAR,ESCUCHAR,CUMPLIR,OFRECER,DESCUBRIR,LEVANTAR,INTENTAR,ARBOL,BOSQUE,FLOR,PLANTA,HOJA,RAIZ,FRUTA,SEMILLA,HIERBA,CAMPO,PRADO,MONTANA,VALLE,LAGO,OCEANO,ISLA,PLAYA,ARENA,PIEDRA,ROCA,CUEVA,CIELO,NUBE,LLUVIA,NIEVE,HIELO,VIENTO,TORMENTA,RAYO,TRUENO,ANIMAL,PAJARO,INSECTO,CABALLO,VACA,CERDO,OVEJA,GALLINA,RATON,LEON,TIGRE,LOBO,ELEFANTE,MONO,SERPIENTE,RANA,HOMBRE,MUJER,NINO,NINA,CHICO,CHICA,PADRE,MADRE,HIJO,HIJA,HERMANO,HERMANA,ABUELO,ABUELA,PRIMO,PRIMA,AMIGA,FAMILIA,PUEBLO,CIUDAD,PAIS,MUNDO,CALLE,PLAZA,AVENIDA,CARRETERA,CAMINO,PUENTE,EDIFICIO,PUERTA,VENTANA,PARED,TECHO,SUELO,HABITACION,CUARTO,SALA,COCINA,BANO,CAMA,SOFA,ARMARIO,ESPEJO,RELOJ,CUADRO,LIBRO,CUADERNO,LAPIZ,BOLIGRAFO,PAPEL,CARTA,SOBRE,TARJETA,PERIODICO,REVISTA,DINERO,BILLETE,MONEDA,PRECIO,VALOR,COMPRA,VENTA,TIENDA,MERCADO,SUPERMERCADO,NEGOCIO,EMPRESA,OFICINA,TRABAJO,EMPLEO,PROFESION,OFICIO,MEDICO,DOCTOR,ENFERMERA,ENFERMERO,MAESTRA,PROFESOR,PROFESORA,ALUMNO,ALUMNA,ESTUDIANTE,ESCUELA,COLEGIO,UNIVERSIDAD,CLASE,CURSO,LECCION,EXAMEN,PRUEBA,NOTA,CALIFICACION,ARTE,MUSICA,PINTURA,DIBUJO,FOTOGRAFIA,CINE,TEATRO,ACTOR,ACTRIZ,DIRECTORA,ESCRITOR,ESCRITORA,POETA,POEMA,NOVELA,CUENTO,HISTORIA,LEYENDA,MITO,CIENCIA,TECNOLOGIA,INFORMATICA,ORDENADOR,COMPUTADORA,PANTALLA,TECLADO,INTERNET,RED,WEB,PAGINA,SITIO,ENLACE,CORREO,MENSAJE,FOTO,IMAGEN,VIDEO,SONIDO,AUDIO,VOZ,FRASE,ORACION,TEXTO,IDIOMA,LENGUA,GRAMATICA,DICCIONARIO,TRADUCCION,NOMBRE,APELLIDO,FIRMA,NUMERO,LETRA,SIGNO,SIMBOLO,MARCA,PUNTO,COMA,GUION,ESPACIO,CLARO,OSCURO,BRILLANTE,MATE,COLOR,TONO,MATIZ,FORMA,FIGURA,LINEA,CURVA,CIRCULO,CUADRADO,TRIANGULO,RECTANGULO,TAMANO,MEDIDA,DIMENSION,LONGITUD,ANCHURA,ALTURA,PROFUNDIDAD,PESO,MASA,VOLUMEN,CANTIDAD,CIFRA,SUMA,RESTA,MULTIPLICACION,DIVISION,OPERACION,CALCULO,RESULTADO,PROBLEMA,SOLUCION,PREGUNTA,RESPUESTA,DUDA,CERTEZA,VERDAD,MENTIRA,ERROR,FALLO,ACIERTO,EXITO,FRACASO,VICTORIA,DERROTA,GANANCIA,PERDIDA,VENTAJA,DESVENTAJA,BENEFICIO,PERJUICIO,PREMIO,CASTIGO,RECOMPENSA,SANCION,REGALO,OBSEQUIO,DON,TALENTO,HABILIDAD,CAPACIDAD,APTITUD,INTELIGENCIA,MEMORIA,IMAGINACION,PENSAMIENTO,IDEA,CONCEPTO,OPINION,CREENCIA,FE,RELIGION,DIOS,ALMA,ESPIRITU,CUERPO,MENTE,CORAZON,CABEZA,CARA,OREJA,BOCA,NARIZ,LABIO,DIENTE,CUELLO,HOMBRO,BRAZO,CODO,MANO,DEDO,PECHO,ESPALDA,BARRIGA,ESTOMAGO,PIERNA,RODILLA,PIEL,HUESO,SANGRE,VENA,ARTERIA,MUSCULO,NERVIO,ENFERMEDAD,SALUD,DOLOR,FIEBRE,TOS,MEDICINA,REMEDIO,PASTILLA,PILDORA,JARABE,VACUNA,HOSPITAL,CLINICA,FARMACIA,RECETA,TRATAMIENTO,CURA,SANACION,CIRUGIA,PACIENTE,SINTOMA,DIAGNOSTICO,PRONOSTICO,ANALISIS,ESTUDIO,INVESTIGACION,CIENTIFICO,EXPERIMENTO,DESCUBRIMIENTO,INVENTO,TEORIA,HIPOTESIS,METODO,SISTEMA,PROCESO,DESARROLLO,EVOLUCION,CAMBIO,TRANSFORMACION,CRECIMIENTO,PROGRESO,AVANCE,RETROCESO,AUMENTO,DISMINUCION,MEJORA,EMPEORAMIENTO,PRINCIPIO,INICIO,FINAL,COMIENZO,TERMINO,ORIGEN,DESTINO,CAUSA,EFECTO,MOTIVO,RAZON,EXPLICACION,JUSTIFICACION,ARGUMENTO,DEMOSTRACION,EVIDENCIA,CONFIRMACION,VERIFICACION,COMPROBACION,VALIDACION,ACEPTACION,RECHAZO,APROBACION,DESAPROBACION,ACUERDO,DESACUERDO,CONSENSO,CONFLICTO,DISPUTA,PELEA,LUCHA,COMBATE,BATALLA,GUERRA,TREGUA,ARMISTICIO,TRATADO,PACTO,ALIANZA,COALICION,UNION,SEPARACION,DIVISION,RUPTURA,FRACTURA,CORTE,GOLPE,GOLPEAR,PEGAR,CHOCAR,ROMPER,QUEBRAR,DESTRUIR,ARRUINAR,ESTROPEAR,DANAR,LASTIMAR,HERIR,MATAR,ASESINAR,FALLECER,PERECER,SOBREVIVIR,RESUSCITAR,RENACER,GENERAR,FABRICAR,CONSTRUIR,EDIFICAR,LEVANTE,ALZAR,COMPONER,ORGANIZAR,ESTRUCTURAR,ORDENAR,ARREGLAR,PREPARAR,DISPONER,LISTO,ATENTO,DESPIERTO,DORMIDO,CANSADO,AGOTADO,FATIGADO,ABURRIDO,HARTO,HASTIO,INTERES,ATENCION,CURIOSIDAD,SORPRESA,ASOMBRO,ADMIRACION,MARAVILLA,RESPECTO,ESTIMA,CONSIDERACION,APRECIO,AFECTO,CARINO,PASION,DESEO,ANHELO,GUSTO,PLACER,ALEGRIA,FELICIDAD,GOZO,REGOCIJO,DIVERSION,ENTRETENIMIENTO,DEPORTE,FUTBOL,BALONCESTO,TENIS,NATACION,ATLETISMO,CARRERA,SALTO,LANZAMIENTO,GIMNASIA,EJERCICIO,ENTRENAMIENTO,PRACTICA,ENSAYO,COMPETICION,TORNEO,CAMPEONATO,PARTIDO,ENCUENTRO,RIVAL,OPONENTE,ADVERSARIO,ENEMIGO,ALIADO,COMPANERO,COLEGA,SOCIO,ASOCIADO,COLABORADOR,PARTICIPANTE,MIEMBRO,PARTE,TOTALIDAD,CONJUNTO,GRUPO,EQUIPO,BANDA,PANDILLA,MULTITUD,MUCHEDUMBRE,MASA,GENTE,PERSONA,INDIVIDUO,ENTE,CRIATURA,COSA,OBJETO,ELEMENTO,ARTICULO,PIEZA,COMPONENTE,INGREDIENTE,MATERIAL,SUSTANCIA,MATERIA,LUGAR,SITIO,POSICION,UBICACION,SITUACION,ESTADO,CONDICION,CIRCUNSTANCIA,CASO,HECHO,SUCESO,ACONTECIMIENTO,EVENTO,INCIDENTE,ACCIDENTE,OCASION,OPORTUNIDAD,POSIBILIDAD,PROBABILIDAD,CASUALIDAD,SUERTE,AZAR,FORTUNA,DESGRACIA,DESASTRE,TRAGEDIA,CATASTROFE,PELIGRO,RIESGO,AMENAZA,ADVERTENCIA,AVISO,SENAL,INDICIO,MUESTRA,HUELLA,RASTRO,PISTA,CLAVE,SECRETO,MISTERIO,ENIGMA,ACERTIJO,ROMPECABEZAS,CUESTION,ASUNTO,TEMA,DISCURSO,CHARLA,CONVERSACION,DIALOGO,DEBATE,DISCUSION,PUNTO,VISTA,PERSPECTIVA,ENFOQUE,TRATAMIENTO,REVISION,CRITICA,EVALUACION,VALORACION,JUICIO,VEREDICTO,SENTENCIA,DECISION,RESOLUCION,CONCLUSION,CONSECUENCIA,IMPACTO,INFLUENCIA,REPERCUSION,IMPORTANCIA,RELEVANCIA,SIGNIFICADO,SENTIDO,MERITO,UTILIDAD,VENTAJA,PROVECHO,CONVENIENCIA,NECESIDAD,OBLIGACION,DEBER,RESPONSABILIDAD,COMPROMISO,PROMESA,VOTO,JURAMENTO,CONTRATO,DOCUMENTO,PAPEL,ESCRITO,NOTA,APUNTE,REGISTRO,INFORME,REPORTE,DECLARACION,TESTIMONIO,CONFESION,RECONOCIMIENTO,ADMISION,NEGATIVA,OPOSICION,RESISTENCIA,DEFENSA,PROTECCION,SEGURIDAD,REFUGIO,AMPARO,ASILO,HOGAR,VIVIENDA,DOMICILIO,RESIDENCIA,DIRECCION,ALDEA,VILLA,COMARCA,REGION,PROVINCIA,ESTADO,NACION,REPUBLICA,REINO,IMPERIO,CONTINENTE,GLOBO,PLANETA,ASTRO,ESTRELLA,SATELITE,COMETA,METEORITO,COSMOS,GALAXIA,ORDEN,ARREGLO,DISPOSICION,ORGANIZACION,ESTRUCTURA,FORMA,DISENO,MODELO,PATRON,NORMA,REGLA,LEY,PRINCIPIO,PRECEPTO,MANDATO,INSTRUCCION,DIRECCION,GUIA,MANUAL,TUTORIAL,CURSO,CLASE,LECCION,ENSENANZA,EDUCACION,FORMACION,PREPARACION,ADIESTRAMIENTO,ENTRENAMIENTO,PRACTICA,EXPERIENCIA,CONOCIMIENTO,SABIDURIA,INTELIGENCIA,ENTENDIMIENTO,COMPRENSION,RAZON,LOGICA,PENSAMIENTO,IDEA,CONCEPTO,NOCION,IMAGEN,REPRESENTACION,SOMBOLO,SIGNO,MARCA,TESTIMONIO,EVIDENCIA,CONFIRMACION,VERIFICACION,COMPROBACION,DEMOSTRACION,ARGUMENTO,RAZONAMIENTO,EXPLICACION,JUSTIFICACION,MOTIVO,CAUSA,ORIGEN,FUENTE,RAIZ,BASE,FUNDAMENTO,CIMIENTO,SOSTEN,APOYO,AYUDA,AUXILIO,SOCORRO,RESCATE,SALVACION,LIBERACION,LIBERTAD,INDEPENDENCIA,AUTONOMIA,SOBERANIA,PODER,AUTORIDAD,MANDO,DOMINIO,CONTROL,INFLUENCIA,PESO,FUERZA,ENERGIA,VIGOR,POTENCIA,CAPACIDAD,HABILIDAD,DESTREZA,ARTE,MAESTRIA,TALENTO,DON,GENIO,INGENIO,INVENTIVA,CREATIVIDAD,IMAGINACION,FANTASIA,ILUSION,SUENO,ESPERANZA,DESEO,ANHELO,ASPIRACION,AMBICION,META,OBJETIVO,PROPOSITO,INTENCION,PLAN,PROYECTO,PROGRAMA,ESQUEMA,BOSQUEJO,BOCETO,DIBUJO,PINTURA,CUADRO,RETRATO,FOTOGRAFIA,FIGURA,ASPECTO,APARIENCIA,PRESENCIA,VISION,VISTA,MIRADA,OJEADA,OBSERVACION,EXAMEN,ANALISIS,ESTUDIO,REVISION,INSPECCION,CONTROL,VIGILANCIA,SUPERVISION,ADMINISTRACION,GESTION,MANEJO,CONDUCCION,GOBIERNO,LIDERAZGO,JEFATURA,VIOLENCIA,COACCION,PRESION,PRODUCTO,FRUTO,OBRA,CREACION,INVENTO,DESCUBRIMIENTO,HALLAZGO,NOVEDAD,INNOVACION,ADELANTO,PROGRESO,MEJORA,AVANCE,DESARROLLO,CRECIMIENTO,AUMENTO,EXPANSION,EXTENSION,AMPLIACION,DIFUSION,PROPAGACION,COMUNICACION,TRANSMISION,DIVULGACION,PUBLICACION,EDICION,IMPRESION,EMISION,RETRANSMISION,REPARTO,DISTRIBUCION,ENTREGA,ENVIO,ENCARGO,MISION,TAREA,TRABAJO,LABOR,OFICIO,PROFESION,EMPLEO,OCUPACION,CARGO,PUESTO,FUNCION,PAPEL,ROL,ACTUACION,INTERVENCION,PARTICIPACION,PRESENCIA,ASISTENCIA,COMPANIA,ACOMPANAMIENTO,APOYO,AYUDA,COLABORACION,COOPERACION,ASOCIACION,ALIANZA,UNION,FUSION,MEZCLA,COMBINACION,CONJUNTO,TOTAL,FRACCION,PORCION,TROZO,PEDAZO,FRAGMENTO,SEGMENTO,SECCION,DIVISION,REPARTO,CUOTA,RACION,DOSIS,CANTIDAD,NUMERO,CIFRA,SUMA,VOLUMEN,MASA,PESO,TAMANO,MEDIDA,DIMENSION,ESCALA,PROPORCION,RELACION,TASA,INDICE,NIVEL,GRADO,PUNTO,LIMITE,TOPE,MAXIMO,MINIMO,PROMEDIO,MEDIA,CENTRO,MEDIO,MITAD,EXTREMO,BORDE,ORILLA,MARGEN,FRONTERA,LINDERO,SEPARACION,BARRERA,OBSTACULO,IMPEDIMENTO,DIFICULTAD,PROBLEMA,CONTRATIEMPO,INCONVENIENTE,ESTORBO,FRENO,RETRASO,DEMORA,TARDANZA,ESPERA,PAUSA,PARADA,INTERRUPCION,SUSPENSION,CESE,FIN,TERMINO,CONCLUSION,CIERRE,CLAUSURA,DESPEDIDA,ADIOS,SALUDO,BIENVENIDA,RECEPCION,ACOGIDA,HOSPITALIDAD,AMABILIDAD,CORTESIA,ATENCION,CUIDADO,MIMO,CARINO,AFECTO,AMOR,AMISTAD,SIMPATIA,EMPATIA,COMPASION,PIEDAD,MISERICORDIA,PERDON,DISCULPA,EXCUSA,JUSTIFICACION,EXPLICACION,ACLARACION,RESPUESTA,CONTESTACION,REPLICA,COMENTARIO,OBSERVACION,NOTA,APUNTE,MENSAJE,CARTA,ESCRITO,DOCUMENTO,TEXTO,PALABRA,FRASE,ORACION,DISCURSO,DECLARACION,AFIRMACION,NEGACION,PREGUNTA,INTERROGACION,CUESTION,DUDA,SOSPECHA,INCERTIDUMBRE,INSEGURIDAD,TEMOR,MIEDO,TERROR,PANICO,SUSTO,SORPRESA,ASOMBRO,ADMIRACION,MARAVILLA,EXTRANEZA,CURIOSIDAD,INTERES,ATENCION,VIGILANCIA,PRECAUCION,PRUDENCIA,SENSATEZ,SABIDURIA,CONOCIMIENTO,EXPERIENCIA,PRACTICA,HABILIDAD,DESTREZA,TECNICA,METODO,SISTEMA,PROCEDIMIENTO,PROCESO,MARCHA,DESARROLLO,CURSO,EVOLUCION,HISTORIA,PASADO,PRESENTE,FUTURO,TIEMPO,EPOCA,ERA,EDAD,PERIODO,FASE,ETAPA,CICLO,VUELTA,GIRO,ROTACION,REVOLUCION,MOVIMIENTO,DESPLAZAMIENTO,TRASLADO,VIAJE,TRAYECTO,RECORRIDO,CAMINO,RUTA,ITINERARIO,DIRECCION,SENTIDO,RUMBO,ORIENTACION,DESTINO,META,FIN,OBJETIVO,PROPOSITO,INTENCION,VOLUNTAD,DESEO,ANHELO,ESPERANZA,ILUSION,SUENO,FANTASIA,IMAGINACION,CREATIVIDAD,INVENTIVA,INGENIO,TALENTO,DON,CAPACIDAD,APTITUD,FACULTAD,PODER,FUERZA,ENERGIA,VIGOR,VITALIDAD,SALUD,BIENESTAR,CONFORT,COMODIDAD,PLACER,GUSTO,DISFRUTE,GOZO,ALEGRIA,FELICIDAD,DITUD,CONTENTO,SATISFACCION,ORGULLO,HONOR,DIGNIDAD,RESPETO,ESTIMA,VALOR,MERITO,VIRTUD,CUALIDAD,CARACTERISTICA,PROPIEDAD,ATRIBUTO,RASGO,ASPECTO,APARIENCIA,FORMA,FIGURA,IMAGEN,REPRESENTACION,SOMBOLO,SENAL,MARCA,INDICIO,PRUEBA,MUESTRA,EVIDENCIA,DEMOSTRACION,CONFIRMACION,VERIFICACION,EXAMEN,ANALISIS,ESTUDIO,REVISION,INSPECCION,CONTROL,DOMINIO,MANDO,PODER,AUTORIDAD,GOBIERNO,DIRECCION,ADMINISTRACION,GESTION,MANEJO,TRATAMIENTO,CUIDADO,ATENCION,SERVICIO,AYUDA,APOYO,COLABORACION,COOPERACION,PARTICIPACION,PRESENCIA,ASISTENCIA,COMPANIA,AMISTAD,AMOR,AFECTO,CARINO,PASION,DESEO,ATRACCION,INTERES,CURIOSIDAD,ATENCION,CONCENTRACION,MEDITACION,PENSAMIENTO,REFLEXION,ESTUDIO,APRENDIZAJE,CONOCIMIENTO,SABER,CIENCIA,ARTE,TECNICA,OFICIO,PROFESION,TRABAJO,LABOR,TAREA,OBRA,ACCION,ACTO,HECHO,SUCESO,ACONTECIMIENTO,EVENTO,INCIDENTE,CASO,ASUNTO,TEMA,CUESTION,PROBLEMA,DIFICULTAD,OBSTACULO,IMPEDIMENTO,BARRERA,LIMITE,FRONTERA,FIN,TERMINO,CONCLUSION,CIERRE,DESENLACE,RESULTADO,CONSECUENCIA,EFECTO,IMPACTO,INFLUENCIA,REPERCUSION,IMPORTANCIA,VALOR,SIGNIFICADO,SENTIDO,RAZON,MOTIVO,CAUSA,ORIGEN,PRINCIPIO,FUENTE,BASE,FUNDAMENTO,CIMIENTO,RAIZ,NUCLEO,CENTRO,MEDIO,MITAD,CORAZON,FONDO,ESENCIA,NATURALEZA,SUSTANCIA,MATERIA,MATERIAL,ELEMENTO,COMPONENTE,PIEZA,PARTE,FRACCION,PORCION,CANTIDAD,NUMERO,CIFRA,MEDIDA,TAMANO,DIMENSION,VOLUMEN,PESO,MASA,FORMA,ESTRUCTURA,ORGANIZACION,SISTEMA,ORDEN,DISPOSICION,ARREGLO,COMPOSICION,CREACION,FORMACION,PRODUCCION,FABRICACION,CONSTRUCCION,EDIFICACION,DESARROLLO,CRECIMIENTO,AUMENTO,EXPANSION,EXTENSION,AMPLIACION,DIFUSION,PROPAGACION,COMUNICACION,TRANSMISION,MENSAJE,INFORMACION,NOTICIA,DATO,DETALLE,PARTICULARIDAD,CARACTERISTICA,RASGO,NOTA,MARCA,SENAL,SINTOMA,INDICIO,PRUEBA,EVIDENCIA,REALIDAD,VERDAD,CERTEZA,SEGURIDAD,CONFIANZA,FE,CREENCIA,CONVICCION,OPINION,JUICIO,VALORACION,ESTIMACION,APRECIACION,CONSIDERACION,RESPETO,HONOR,GLORIA,FAMA,RENOMBRE,REPUTACION,PRESTIGIO,INFLUENCIA,PODER,AUTORIDAD,MANDO,DOMINIO,CONTROL,DIRECCION,GOBIERNO,ESTADO,NACION,PAIS,PUEBLO,SOCIEDAD,COMUNIDAD,GRUPO,COLECTIVIDAD,MULTITUD,GENTE,PERSONA,INDIVIDUO,HOMBRE,MUJER,NINO,JOVEN,ADULTO,ANCIANO,FAMILIA,PADRE,MADRE,HIJO,HERMANO,AMIGO,COMPANERO,SOCIO,COLEGA,VECINO,CIUDADANO,HABITANTE,RESIDENTE,EXTRANJERO,FORASTERO,TURISTA,VIAJERO,PASAJERO,CLIENTE,USUARIO,CONSUMIDOR,COMPRADOR,VENDEDOR,COMERCIANTE,MERCADER,EMPRESARIO,TRABAJADOR,EMPLEADO,OBRERO,JEFE,DIRECTOR,GERENTE,ADMINISTRADOR,RESPONSABLE,ENCARGADO,AUTOR,CREADOR,INVENTOR,DESCUBRIDOR,ARTISTA,ESCRITOR,POETA,PINTOR,MUSICO,ACTOR,DIRECTOR,MEDICO,ABOGADO,JUEZ,POLICIA,MILITAR,SOLDADO,MAESTRO,PROFESOR,ALUMNO,ESTUDIANTE,CIENTIFICO,INVESTIGADOR,TECNICO,ESPECIALISTA,EXPERTO,PROFESIONAL,AFICIONADO,PRINCIPIANTE,NOVATO,APRENDIZ,MAESTRO,SABIO,GENIO,TALENTO,INTELIGENCIA,MENTE,CEREBRO,RAZON,PENSAMIENTO,MEMORIA,IMAGINACION,FANTASIA,ILUSION,CREATIVIDAD,IDEA,CONCEPTO,NOCION,REPRESENTACION,IMAGEN,VISION,PERCEPCION,SENSACION,SENTIMIENTO,EMOCION,PASION,AFECTO,AMOR,ODIO,ALEGRIA,TRISTEZA,DOLOR,PLACER,SUFRIMIENTO,GOZO,PENAS,ANGUSTIA,ANSIEDAD,TEMOR,MIEDO,TERROR,VALOR,CORAJE,VALENTIA,AUDACIA,COBARDIA,TIMIDEZ,VERGUENZA,CULPA,REMORDIMIENTO,ARREPENTIMIENTO,PERDON,DISCULPA,JUSTIFICACION,EXCUSA,MOTIVO,RAZON,EXPLICACION,ARGUMENTO,PRUEBA,DEMOSTRACION,EVIDENCIA,CONFIRMACION,VERIFICACION,ANALISIS,ESTUDIO,EXAMEN,REVISION,INSPECCION,EVALUACION,VALORACION,JUICIO,SENTENCIA,VEREDICTO,DECISION,RESOLUCION,ACUERDO,PACTO,TRATADO,COMPROMISO,PROMESA,PALABRA,VOTO,JURAMENTO,DECLARACION,TESTIMONIO,CONFESION,RECONOCIMIENTO,ADMISION,NEGACION,RECHAZO,OPOSICION,RESISTENCIA,DEFENSA,PROTECCION,SEGURIDAD,REFUGIO,AMPARO,ASILO,AYUDA,APOYO,SOCORRO,AUXILIO,RESCATE,SALVACION,LIBERACION,LIBERTAD,INDEPENDENCIA,AUTONOMIA,SOBERANIA,PODER,DERECHO,LEY,NORMA,REGLA,PRECEPTO,MANDATO,ORDEN,PROHIBICION,PERMISO,AUTORIZACION,CONCESION,LICENCIA,OBLIGACION,DEBER,RESPONSABILIDAD,COMPROMISO,FALTA,DELITO,CRIMEN,INFRACCION,SANCION,CASTIGO,PENA,MULTA,CONDENA,PRISION,CARCEL,JUSTICIA,EQUIDAD,IGUALDAD,DESIGUALDAD,DIFERENCIA,SIMILITUD,SEMEJANZA,IDENTIDAD,VARIEDAD,DIVERSIDAD,MULTIPLICIDAD,CANTIDAD,NUMERO,ABUNDANCIA,ESCASEZ,MAYORIA,MINORIA,TOTALIDAD,PARTE,FRACCION,MITAD,TERCIO,CUARTO,DOBLE,TRIPLE,MEDIDA,DIMENSION,LONGITUD,ANCHURA,ALTURA,PROFUNDIDAD,ESPESOR,GROSOR,VOLUMEN,MASA,PESO,DENSIDAD,SUPERFICIE,AREA,ESPACIO,DISTANCIA,ALEJAMIENTO,CERCANIA,PROXIMIDAD,CONTACTO,UNION,SEPARACION,DIVISION,CORTE,ROTURA,FRACTURA,HENDIDURA,GRIETA,AGUJERO,ORIFICIO,HUECO,VACIO,LLENO,TODO,NADA,ALGO,CADA,CUALQUIER,NINGUN,OTRO,MISMO,PROPIO,AJENO,NUEVO,VIEJO,ANTIGUO,MODERNO,RECIENTE,ACTUAL,FUTURO,PASADO,PRESENTE,TIEMPO,DURACION,PERIODO,LAPSO,INTERVALO,MOMENTO,INSTANTE,SEGUNDO,MINUTO,HORA,DIA,SEMANA,MES,ANO,DECADA,SIGLO,MILENIO,ETAPA,FASE,CICLO,ESTACION,PRIMAVERA,VERANO,OTONO,INVIERNO,MANANA,TARDE,NOCHE,MADRUGADA,AMANECER,ANOCHECER,PRINCIPIO,FIN,INICIO,FINAL,COMIENZO,TERMINO,ORIGEN,DESTINO,RUTA,CAMINO,VIA,CARRETERA,CALLE,AVENIDA,PASO,TRAYECTO,RECORRIDO,VIAJE,VUELO,MARCHA,CARRERA,PASEO,EXCURSION,EXPEDICION,VISITA,LLEGADA,SALIDA,PARTIDA,REGRESO,VUELTA,RETORNO,ENTRADA,ACCESO,PUERTA,PORTAL,VENTANA,SALIDA,ESCAPE,FUGA,HUIDA,REFUGIO,ESCONDITE,GUARIDA,CASA,HOGAR,VIVIENDA,DOMICILIO,RESIDENCIA,MORADA,EDIFICIO,CONSTRUCCION,OBRA,MONUMENTO,TEMPLO,IGLESIA,CATEDRAL,PALACIO,CASTILLO,FORTALEZA,TORRE,MURALLA,MURO,PARED,TABIQUE,CERCA,VALLA,CERCADO,LIMITE,FRONTERA,LINEA,BORDE,ORILLA,MARGEN,EXTREMO,PUNTA,CABO,PICO,CIMA,CUMBRE,FONDO,BASE,CIMIENTO,PIE,SUELO,PISO,TERRENO,SUPERFICIE,TIERRA,MUNDO,GLOBO,PLANETA,ASTRO,ESTRELLA,SOL,LUNA,ESPACIO,CIELO,AIRE,ATMOSFERA,CLIMA,TIEMPO,TEMPERATURA,CALOR,FRIO,HELADA,NIEVE,HIELO,LLUVIA,AGUA,GOTAS,HUMEDAD,SEQUIA,VIENTO,BRISA,HURACAN,TORNADO,TORMENTA,RAYO,TRUENO,RELAMPAGO,NUBE,NIEBLA,BRUMA,LUZ,CLARIDAD,BRILLO,RESPLANDOR,DESTELLO,ILUMINACION,SOMBRA,OSCURIDAD,TINIEBLAS,NOCHE,COLOR,TONO,MATIZ,TINTE,PINTURA,DIBUJO,RETRATO,CUADRO,IMAGEN,FOTOGRAFIA,FIGURA,FORMA,ASPECTO,APARIENCIA,PRESENCIA,VISION,VISTA,MIRADA,OBSERVACION,ESPECTACULO,ESCENA,CUADRO,PANORAMA,PAISAJE,PERSPECTIVA,HORIZONTE,DISTANCIA,LEJANIA,FRENTE,FONDO,DORSO,REVES,INTERIOR,EXTERIOR,DENTRO,FUERA,ARRIBA,ABAJO,ENCIMA,DEBAJO,DELANTE,DETRAS,ANTES,DESPUES,LUEGO,PRONTO,TARDE,TEMPRANO,AHORA,HOY,AYER,MANANA,SIEMPRE,NUNCA,JAMAS,AUN,YA,TODAVIA,MIENTRAS,DURANTE,HASTA,DESDE,HACIA,POR,PARA,CON,SIN,SOBRE,BAJO,ENTRE,HACIA";
+
+// --- CONFIGURACIÓN DEL JUEGO ---
+const TURN_TIME_LIMIT = 90;
+
+const TILE_DISTRIBUTION = [
+    { letter: 'A', value: 1, count: 12 }, { letter: 'E', value: 1, count: 12 },
+    { letter: 'O', value: 1, count: 9 }, { letter: 'I', value: 1, count: 6 },
+    { letter: 'S', value: 1, count: 6 }, { letter: 'N', value: 1, count: 5 },
+    { letter: 'R', value: 1, count: 5 }, { letter: 'U', value: 1, count: 5 },
+    { letter: 'L', value: 1, count: 4 }, { letter: 'T', value: 1, count: 4 },
+    { letter: 'D', value: 2, count: 5 }, { letter: 'G', value: 2, count: 2 },
+    { letter: 'C', value: 3, count: 4 }, { letter: 'B', value: 3, count: 2 },
+    { letter: 'M', value: 3, count: 2 }, { letter: 'P', value: 3, count: 2 },
+    { letter: 'H', value: 4, count: 2 }, { letter: 'F', value: 4, count: 1 },
+    { letter: 'V', value: 4, count: 1 }, { letter: 'Y', value: 4, count: 1 },
+    { letter: 'Q', value: 5, count: 1 },
+    { letter: 'J', value: 8, count: 1 }, { letter: 'Ñ', value: 8, count: 1 },
+    { letter: 'X', value: 8, count: 1 },
+    { letter: 'Z', value: 10, count: 1 },
+    { letter: '', value: 0, count: 2 }
+];
+
+const EMOTES = ['😂', '😡', '🤯', '🥳', '🥺', '👏', '🔥', '🥶'];
+const ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Ñ', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+const BOARD_SIZE = 15;
+
+const MULTIPLIERS: Record<string, string> = {
+    '0,0': 'TW', '0,7': 'TW', '0,14': 'TW', '7,0': 'TW', '7,14': 'TW', '14,0': 'TW', '14,7': 'TW', '14,14': 'TW',
+    '1,1': 'DW', '2,2': 'DW', '3,3': 'DW', '4,4': 'DW', '10,10': 'DW', '11,11': 'DW', '12,12': 'DW', '13,13': 'DW',
+    '1,13': 'DW', '2,12': 'DW', '3,11': 'DW', '4,10': 'DW', '10,4': 'DW', '11,3': 'DW', '12,2': 'DW', '13,1': 'DW',
+    '7,7': 'STAR',
+    '1,5': 'TL', '1,9': 'TL', '5,1': 'TL', '5,5': 'TL', '5,9': 'TL', '5,13': 'TL', '9,1': 'TL', '9,5': 'TL', '9,9': 'TL', '9,13': 'TL', '13,5': 'TL', '13,9': 'TL',
+    '0,3': 'DL', '0,11': 'DL', '2,6': 'DL', '2,8': 'DL', '3,0': 'DL', '3,7': 'DL', '3,14': 'DL', '6,2': 'DL', '6,6': 'DL', '6,8': 'DL', '6,12': 'DL',
+    '7,3': 'DL', '7,11': 'DL', '8,2': 'DL', '8,6': 'DL', '8,8': 'DL', '8,12': 'DL', '11,0': 'DL', '11,7': 'DL', '11,14': 'DL', '12,6': 'DL', '12,8': 'DL', '14,3': 'DL', '14,11': 'DL'
+};
+
+// --- PREMIUM THEMES ---
+const THEMES = [
+    {
+        id: 'classic', name: 'Clásico (Madera)', price: 'Gratis',
+        boardBg: 'bg-[#7a5937]', boardBorder: 'border-[#52391e]',
+        cellEmpty: 'bg-[#d3b589]', textEmpty: 'text-stone-800',
+        tileBg: 'bg-gradient-to-b from-[#fdf8f0] to-[#f3e5ce]', tileBorder: 'border-[#e8d5b5]',
+        tileText: 'text-stone-800', tileShadow: 'shadow-[0_3px_10px_rgba(0,0,0,0.3)]',
+        rackBg: 'bg-black/20 border-white/30 backdrop-blur-md', rackTileEmpty: 'bg-black/10 border-black/5',
+        tw: 'bg-[#ef4444]', dw: 'bg-[#f59850]', tl: 'bg-[#1e7ec8]', dl: 'bg-[#1fa95b]',
+        centerStar: 'text-orange-400 drop-shadow-sm'
+    },
+    {
+        id: 'cyber', name: 'Neón Cyberpunk', price: '4.99€',
+        boardBg: 'bg-slate-900', boardBorder: 'border-fuchsia-900',
+        cellEmpty: 'bg-slate-800/80', textEmpty: 'text-slate-500',
+        tileBg: 'bg-slate-900', tileBorder: 'border-cyan-500',
+        tileText: 'text-cyan-400 drop-shadow-[0_0_5px_#22d3ee]', tileShadow: 'shadow-[0_0_12px_rgba(34,211,238,0.5)]',
+        rackBg: 'bg-slate-900/80 border-cyan-500/50 backdrop-blur-lg shadow-[0_0_20px_rgba(192,38,211,0.2)]', rackTileEmpty: 'bg-slate-800 border-slate-700',
+        tw: 'bg-rose-600 shadow-[0_0_10px_#e11d48]', dw: 'bg-fuchsia-600 shadow-[0_0_10px_#c026d3]', tl: 'bg-cyan-600 shadow-[0_0_10px_#0891b2]', dl: 'bg-emerald-600 shadow-[0_0_10px_#059669]',
+        centerStar: 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]'
+    },
+    {
+        id: 'luxury', name: 'Oro y Ébano (VIP)', price: '9.99€',
+        boardBg: 'bg-zinc-950', boardBorder: 'border-amber-700',
+        cellEmpty: 'bg-zinc-900', textEmpty: 'text-zinc-600',
+        tileBg: 'bg-gradient-to-br from-amber-200 via-yellow-500 to-amber-600', tileBorder: 'border-amber-300',
+        tileText: 'text-zinc-950 drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]', tileShadow: 'shadow-[0_6px_15px_rgba(0,0,0,0.9)]',
+        rackBg: 'bg-zinc-950/90 border-amber-600/50 backdrop-blur-xl', rackTileEmpty: 'bg-zinc-900 border-zinc-800',
+        tw: 'bg-red-950 border border-red-800', dw: 'bg-orange-950 border border-orange-800', tl: 'bg-blue-950 border border-blue-800', dl: 'bg-emerald-950 border border-emerald-800',
+        centerStar: 'text-amber-400 drop-shadow-[0_0_5px_#fbbf24]'
+    },
+    {
+        id: 'crystal', name: 'Cristal Esmeralda', price: '7.99€',
+        boardBg: 'bg-emerald-950/40 backdrop-blur-lg', boardBorder: 'border-emerald-400/30',
+        cellEmpty: 'bg-white/5 border border-white/5', textEmpty: 'text-emerald-100/50',
+        tileBg: 'bg-white/20 backdrop-blur-md', tileBorder: 'border-white/40',
+        tileText: 'text-white drop-shadow-md', tileShadow: 'shadow-[0_4px_12px_rgba(0,0,0,0.2)]',
+        rackBg: 'bg-emerald-900/30 border-white/20 backdrop-blur-xl', rackTileEmpty: 'bg-white/5 border-white/10',
+        tw: 'bg-rose-500/40 backdrop-blur-sm', dw: 'bg-orange-500/40 backdrop-blur-sm', tl: 'bg-blue-500/40 backdrop-blur-sm', dl: 'bg-emerald-500/40 backdrop-blur-sm',
+        centerStar: 'text-white drop-shadow-[0_0_8px_white]'
+    }
+];
+
+type Tile = { id: string, letter: string, value: number, isBlank?: boolean, blankLetter?: string };
+type Cell = { r: number, c: number, mult: string, tile: Tile | null, locked: boolean };
+type PendingPlacement = { r: number, c: number, tile: Tile, rackIdx: number };
+type PreviewState = { valid: boolean, score: number, words: { word: string, points: number }[], error: string };
+
+type LogEntry = { id: number, text: string, icon: string };
+type PlayerData = { name: string, score: number, rack: (Tile | null)[], diamonds: number };
+type RoomState = {
+    status: 'waiting' | 'playing' | 'finished',
+    host: string,
+    players: Record<string, PlayerData>,
+    playerIds: string[],
+    turnIndex: number,
+    turnStartTime: number,
+    board: Cell[][] | string,
+    bag: Tile[],
+    logs: LogEntry[],
+    lastEmote: { uid: string, emoji: string, id: number } | null
+};
+
+function loadGSAP(callback: () => void) {
+    if ((window as any).gsap) { callback(); return; }
+    const script = document.createElement('script');
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js";
+    script.onload = callback; document.head.appendChild(script);
+}
+
+function generateBag() {
+    let bag: Tile[] = [];
+    let idCounter = 0;
+    TILE_DISTRIBUTION.forEach(dist => {
+        for (let i = 0; i < dist.count; i++) {
+            bag.push({ id: `t_${idCounter++}`, letter: dist.letter, value: dist.value, isBlank: dist.letter === '' });
+        }
+    });
+    for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    return bag;
+}
+
+function generateEmptyBoard(): Cell[][] {
+    let b: Cell[][] = [];
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        let row: Cell[] = [];
+        for (let c = 0; c < BOARD_SIZE; c++) { row.push({ r, c, mult: MULTIPLIERS[`${r},${c}`] || '', tile: null, locked: false }); }
+        b.push(row);
+    }
+    return b;
+}
+
+function AnimatedNumber({ value }: { value: number }) {
+    const [displayValue, setDisplayValue] = useState(value);
+    const valueRef = useRef(value);
+
+    useEffect(() => {
+        if (!(window as any).gsap) { setDisplayValue(value); return; }
+        const obj = { val: valueRef.current };
+        (window as any).gsap.to(obj, { val: value, duration: 1, ease: "power3.out", onUpdate: () => setDisplayValue(Math.round(obj.val)) });
+        valueRef.current = value;
+    }, [value]);
+
+    return <span>{displayValue}</span>;
+}
+
+const normalizeWord = (w: string) => {
+    return w.toUpperCase()
+        .replace(/[ÁÄÀÂ]/g, 'A')
+        .replace(/[ÉËÈÊ]/g, 'E')
+        .replace(/[ÍÏÌÎ]/g, 'I')
+        .replace(/[ÓÖÒÔ]/g, 'O')
+        .replace(/[ÚÜÙÛ]/g, 'U');
+};
+
+export default function PalabritasGO() {
+    const [user, setUser] = useState<any>(null);
+    const [userName, setUserName] = useState<string>('');
+    const [roomCode, setRoomCode] = useState<string>('');
+    const [joinCode, setJoinCode] = useState<string>('');
+    const [roomState, setRoomState] = useState<RoomState | null>(null);
+
+    const [localRack, setLocalRack] = useState<(Tile | null)[]>(Array(7).fill(null));
+    const [pendingPlacements, setPendingPlacements] = useState<PendingPlacement[]>([]);
+    const [selectedRackIdx, setSelectedRackIdx] = useState<number | null>(null);
+    const [pendingBlank, setPendingBlank] = useState<{ r: number, c: number, tileIndex: number } | null>(null);
+
+    const [errorMsg, setErrorMsg] = useState('');
+    const [gsapLoaded, setGsapLoaded] = useState(false);
+    const [showProfile, setShowProfile] = useState(false);
+    const [showShop, setShowShop] = useState(false);
+    const [showEmotes, setShowEmotes] = useState(false);
+
+    // --- STATE PISTAS E IA DE DICCIONARIO ---
+    const [showHints, setShowHints] = useState(false);
+    const [isSpinning, setIsSpinning] = useState(false);
+    const [hintResult, setHintResult] = useState<{ tier: string, text: string } | null>(null);
+    const [hintHighlights, setHintHighlights] = useState<{ r: number, c: number }[]>([]);
+    const [hintGhost, setHintGhost] = useState<{ r: number, c: number, tile: Tile }[]>([]);
+
+    const [dictionary, setDictionary] = useState<Set<string>>(new Set());
+    const [dictLoaded, setDictLoaded] = useState(false);
+
+    const [timeLeft, setTimeLeft] = useState(TURN_TIME_LIMIT);
+    const [preview, setPreview] = useState<PreviewState>({ valid: false, score: 0, words: [], error: '' });
+    const lastEmoteIdRef = useRef(0);
+
+    const [unlockedThemes, setUnlockedThemes] = useState<string[]>(['classic']);
+    const [currentTheme, setCurrentTheme] = useState<any>(THEMES[0]);
+
+    // --- CARGA DE DICCIONARIO RAE ---
+    useEffect(() => {
+        const loadDict = async () => {
+            const cached = localStorage.getItem('palabritas_rae_full');
+            if (cached) {
+                setDictionary(new Set(JSON.parse(cached)));
+                setDictLoaded(true);
+                return;
+            }
+            try {
+                const res = await fetch('https://raw.githubusercontent.com/javierarce/palabras/master/listado-general.txt');
+                if (!res.ok) throw new Error("Net Error");
+                const text = await res.text();
+                const words = text.split('\n')
+                    .map(w => normalizeWord(w.trim()))
+                    .filter(w => w.length >= 2 && w.length <= 15);
+                const uniqueWords = Array.from(new Set(words));
+                localStorage.setItem('palabritas_rae_full', JSON.stringify(uniqueWords));
+                setDictionary(new Set(uniqueWords));
+                setDictLoaded(true);
+            } catch (e) {
+                const fallback = "HOLA,CASA,GATO,PERRO,BINGO,JUEGO,MESA,COCHE,ROSA,ORO,SOL,DIA,AIRE,VIDA".split(',');
+                setDictionary(new Set(fallback));
+                setDictLoaded(true);
+            }
+        };
+        loadDict();
+    }, []);
+
+    useEffect(() => {
+        const savedUnlocked = localStorage.getItem('palabritas_unlocked_themes');
+        const savedThemeId = localStorage.getItem('palabritas_current_theme');
+        if (savedUnlocked) setUnlockedThemes(JSON.parse(savedUnlocked));
+        if (savedThemeId) {
+            const t = THEMES.find(th => th.id === savedThemeId);
+            if (t) setCurrentTheme(t);
+        }
+    }, []);
+
+    const purchaseTheme = (themeId: string) => {
+        if (window.confirm("Simulación de Compra: ¿Deseas adquirir este aspecto premium?")) {
+            const newUnlocked = [...unlockedThemes, themeId];
+            setUnlockedThemes(newUnlocked);
+            localStorage.setItem('palabritas_unlocked_themes', JSON.stringify(newUnlocked));
+            equipTheme(themeId);
+            if ((window as any).gsap) spawnFloatingText("¡COMPRA EXITOSA!", "body");
+        }
+    };
+
+    const equipTheme = (themeId: string) => {
+        const t = THEMES.find(th => th.id === themeId);
+        if (t) {
+            setCurrentTheme(t);
+            localStorage.setItem('palabritas_current_theme', themeId);
+        }
+    };
+
+    // --- ESTADO Y REF DE CÁMARA ---
+    const [camTransform, setCamTransform] = useState({ x: 0, y: 0, scale: 1 });
+    const boardWrapperRef = useRef<HTMLDivElement>(null);
+    const pointerState = useRef({ isDragging: false, dist: 0, lastX: 0, lastY: 0, pointers: new Map<number, { x: number, y: number }>(), initialPinchDist: null as number | null, initialScale: 1 });
+
+    // --- FIREBASE INIT ---
+    useEffect(() => {
+        loadGSAP(() => setGsapLoaded(true));
+        if (!auth) return;
+        const initAuth = async () => {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, u => { setUser(u); });
+        return () => unsubscribe();
+    }, []);
+
+    // --- FIREBASE SYNC ---
+    useEffect(() => {
+        if (!user || !roomCode || !db) return;
+        const docRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode);
+        const unsub = onSnapshot(docRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                if (typeof data.board === 'string') data.board = JSON.parse(data.board);
+                setRoomState(data as RoomState);
+            } else {
+                setErrorMsg("La sala no existe");
+                setRoomCode('');
+            }
+        }, (error) => {
+            console.error("Firestore error:", error);
+            setErrorMsg("Error de red");
+        });
+        return () => unsub();
+    }, [user, roomCode]);
+
+    // Sincronizar Rack Local
+    useEffect(() => {
+        if (roomState && user && roomState.players[user.uid]) {
+            if (pendingPlacements.length === 0) setLocalRack(roomState.players[user.uid].rack);
+        }
+    }, [roomState?.players, roomState?.turnIndex, user]);
+
+    // Detector de Nuevo Emote
+    useEffect(() => {
+        if (roomState?.lastEmote && roomState.lastEmote.id !== lastEmoteIdRef.current) {
+            lastEmoteIdRef.current = roomState.lastEmote.id;
+            spawnEmote(roomState.lastEmote.emoji, roomState.lastEmote.uid === user?.uid);
+        }
+    }, [roomState?.lastEmote]);
+
+    const isMyTurn = useMemo(() => {
+        if (!roomState || !user) return false;
+        return roomState.status === 'playing' && roomState.playerIds[roomState.turnIndex] === user.uid;
+    }, [roomState, user]);
+
+    const displayBoard = useMemo(() => {
+        if (!roomState) return generateEmptyBoard();
+        let b = (roomState.board as Cell[][]).map(row => row.map(cell => ({ ...cell })));
+        pendingPlacements.forEach(p => { b[p.r][p.c].tile = p.tile; });
+        return b;
+    }, [roomState?.board, pendingPlacements]);
+
+    // --- LÓGICA DE TIEMPO ---
+    useEffect(() => {
+        if (!roomState || roomState.status !== 'playing') return;
+        const interval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - roomState.turnStartTime) / 1000);
+            const remaining = Math.max(0, TURN_TIME_LIMIT - elapsed);
+            setTimeLeft(remaining);
+            if (remaining <= 0 && isMyTurn) skipTurn(true);
+        }, 500);
+        return () => clearInterval(interval);
+    }, [roomState?.turnStartTime, roomState?.status, isMyTurn]);
+
+    // --- ACCIONES DE LOBBY ---
+    const handleCreateRoom = async () => {
+        if (!userName.trim() || !user || !db) return;
+        const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const newRoom = {
+            status: 'waiting', host: user.uid,
+            players: { [user.uid]: { name: userName.trim(), score: 0, rack: Array(7).fill(null), diamonds: 50 } },
+            playerIds: [user.uid], turnIndex: 0, turnStartTime: Date.now(),
+            board: JSON.stringify(generateEmptyBoard()),
+            bag: generateBag(), logs: [{ id: Date.now(), text: `Sala creada por ${userName.trim()}`, icon: '👑' }], lastEmote: null
+        };
+
+        try {
+            await setDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code), newRoom);
+            setRoomCode(code);
+        } catch (e: any) { showError("Error al crear la sala"); }
+    };
+
+    const handleJoinRoom = async () => {
+        if (!userName.trim() || !joinCode.trim() || !user || !db) return;
+        const code = joinCode.trim().toUpperCase();
+        const docRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code);
+
+        try {
+            const snap = await getDoc(docRef);
+            if (!snap.exists()) return showError("Sala no encontrada");
+            const data = snap.data() as RoomState;
+            if (data.status !== 'waiting') return showError("La partida ya ha empezado");
+            if (data.playerIds.length >= 4) return showError("Sala llena");
+
+            if (!data.playerIds.includes(user.uid)) {
+                await updateDoc(docRef, {
+                    [`players.${user.uid}`]: { name: userName.trim(), score: 0, rack: Array(7).fill(null), diamonds: 50 },
+                    playerIds: [...data.playerIds, user.uid],
+                    logs: [...(data.logs || []), { id: Date.now(), text: `${userName.trim()} se unió`, icon: '👋' }].slice(-5)
+                });
+            }
+            setRoomCode(code);
+        } catch (e: any) { showError("Error al unirse"); }
+    };
+
+    const handleStartGame = async () => {
+        if (!roomState || !user || roomState.host !== user.uid) return;
+        const docRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode);
+
+        let currentBag = [...roomState.bag];
+        let newPlayers = { ...roomState.players };
+        roomState.playerIds.forEach(uid => {
+            let newRack = [];
+            for (let i = 0; i < 7; i++) { if (currentBag.length > 0) newRack.push(currentBag.pop()!); else newRack.push(null); }
+            newPlayers[uid].rack = newRack;
+        });
+
+        let shuffledIds = [...roomState.playerIds];
+        for (let i = shuffledIds.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffledIds[i], shuffledIds[j]] = [shuffledIds[j], shuffledIds[i]];
+        }
+
+        await updateDoc(docRef, {
+            status: 'playing', bag: currentBag, players: newPlayers, playerIds: shuffledIds,
+            turnIndex: 0, turnStartTime: Date.now(),
+            logs: [...(roomState.logs || []), { id: Date.now(), text: `¡La partida ha comenzado!`, icon: '🎮' }].slice(-5)
+        });
+
+        setHintHighlights([]);
+        setHintGhost([]);
+    };
+
+    // --- LÓGICA DE DICCIONARIO Y PISTAS (BOTONES INDEPENDIENTES) ---
+    const canBeMadeFrom = (word: string, rackLetters: string[]) => {
+        let tempRack = [...rackLetters];
+        for (let char of word) {
+            let idx = tempRack.indexOf(char);
+            if (idx !== -1) {
+                tempRack.splice(idx, 1);
+            } else {
+                let blankIdx = tempRack.indexOf('?');
+                if (blankIdx !== -1) {
+                    tempRack.splice(blankIdx, 1);
+                } else {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    const deductDiamonds = async (amount: number) => {
+        if (!roomState || !user) return false;
+        const myData = roomState.players[user.uid];
+        if (!myData || myData.diamonds < amount) {
+            showError("No tienes diamantes suficientes");
+            return false;
+        }
+        const newPlayers = { ...roomState.players };
+        newPlayers[user.uid].diamonds -= amount;
+        try {
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), { players: newPlayers });
+            return true;
+        } catch (e) {
+            showError("Error conectando con la tienda");
+            return false;
+        }
+    };
+
+    // 1. Pista: Radar de Zonas (Animación Mejorada)
+    const activateRadar = async () => {
+        if (!isMyTurnActual) return showError("No es tu turno para usar ayudas");
+        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+
+        const success = await deductDiamonds(10);
+        if (!success) return;
+
+        const typedBoard = roomState!.board as Cell[][];
+        const isFirstTurn = typedBoard[7][7].tile === null;
+        let highlights: { r: number, c: number }[] = [];
+
+        if (isFirstTurn) {
+            highlights.push({ r: 7, c: 7 });
+        } else {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (!typedBoard[r][c].tile) {
+                        const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                        let isAdjacent = false;
+                        for (let d of dirs) {
+                            const nr = r + d[0], nc = c + d[1];
+                            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && typedBoard[nr][nc].tile) isAdjacent = true;
+                        }
+                        if (isAdjacent) highlights.push({ r, c });
+                    }
+                }
+            }
+        }
+
+        setHintHighlights(highlights);
+        spawnFloatingText("¡RADAR ACTIVADO!", "body");
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            const scanner = document.createElement('div');
+            scanner.className = 'absolute top-0 left-0 w-full h-[6px] bg-cyan-400 shadow-[0_0_30px_#22d3ee] z-50 rounded-full pointer-events-none opacity-90';
+            document.querySelector('.board-container')?.appendChild(scanner);
+
+            gsap.fromTo(scanner,
+                { y: 0, opacity: 1 },
+                {
+                    y: document.querySelector('.board-container')?.clientHeight || 400,
+                    opacity: 0,
+                    duration: 1.5,
+                    ease: "sine.inOut",
+                    onComplete: () => scanner.remove()
+                });
+        }
+
+        setTimeout(() => setHintHighlights([]), 6000);
+    };
+
+    const spawnMagicParticles = (x: number, y: number) => {
+        if (!(window as any).gsap) return;
+        for (let i = 0; i < 15; i++) {
+            const conf = document.createElement('div');
+            conf.className = 'fixed w-2 h-2 md:w-3 md:h-3 z-[200] rounded-full shadow-[0_0_10px_#f43f5e] pointer-events-none';
+            conf.style.left = `${x}px`; conf.style.top = `${y}px`;
+            conf.style.backgroundColor = ['#f43f5e', '#ec4899', '#d946ef', '#ffffff'][Math.floor(Math.random() * 4)];
+            document.body.appendChild(conf);
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 50 + Math.random() * 150;
+            (window as any).gsap.to(conf, { x: `+=${Math.cos(angle) * velocity}`, y: `+=${Math.sin(angle) * velocity - 100}`, rotation: Math.random() * 360, opacity: 0, duration: 0.8 + Math.random(), ease: "power2.out", onComplete: () => conf.remove() });
+        }
+    };
+
+    // 2. Pista: Cambio Mágico (Animación Mejorada)
+    const activateMagicSwap = async () => {
+        if (!isMyTurnActual) return showError("No es tu turno para usar magia");
+        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+        if (roomState!.bag.length === 0) return showError("La bolsa está vacía");
+        const validTiles = localRack.filter(t => t !== null) as Tile[];
+        if (validTiles.length === 0) return showError("No tienes letras para cambiar");
+
+        const success = await deductDiamonds(10);
+        if (!success) return;
+
+        let currentBag = [...roomState!.bag];
+        let newRack = [...localRack];
+
+        let tilesToSwap = newRack.map((tile, idx) => ({ tile, idx })).filter(item => item.tile !== null);
+        tilesToSwap.sort(() => Math.random() - 0.5);
+
+        const swapCount = Math.min(3, tilesToSwap.length);
+        const indicesToSwap = tilesToSwap.slice(0, swapCount).map(i => i.idx);
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            indicesToSwap.forEach(idx => {
+                const el = document.querySelector(`.tile-rack-${idx}`);
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    spawnMagicParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                }
+                gsap.to(`.tile-rack-${idx}`, { y: -150, scale: 0, rotation: 360, opacity: 0, duration: 0.5, ease: "power2.in" });
+            });
+        }
+
+        spawnFloatingText("¡CAMBIO MÁGICO!", "body");
+
+        setTimeout(async () => {
+            for (let i = 0; i < swapCount; i++) {
+                let item = tilesToSwap[i];
+                currentBag.push(item.tile!);
+                newRack[item.idx] = null;
+            }
+            for (let i = currentBag.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [currentBag[i], currentBag[j]] = [currentBag[j], currentBag[i]];
+            }
+            for (let i = 0; i < newRack.length; i++) {
+                if (newRack[i] === null && currentBag.length > 0) newRack[i] = currentBag.pop()!;
+            }
+
+            const newPlayers = { ...roomState!.players };
+            newPlayers[user.uid].rack = newRack;
+
+            try {
+                await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), { bag: currentBag, players: newPlayers });
+                setLocalRack(newRack);
+
+                if ((window as any).gsap) {
+                    const gsap = (window as any).gsap;
+                    indicesToSwap.forEach(idx => {
+                        gsap.fromTo(`.tile-rack-${idx}`, { y: -100, scale: 0, rotation: -360, opacity: 0 }, { y: 0, scale: 1, rotation: 0, opacity: 1, duration: 0.6, ease: "back.out(1.5)", delay: 0.1, clearProps: "all" });
+                    });
+                }
+            } catch (e) { showError("Error al conectar"); }
+        }, 500);
+    };
+
+    // 3. Pista: Ruleta de Palabras (Hologramas Mejorados)
+    const spinRoulette = async () => {
+        if (!isMyTurnActual) return showError("No es tu turno de girar");
+        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+        if (isSpinning) return;
+        const success = await deductDiamonds(10);
+        if (!success) return;
+
+        setIsSpinning(true);
+        setHintResult(null);
+        setHintHighlights([]);
+        setHintGhost([]);
+
+        // 4 porciones en la ruleta CSS: 0-90, 90-180, 180-270, 270-360
+        const rand = Math.random();
+        let tier, stopAngle;
+
+        if (rand < 0.40) { tier = 'Normal'; stopAngle = 315; }
+        else if (rand < 0.70) { tier = 'Buena'; stopAngle = 225; }
+        else if (rand < 0.90) { tier = 'Super Buena'; stopAngle = 135; }
+        else { tier = 'La Mejor'; stopAngle = 45; }
+
+        const totalRotation = 360 * 5 + stopAngle;
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            gsap.to(".roulette-wheel", {
+                rotation: totalRotation,
+                duration: 4.5,
+                ease: "power4.out",
+                onUpdate: function () {
+                    const currentRot = this.targets()[0]._gsap.rotation;
+                    if (currentRot % 90 < 5) {
+                        gsap.fromTo(".roulette-needle", { rotation: -20 }, { rotation: 0, duration: 0.1, ease: "back.out(2)" });
+                    }
+                },
+                onComplete: () => {
+                    gsap.fromTo(".roulette-container", { scale: 1 }, { scale: 1.08, duration: 0.15, yoyo: true, repeat: 3 });
+                    generateHintWords(tier);
+                    setIsSpinning(false);
+                }
+            });
+        }
+    };
+
+    const generateHintWords = async (tier: string) => {
+        const validTilesText = localRack.filter(t => t !== null) as Tile[];
+        if (validTilesText.length === 0) return setHintResult({ tier: 'Error', text: 'No tienes letras en el atril.' });
+        if (!dictLoaded || dictionary.size === 0) return setHintResult({ tier: 'Error', text: 'El cerebro de la IA sigue cargando el diccionario, espera un segundo.' });
+
+        const rackLetters = validTilesText.map(t => t.isBlank ? '?' : t.letter);
+        const typedBoard = roomState?.board as Cell[][];
+        const isFirstTurn = typedBoard[7][7].tile === null;
+
+        let possiblePlacements: { word: string, tempSlot: { r: number, c: number, char: string }[] }[] = [];
+
+        if (isFirstTurn) {
+            dictionary.forEach(word => {
+                if (word.length >= 2 && word.length <= 7 && canBeMadeFrom(word, rackLetters)) {
+                    let tempSlot = [];
+                    for (let i = 0; i < word.length; i++) tempSlot.push({ r: 7, c: 7 + i, char: word[i] });
+                    possiblePlacements.push({ word, tempSlot });
+                }
+            });
+        } else {
+            let boardLetters: { r: number, c: number, letter: string }[] = [];
+            for (let r = 0; r < 15; r++) {
+                for (let c = 0; c < 15; c++) {
+                    if (typedBoard[r][c].tile) boardLetters.push({ r, c, letter: typedBoard[r][c].tile!.letter });
+                }
+            }
+
+            for (let bLetter of boardLetters) {
+                let extendedRack = [...rackLetters, bLetter.letter];
+
+                dictionary.forEach(word => {
+                    if (word.length >= 2 && word.length <= 8 && word.includes(bLetter.letter) && canBeMadeFrom(word, extendedRack)) {
+                        for (let i = 0; i < word.length; i++) {
+                            if (word[i] === bLetter.letter) {
+                                // Horizontal
+                                let startC = bLetter.c - i;
+                                if (startC >= 0 && startC + word.length <= 15) {
+                                    let fitsH = true; let tempH = [];
+                                    for (let j = 0; j < word.length; j++) {
+                                        let cellTile = typedBoard[bLetter.r][startC + j].tile;
+                                        if (cellTile) {
+                                            if (cellTile.letter !== word[j]) { fitsH = false; break; }
+                                        } else {
+                                            tempH.push({ r: bLetter.r, c: startC + j, char: word[j] });
+                                        }
+                                    }
+                                    if (fitsH && tempH.length > 0) {
+                                        let beforeCell = startC > 0 ? typedBoard[bLetter.r][startC - 1].tile : null;
+                                        let afterCell = startC + word.length < 15 ? typedBoard[bLetter.r][startC + word.length].tile : null;
+                                        if (!beforeCell && !afterCell) possiblePlacements.push({ word, tempSlot: tempH });
+                                    }
+                                }
+
+                                // Vertical
+                                let startR = bLetter.r - i;
+                                if (startR >= 0 && startR + word.length <= 15) {
+                                    let fitsV = true; let tempV = [];
+                                    for (let j = 0; j < word.length; j++) {
+                                        let cellTile = typedBoard[startR + j][bLetter.c].tile;
+                                        if (cellTile) {
+                                            if (cellTile.letter !== word[j]) { fitsV = false; break; }
+                                        } else {
+                                            tempV.push({ r: startR + j, c: bLetter.c, char: word[j] });
+                                        }
+                                    }
+                                    if (fitsV && tempV.length > 0) {
+                                        let beforeCell = startR > 0 ? typedBoard[startR - 1][bLetter.c].tile : null;
+                                        let afterCell = startR + word.length < 15 ? typedBoard[startR + word.length][bLetter.c].tile : null;
+                                        if (!beforeCell && !afterCell) possiblePlacements.push({ word, tempSlot: tempV });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        if (possiblePlacements.length === 0) {
+            setHintResult({ tier: 'Error', text: 'La IA no ha encontrado NINGUNA palabra cruzando tus letras con el tablero. Intenta cambiar tus fichas o pasar turno.' });
+            return;
+        }
+
+        const uniquePlacements = Array.from(new Map(possiblePlacements.map(item => [item.word + item.tempSlot[0].r + item.tempSlot[0].c, item])).values());
+        uniquePlacements.sort((a, b) => b.word.length - a.word.length);
+
+        let targetPlacement = uniquePlacements[0];
+        if (tier === 'Normal') targetPlacement = uniquePlacements[Math.min(uniquePlacements.length - 1, 3)];
+        else if (tier === 'Buena') targetPlacement = uniquePlacements[Math.floor(uniquePlacements.length / 2)];
+        else if (tier === 'Super Buena') targetPlacement = uniquePlacements[Math.min(uniquePlacements.length - 1, 1)];
+
+        setHintGhost(targetPlacement.tempSlot.map(pos => ({ r: pos.r, c: pos.c, tile: { id: 'ghost', letter: pos.char, value: 0, isBlank: false } })));
+        setHintResult({ tier, text: `¡Cerebro RAE activado! Te sugiero jugar la palabra válida: ${targetPlacement.word}. Mírala en el tablero.` });
+
+        // Auto-cierre del modal para que veas el tablero brillar
+        setTimeout(() => { setShowHints(false); setHintResult(null); }, 3500);
+    };
+
+
+    // --- MOTOR DE PREVISIÓN Y VALIDACIÓN ESTRICTA ---
+    useEffect(() => {
+        if (!isMyTurn || pendingPlacements.length === 0 || !roomState) {
+            setPreview({ valid: false, score: 0, words: [], error: '' });
+            return;
+        }
+
+        const sameRow = pendingPlacements.every(p => p.r === pendingPlacements[0].r);
+        const sameCol = pendingPlacements.every(p => p.c === pendingPlacements[0].c);
+        if (!sameRow && !sameCol) return setPreview({ valid: false, score: 0, words: [], error: 'Fichas no alineadas rectamente' });
+
+        const typedBoard = roomState.board as Cell[][];
+        const isFirstTurn = typedBoard[7][7].tile === null;
+        let coversCenter = false;
+        let isConnectedToLocked = false;
+
+        let minR = Math.min(...pendingPlacements.map(p => p.r)); let maxR = Math.max(...pendingPlacements.map(p => p.r));
+        let minC = Math.min(...pendingPlacements.map(p => p.c)); let maxC = Math.max(...pendingPlacements.map(p => p.c));
+
+        if (sameRow) { for (let c = minC; c <= maxC; c++) { if (!displayBoard[pendingPlacements[0].r][c].tile) return setPreview({ valid: false, score: 0, words: [], error: 'Huecos en la palabra' }); } }
+        else { for (let r = minR; r <= maxR; r++) { if (!displayBoard[r][pendingPlacements[0].c].tile) return setPreview({ valid: false, score: 0, words: [], error: 'Huecos en la palabra' }); } }
+
+        pendingPlacements.forEach(p => {
+            if (p.r === 7 && p.c === 7) coversCenter = true;
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            dirs.forEach(d => {
+                const nr = p.r + d[0], nc = p.c + d[1];
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                    if (typedBoard[nr][nc].tile) isConnectedToLocked = true;
+                }
+            });
+        });
+
+        if (isFirstTurn && !coversCenter) return setPreview({ valid: false, score: 0, words: [], error: 'La 1ª palabra debe tocar la estrella' });
+        if (!isFirstTurn && !isConnectedToLocked) return setPreview({ valid: false, score: 0, words: [], error: 'Debe conectar con las fichas del tablero' });
+        if (isFirstTurn && pendingPlacements.length === 1) return setPreview({ valid: false, score: 0, words: [], error: 'Mínimo 2 letras para empezar' });
+
+        let turnScore = 0; let wordsFormed: { word: string, points: number }[] = [];
+        const pendingIds = pendingPlacements.map(p => p.tile.id);
+
+        const getFullWord = (startR: number, startC: number, dr: number, dc: number) => {
+            let r = startR, c = startC;
+            while (r - dr >= 0 && c - dc >= 0 && displayBoard[r - dr][c - dc].tile) { r -= dr; c -= dc; }
+            let wordCells: Cell[] = []; let str = "";
+            while (r < BOARD_SIZE && c < BOARD_SIZE && displayBoard[r][c].tile) {
+                wordCells.push(displayBoard[r][c]);
+                const t = displayBoard[r][c].tile!; str += t.isBlank ? t.blankLetter : t.letter;
+                r += dr; c += dc;
+            }
+            return { wordCells, str };
+        };
+
+        const scoreWord = (wordCells: Cell[]) => {
+            if (wordCells.length <= 1) return 0;
+            let wordMult = 1; let wScore = 0;
+            wordCells.forEach(cell => {
+                let lScore = cell.tile!.value;
+                if (pendingIds.includes(cell.tile!.id)) {
+                    if (cell.mult === 'DL') lScore *= 2;
+                    if (cell.mult === 'TL') lScore *= 3;
+                    if (cell.mult === 'DW' || cell.mult === 'STAR') wordMult *= 2;
+                    if (cell.mult === 'TW') wordMult *= 3;
+                }
+                wScore += lScore;
+            });
+            return wScore * wordMult;
+        };
+
+        const mainDir = sameRow ? [0, 1] : [1, 0];
+        const mainWord = getFullWord(pendingPlacements[0].r, pendingPlacements[0].c, mainDir[0], mainDir[1]);
+        if (mainWord.wordCells.length > 1) { const pts = scoreWord(mainWord.wordCells); turnScore += pts; wordsFormed.push({ word: mainWord.str, points: pts }); }
+
+        const crossDir = sameRow ? [1, 0] : [0, 1];
+        pendingPlacements.forEach(p => {
+            const crossWord = getFullWord(p.r, p.c, crossDir[0], crossDir[1]);
+            if (crossWord.wordCells.length > 1) { const pts = scoreWord(crossWord.wordCells); turnScore += pts; wordsFormed.push({ word: crossWord.str, points: pts }); }
+        });
+
+        if (turnScore === 0) return setPreview({ valid: false, score: 0, words: [], error: 'Aún no se ha formado una palabra' });
+        if (pendingPlacements.length === 7) { turnScore += 50; wordsFormed.push({ word: "¡BINGO!", points: 50 }); }
+
+        // VALIDACIÓN ESTRICTA EN DICCIONARIO
+        if (dictLoaded && dictionary.size > 100) {
+            for (let w of wordsFormed) {
+                if (w.word === "¡BINGO!") continue;
+                if (!dictionary.has(w.word)) {
+                    return setPreview({ valid: false, score: 0, words: [], error: `La palabra "${w.word}" no es válida en el diccionario.` });
+                }
+            }
+        }
+
+        setPreview({ valid: true, score: turnScore, words: wordsFormed, error: '' });
+    }, [displayBoard, pendingPlacements, isMyTurn, roomState, dictionary, dictLoaded]);
+
+    // --- ANIMACIONES MEJORADAS ---
+    const showError = (msg: string) => {
+        setErrorMsg(msg);
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            gsap.fromTo(".board-wrapper", { x: -12, rotation: -1 }, { x: 12, rotation: 1, duration: 0.08, yoyo: true, repeat: 5, ease: "sine.inOut", clearProps: "all" });
+            const flash = document.createElement('div');
+            flash.className = 'absolute inset-0 bg-red-500/30 z-[100] rounded-xl pointer-events-none mix-blend-overlay';
+            document.querySelector('.board-container')?.appendChild(flash);
+            gsap.to(flash, { opacity: 0, duration: 0.5, onComplete: () => flash.remove() });
+
+            gsap.fromTo(".error-msg", { scale: 0.5, opacity: 0, y: 20 }, { scale: 1, opacity: 1, y: 0, duration: 0.4, ease: "back.out(2)", clearProps: "transform,opacity" });
+        }
+        setTimeout(() => setErrorMsg(''), 3000);
+    };
+
+    const spawnFlyingScore = (startX: number, startY: number, targetId: string, points: number) => {
+        const target = document.getElementById(targetId);
+        if (!target || !(window as any).gsap) return;
+        const targetRect = target.getBoundingClientRect();
+
+        const el = document.createElement('div');
+        el.className = 'fixed z-[200] font-black text-2xl text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)] pointer-events-none';
+        el.innerText = `+${points}`;
+        el.style.left = `${startX}px`; el.style.top = `${startY}px`;
+        document.body.appendChild(el);
+
+        const gsap = (window as any).gsap;
+        gsap.to(el, {
+            x: targetRect.left + targetRect.width / 2 - startX,
+            y: targetRect.top + targetRect.height / 2 - startY,
+            scale: 0.5,
+            opacity: 0.8,
+            duration: 0.8,
+            ease: "power2.in",
+            onComplete: () => {
+                el.remove();
+                gsap.fromTo(target, { scale: 1.1, filter: 'brightness(1.5)' }, { scale: 1, filter: 'brightness(1)', duration: 0.3 });
+            }
+        });
+    };
+
+    // --- CÁMARA ---
+    useEffect(() => {
+        const wrapper = boardWrapperRef.current;
+        if (!wrapper) return;
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            setCamTransform(prev => {
+                const newScale = Math.max(0.5, Math.min(prev.scale - e.deltaY * 0.001, 3));
+                return { ...prev, scale: newScale };
+            });
+        };
+        wrapper.addEventListener('wheel', handleWheel, { passive: false });
+        return () => wrapper.removeEventListener('wheel', handleWheel);
+    }, [roomState?.status]);
+
+    const onPointerDown = (e: React.PointerEvent) => {
+        const ps = pointerState.current;
+        ps.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        ps.isDragging = true; ps.lastX = e.clientX; ps.lastY = e.clientY; ps.dist = 0;
+        if (ps.pointers.size === 2) {
+            const pts = Array.from(ps.pointers.values());
+            ps.initialPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            ps.initialScale = camTransform.scale;
+        }
+    };
+
+    const onPointerMove = (e: React.PointerEvent) => {
+        const ps = pointerState.current;
+        if (!ps.pointers.has(e.pointerId)) return;
+        ps.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (ps.pointers.size === 2) {
+            const pts = Array.from(ps.pointers.values());
+            const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            if (ps.initialPinchDist) {
+                const newScale = Math.max(0.5, Math.min(ps.initialScale * (currentDist / ps.initialPinchDist), 3));
+                setCamTransform(p => ({ ...p, scale: newScale }));
+            }
+            ps.dist += 10;
+        } else if (ps.pointers.size === 1) {
+            const dx = e.clientX - ps.lastX; const dy = e.clientY - ps.lastY;
+            ps.lastX = e.clientX; ps.lastY = e.clientY; ps.dist += Math.abs(dx) + Math.abs(dy);
+            setCamTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+        }
+    };
+
+    const onPointerUp = (e: React.PointerEvent) => {
+        const ps = pointerState.current;
+        ps.pointers.delete(e.pointerId);
+        if (ps.pointers.size < 2) ps.initialPinchDist = null;
+        if (ps.pointers.size === 0) ps.isDragging = false;
+        else if (ps.pointers.size === 1) {
+            const remaining = Array.from(ps.pointers.values())[0];
+            ps.lastX = remaining.x; ps.lastY = remaining.y;
+        }
+    };
+
+    // --- INTERACCIÓN ---
+    const handleRackClick = (idx: number) => {
+        if (!isMyTurn || !localRack[idx]) return;
+        if (selectedRackIdx === idx) setSelectedRackIdx(null);
+        else {
+            setSelectedRackIdx(idx);
+            if ((window as any).gsap) (window as any).gsap.fromTo(`.tile-rack-${idx}`, { scale: 0.9 }, { scale: 1.05, duration: 0.2, ease: "back.out(2)" });
+        }
+    };
+
+    const handleBoardClick = (r: number, c: number) => {
+        if (pointerState.current.dist > 10 || !isMyTurn) return;
+
+        const cell = displayBoard[r][c];
+        const isPendingHere = pendingPlacements.find(p => p.r === r && p.c === c);
+
+        if (isPendingHere) {
+            const newPending = pendingPlacements.filter(p => p !== isPendingHere);
+            let newRack = [...localRack];
+            if (isPendingHere.tile.isBlank) delete isPendingHere.tile.blankLetter;
+            newRack[isPendingHere.rackIdx] = isPendingHere.tile;
+
+            setLocalRack(newRack); setPendingPlacements(newPending); setSelectedRackIdx(null);
+            if ((window as any).gsap) (window as any).gsap.fromTo(`.tile-rack-${isPendingHere.rackIdx}`, { scale: 0.2, y: -100, rotation: -30 }, { scale: 1, y: 0, rotation: 0, duration: 0.6, ease: "elastic.out(1, 0.5)", clearProps: "all" });
+            return;
+        }
+
+        if (!cell.tile && selectedRackIdx !== null && localRack[selectedRackIdx]) {
+            const tileToPlace = { ...localRack[selectedRackIdx]! };
+            if (tileToPlace.isBlank) { setPendingBlank({ r, c, tileIndex: selectedRackIdx }); return; }
+            executePlacement(r, c, selectedRackIdx, tileToPlace);
+        }
+    };
+
+    const executePlacement = (r: number, c: number, rackIdx: number, tileData: Tile) => {
+        setPendingPlacements([...pendingPlacements, { r, c, tile: tileData, rackIdx }]);
+        let newRack = [...localRack]; newRack[rackIdx] = null;
+
+        setLocalRack(newRack); setSelectedRackIdx(null); setPendingBlank(null);
+        setHintGhost([]);
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            const cellInfo = roomState?.board ? (roomState.board as Cell[][])[r][c] : null;
+
+            gsap.fromTo(`.cell-${r}-${c} .tile-placed`,
+                { scaleX: 1.5, scaleY: 0.5, y: -80, opacity: 0 },
+                { scaleX: 1, scaleY: 1, y: 0, opacity: 1, duration: 0.5, ease: "elastic.out(1, 0.4)", clearProps: "transform,opacity" }
+            );
+
+            const cellEl = document.querySelector(`.cell-${r}-${c}`);
+            if (cellEl) {
+                let rippleColor = 'rgba(255,255,255,0.6)';
+                if (cellInfo?.mult === 'TW') rippleColor = 'rgba(239, 68, 68, 0.6)';
+                else if (cellInfo?.mult === 'DW') rippleColor = 'rgba(245, 158, 11, 0.6)';
+                else if (cellInfo?.mult === 'TL') rippleColor = 'rgba(59, 130, 246, 0.6)';
+                else if (cellInfo?.mult === 'DL') rippleColor = 'rgba(16, 185, 129, 0.6)';
+
+                const ripple = document.createElement('div');
+                ripple.className = 'absolute inset-0 rounded-sm z-30 pointer-events-none';
+                ripple.style.boxShadow = `0 0 0 2px ${rippleColor}`;
+                ripple.style.backgroundColor = rippleColor;
+                cellEl.appendChild(ripple);
+                gsap.to(ripple, { scale: 3, opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => ripple.remove() });
+            }
+        }
+    };
+
+    const handleBlankSelection = (letter: string) => {
+        if (!pendingBlank) return;
+        const { r, c, tileIndex } = pendingBlank;
+        const tileToPlace = { ...localRack[tileIndex]!, blankLetter: letter };
+        executePlacement(r, c, tileIndex, tileToPlace);
+    };
+
+    const recallAll = () => {
+        if (!isMyTurn || pendingPlacements.length === 0) return;
+        let newRack = [...localRack];
+        let recalledTiles: { idx: number, delay: number }[] = [];
+        let delayCounter = 0;
+
+        pendingPlacements.forEach(p => {
+            if (p.tile.isBlank) delete p.tile.blankLetter;
+            newRack[p.rackIdx] = p.tile;
+            recalledTiles.push({ idx: p.rackIdx, delay: delayCounter });
+            delayCounter += 0.05;
+        });
+
+        setLocalRack(newRack); setPendingPlacements([]); setSelectedRackIdx(null); setHintGhost([]);
+
+        if ((window as any).gsap && recalledTiles.length > 0) {
+            const gsap = (window as any).gsap;
+            recalledTiles.forEach(t => {
+                gsap.fromTo(`.tile-rack-${t.idx}`, { y: -300, scale: 2, opacity: 0, rotation: Math.random() * 180 - 90 }, { y: 0, scale: 1, opacity: 1, rotation: 0, duration: 0.8, delay: t.delay, ease: "elastic.out(1, 0.6)", clearProps: "transform,opacity" });
+            });
+        }
+    };
+
+    const shuffleRack = () => {
+        let newRack = [...localRack];
+        const tiles = newRack.filter(t => t !== null);
+        for (let i = tiles.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+        }
+        let pointer = 0;
+        for (let i = 0; i < 7; i++) { if (newRack[i] !== null) newRack[i] = tiles[pointer++]; }
+        setLocalRack(newRack); setHintGhost([]);
+
+        if ((window as any).gsap) {
+            (window as any).gsap.fromTo(".tile-rack", { y: -80, rotation: () => Math.random() * 180 - 90, scale: 0.5, opacity: 0 }, { y: 0, rotation: 0, scale: 1, opacity: 1, duration: 0.5, stagger: { each: 0.04, from: "center" }, ease: "back.out(1.5)", clearProps: "transform,opacity" });
+        }
+    };
+
+    const swapTiles = async () => {
+        if (!isMyTurnActual) return showError("No es tu turno");
+        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+
+        const tilesToReturn = localRack.filter(t => t !== null) as Tile[];
+        if (tilesToReturn.length === 0) return showError("No tienes letras");
+        if (roomState!.bag.length === 0) return showError("La bolsa está vacía");
+
+        let currentBag = [...roomState!.bag];
+        let newRack = [...localRack];
+
+        // Devolver letras al azar o todas
+        const swapCount = Math.min(tilesToReturn.length, currentBag.length);
+        let tilesToSwap = newRack.map((tile, idx) => ({ tile, idx })).filter(item => item.tile !== null);
+        tilesToSwap.sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < swapCount; i++) {
+            let item = tilesToSwap[i];
+            currentBag.push(item.tile!);
+            newRack[item.idx] = null;
+        }
+
+        for (let i = currentBag.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [currentBag[i], currentBag[j]] = [currentBag[j], currentBag[i]];
+        }
+
+        for (let i = 0; i < newRack.length; i++) {
+            if (newRack[i] === null && currentBag.length > 0) {
+                newRack[i] = currentBag.pop()!;
+            }
+        }
+
+        const nextTurn = (roomState!.turnIndex + 1) % roomState!.playerIds.length;
+        const newPlayers = { ...roomState!.players };
+        newPlayers[user.uid].rack = newRack;
+
+        try {
+            const logText = `${newPlayers[user.uid].name} cambió letras`;
+            const updatedLogs = [...(roomState!.logs || []), { id: Date.now(), text: logText, icon: '🔄' }].slice(-5);
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), {
+                bag: currentBag, players: newPlayers, turnIndex: nextTurn, turnStartTime: Date.now(), logs: updatedLogs
+            });
+            setHintHighlights([]); setHintGhost([]);
+        } catch (e) { showError("Error al cambiar letras"); }
+
+        if ((window as any).gsap) {
+            (window as any).gsap.fromTo(".tile-rack", { y: -200, opacity: 0, scale: 0.2 }, { y: 0, opacity: 1, scale: 1, duration: 0.8, stagger: 0.1, ease: "elastic.out(1, 0.6)", clearProps: "transform,opacity" });
+        }
+    };
+
+    const skipTurn = async (forcedByTimeout = false) => {
+        if (!isMyTurnActual) return showError("No es tu turno");
+        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+
+        const nextTurn = (roomState!.turnIndex + 1) % roomState!.playerIds.length;
+        try {
+            const playerName = roomState!.players[user.uid].name;
+            const logText = forcedByTimeout ? `${playerName} se quedó sin tiempo` : `${playerName} pasó el turno`;
+            const icon = forcedByTimeout ? '⏰' : '⏭️';
+            const updatedLogs = [...(roomState!.logs || []), { id: Date.now(), text: logText, icon }].slice(-5);
+
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), {
+                turnIndex: nextTurn, turnStartTime: Date.now(), logs: updatedLogs
+            });
+            setHintHighlights([]); setHintGhost([]);
+        } catch (e) { showError("Error al pasar turno"); }
+    };
+
+    const spawnFloatingText = (text: string, parentSelector: string) => {
+        const parent = document.querySelector(parentSelector);
+        if (!parent || !(window as any).gsap) return;
+        const el = document.createElement('div');
+        el.className = 'absolute top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none z-50';
+        el.innerHTML = `<span class="text-emerald-400 font-black text-[clamp(14px,3vmin,24px)] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">${text}</span>`;
+        parent.appendChild(el);
+        (window as any).gsap.to(el, { y: -60, opacity: 0, scale: 1.5, duration: 1, ease: "power2.out", onComplete: () => el.remove() });
+    };
+
+    const spawnConfetti = () => {
+        for (let i = 0; i < 200; i++) {
+            const conf = document.createElement('div');
+            conf.className = 'fixed w-3 h-3 md:w-5 md:h-5 z-[200] shadow-sm';
+            if (Math.random() > 0.5) conf.style.borderRadius = '50%';
+            conf.style.left = '50%'; conf.style.top = '50%';
+            conf.style.backgroundColor = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ffffff', '#fbbf24'][Math.floor(Math.random() * 7)];
+            document.body.appendChild(conf);
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 300 + Math.random() * 1000;
+            (window as any).gsap.to(conf, { x: Math.cos(angle) * velocity, y: Math.sin(angle) * velocity + 600, rotation: Math.random() * 1080, opacity: 0, duration: 2.5 + Math.random() * 2, ease: "power2.out", onComplete: () => conf.remove() });
+        }
+    };
+
+    const sendEmote = async (emoji: string) => {
+        setShowEmotes(false);
+        if (!user || !db || !roomCode) return;
+        try {
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), {
+                lastEmote: { uid: user.uid, emoji, id: Date.now() }
+            });
+        } catch (e) { console.error("Error enviando emote"); }
+    };
+
+    const spawnEmote = (emoji: string, isMe: boolean) => {
+        const el = document.createElement('div');
+        el.className = `fixed ${isMe ? 'bottom-32 left-8' : 'top-32 right-8'} z-[100] text-6xl drop-shadow-2xl pointer-events-none`;
+        el.innerText = emoji;
+        document.body.appendChild(el);
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            gsap.fromTo(el, { scale: 0, rotation: -45, opacity: 0 }, { scale: 1.5, rotation: 15, opacity: 1, duration: 0.6, ease: "elastic.out(1, 0.4)" });
+            gsap.to(el, { y: isMe ? -150 : 150, opacity: 0, duration: 1.5, delay: 1.5, ease: "power2.in", onComplete: () => el.remove() });
+        }
+    };
+
+    const handlePlay = async () => {
+        if (!preview.valid || !roomState || !user) { showError(preview.error || "Jugada inválida"); return; }
+
+        let newBoard = (roomState.board as Cell[][]).map(row => row.map(c => ({ ...c })));
+        pendingPlacements.forEach(p => {
+            newBoard[p.r][p.c].tile = p.tile;
+            newBoard[p.r][p.c].locked = true;
+        });
+
+        let newBag = [...roomState.bag];
+        let newRack = [...localRack];
+        for (let i = 0; i < newRack.length; i++) {
+            if (newRack[i] === null && newBag.length > 0) newRack[i] = newBag.pop()!;
+        }
+
+        const nextTurn = (roomState.turnIndex + 1) % roomState.playerIds.length;
+        const newPlayers = { ...roomState.players };
+        newPlayers[user.uid].score += preview.score;
+        newPlayers[user.uid].rack = newRack;
+
+        const topWord = preview.words.reduce((prev, current) => (prev.points > current.points) ? prev : current);
+        const logText = `${newPlayers[user.uid].name} jugó ${topWord.word} (+${preview.score})`;
+        const updatedLogs = [...(roomState.logs || []), { id: Date.now(), text: logText, icon: '✨' }].slice(-5);
+
+        if ((window as any).gsap) {
+            const gsap = (window as any).gsap;
+            pendingPlacements.forEach((p, i) => {
+                const cellEl = document.querySelector(`.cell-${p.r}-${p.c}`);
+                if (cellEl) {
+                    gsap.to(cellEl.querySelector('.tile-placed'), { scale: 1.3, zIndex: 50, boxShadow: "0 15px 30px rgba(52, 211, 153, 0.8)", duration: 0.25, yoyo: true, repeat: 1, delay: i * 0.15, ease: "power1.inOut" });
+                    setTimeout(() => {
+                        spawnFloatingText(`+${p.tile?.value || 0}`, `.cell-${p.r}-${p.c}`);
+                        const rect = cellEl.getBoundingClientRect();
+                        spawnFlyingScore(rect.left + rect.width / 2, rect.top + rect.height / 2, 'score-hud-box', p.tile?.value || 0);
+                    }, i * 150);
+                }
+            });
+            if (preview.words.some(w => w.word === "¡BINGO!")) spawnConfetti();
+        }
+
+        try {
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), {
+                board: JSON.stringify(newBoard),
+                bag: newBag,
+                players: newPlayers,
+                turnIndex: nextTurn,
+                turnStartTime: Date.now(),
+                logs: updatedLogs
+            });
+        } catch (e: any) {
+            showError("Error al enviar la jugada al servidor.");
+            return;
+        }
+
+        setPendingPlacements([]);
+        setHintHighlights([]);
+        setHintGhost([]);
+        setPreview({ valid: false, score: 0, words: [], error: '' });
+    };
+
+    const getCellVisuals = (mult: string, isCenter: boolean) => {
+        if (isCenter) return { bg: currentTheme.cellEmpty, text: currentTheme.centerStar };
+        switch (mult) {
+            case 'TW': return { bg: currentTheme.tw, text: currentTheme.textEmpty };
+            case 'DW': return { bg: currentTheme.dw, text: currentTheme.textEmpty };
+            case 'TL': return { bg: currentTheme.tl, text: currentTheme.textEmpty };
+            case 'DL': return { bg: currentTheme.dl, text: currentTheme.textEmpty };
+            default: return { bg: currentTheme.cellEmpty, text: currentTheme.textEmpty };
+        }
+    };
+
+    // --- PANTALLA DE CARGA DEL DICCIONARIO ---
+    if (!dictLoaded) {
+        return (
+            <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center font-sans z-[300]">
+                <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.4)] animate-pulse mb-8 border border-indigo-400">
+                    <BrainCircuit className="w-12 h-12 text-white animate-bounce" />
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-black text-white tracking-widest mb-3 text-center px-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">CARGANDO RAE</h1>
+                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs sm:text-sm tracking-widest uppercase text-center px-8">
+                    <BookOpen className="w-4 h-4" /> <span>Sincronizando &gt;80.000 palabras...</span>
+                </div>
+            </div>
+        );
+    }
+
+    // --- VISTA LOBBY ---
+    if (!roomState || roomState.status === 'waiting') {
+        return (
+            <div className="fixed inset-0 bg-gradient-to-br from-slate-900 to-indigo-950 text-slate-100 flex items-center justify-center p-4 font-sans">
+                <style dangerouslySetInnerHTML={{ __html: `@keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } } .bg-shape { position: absolute; filter: blur(60px); opacity: 0.3; animation: float-bg 12s infinite ease-in-out; pointer-events: none; z-index: 0; }` }} />
+                <div className="bg-shape bg-rose-500 w-[40vw] h-[40vw] top-[-10%] left-[-10%]"></div>
+                <div className="bg-shape bg-blue-500 w-[50vw] h-[50vw] bottom-[-10%] right-[-10%]" style={{ animationDelay: '-5s' }}></div>
+
+                <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full relative z-10 flex flex-col items-center">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[#f59850] to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6 transform rotate-3">
+                        <span className="text-4xl font-black text-white">P</span>
+                    </div>
+                    <h1 className="text-3xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight">Palabritas <span className="text-rose-400">GO</span></h1>
+
+                    {errorMsg && <div className="w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Zap className="w-4 h-4" /> {errorMsg}</div>}
+
+                    {!roomState ? (
+                        <div className="w-full space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tu Nombre</label>
+                                <input type="text" value={userName} onChange={e => setUserName(e.target.value.toUpperCase())} placeholder="JUGADOR1" maxLength={10} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-rose-400 transition-colors" />
+                            </div>
+                            <div className="flex gap-2">
+                                <input type="text" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" maxLength={4} className="w-1/2 bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-blue-400 transition-colors" />
+                                <button onClick={handleJoinRoom} disabled={!userName || !joinCode || joinCode.length !== 4} className="w-1/2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-black rounded-xl uppercase tracking-widest text-sm transition-all shadow-lg flex items-center justify-center gap-2"><LogIn className="w-4 h-4" /> Unirse</button>
+                            </div>
+                            <div className="relative py-4 flex items-center justify-center">
+                                <div className="absolute w-full h-px bg-white/10"></div>
+                                <span className="bg-[#1e293b] px-4 text-xs font-bold text-slate-400 relative">O crea una nueva</span>
+                            </div>
+                            <button onClick={handleCreateRoom} disabled={!userName} className="w-full bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Crear Sala</button>
+                        </div>
+                    ) : (
+                        <div className="w-full flex flex-col items-center">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Código de Sala</span>
+                            <div className="text-5xl font-black text-white tracking-widest bg-black/20 px-8 py-4 rounded-2xl border border-white/10 mb-8">{roomCode}</div>
+
+                            <div className="w-full bg-black/20 rounded-2xl p-4 mb-8">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Jugadores ({roomState.playerIds.length}/4)</h3>
+                                <div className="space-y-2">
+                                    {roomState.playerIds.map(uid => (
+                                        <div key={uid} className="bg-white/5 px-4 py-3 rounded-xl flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-black text-xs shadow-inner">
+                                                {roomState.players[uid].name.substring(0, 2)}
+                                            </div>
+                                            <span className="font-black text-white">{roomState.players[uid].name}</span>
+                                            {uid === roomState.host && <Crown className="w-4 h-4 text-amber-400 ml-auto" />}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {user.uid === roomState.host ? (
+                                <button onClick={handleStartGame} disabled={roomState.playerIds.length < 1} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Play className="w-5 h-5 fill-current" /> Empezar Partida</button>
+                            ) : (
+                                <div className="text-sm font-bold text-amber-400 animate-pulse flex items-center gap-2"><Menu className="w-4 h-4 animate-spin" /> Esperando al anfitrión...</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // --- VISTA JUEGO PRINCIPAL ---
+    const currentTurnUid = roomState.playerIds[roomState.turnIndex];
+    const isMyTurnActual = isMyTurn;
+    const myPlayer = roomState.players[user.uid];
+
+    return (
+        <div className="fixed inset-0 bg-slate-950 text-slate-800 overflow-hidden font-sans touch-none select-none">
+
+            <style dangerouslySetInnerHTML={{
+                __html: `
+        @keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+        .bg-shape { position: absolute; filter: blur(60px); opacity: 0.2; animation: float-bg 15s infinite ease-in-out; pointer-events: none; z-index: 0; }
+        .shape-1 { background: #3b82f6; width: 40vw; height: 40vw; top: -10%; left: -10%; animation-delay: 0s; }
+        .shape-2 { background: #a855f7; width: 50vw; height: 50vw; bottom: -10%; right: -10%; animation-delay: -5s; }
+        
+        @keyframes tile-float-anim {
+            0%, 100% { transform: translateY(-16px) scale(1.05); }
+            50% { transform: translateY(-22px) scale(1.05); }
+        }
+        .tile-selected {
+            animation: tile-float-anim 1.5s ease-in-out infinite !important;
+            box-shadow: 0 20px 30px rgba(52, 211, 153, 0.5) !important;
+            border-bottom-width: 2px !important;
+            z-index: 50;
+        }
+
+        /* ANIMACIONES CSS EXCLUSIVAS PARA EVITAR CONFLICTOS CON REACT */
+        @keyframes radar-pop {
+            0% { transform: scale(0) rotate(45deg); opacity: 0; }
+            50% { transform: scale(1.2) rotate(-10deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .radar-highlight {
+            animation: radar-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes ghost-pop {
+            0% { transform: scale(0) translateY(-50px) rotate(15deg); opacity: 0; }
+            100% { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+        }
+        .ghost-tile {
+            animation: ghost-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+        .roulette-wheel {
+            background: conic-gradient(
+                #94a3b8 0deg 90deg,
+                #4ade80 90deg 180deg,
+                #a855f7 180deg 270deg,
+                #fbbf24 270deg 360deg
+            );
+            border-radius: 50%;
+        }
+      `}} />
+            <div className="bg-shape shape-1"></div>
+            <div className="bg-shape shape-2"></div>
+
+            {/* TOP HUD */}
+            <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 flex flex-col gap-2 z-30 pointer-events-none">
+
+                <div className="flex justify-between items-start">
+                    <div className="flex flex-col gap-1.5 sm:gap-2">
+                        <div className="flex gap-2 pointer-events-auto">
+                            <button onClick={() => setShowProfile(true)} className="top-hud-element flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-lg rounded-full pr-3 pl-1 py-1 border border-white/20 hover:bg-white/20 transition-all cursor-pointer group">
+                                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform">
+                                    <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                </div>
+                                <div className="flex flex-col items-start pr-2">
+                                    <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 uppercase tracking-widest leading-none">SALA: {roomCode}</span>
+                                    <span className="font-black text-white text-[10px] sm:text-xs">Jugadores</span>
+                                </div>
+                            </button>
+                            {/* BOTÓN TIENDA */}
+                            <button onClick={() => setShowShop(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.5)] rounded-full flex items-center justify-center border border-amber-200 hover:scale-110 transition-transform">
+                                <Palette className="w-4 h-4 sm:w-5 sm:h-5 text-orange-950" />
+                            </button>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-white/20 w-max text-white">
+                                <span className="font-black text-[10px] sm:text-xs">Bolsa: <AnimatedNumber value={roomState.bag.length} /></span>
+                            </div>
+                            {!dictLoaded && (
+                                <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-rose-500/80 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-rose-400 w-max text-white animate-pulse">
+                                    <BrainCircuit className="w-3 h-3 animate-spin" />
+                                    <span className="font-black text-[9px] uppercase tracking-widest">Cargando RAE...</span>
+                                </div>
+                            )}
+                            <div className="relative pointer-events-auto">
+                                <button onClick={() => setShowEmotes(!showEmotes)} className="top-hud-element w-7 h-7 sm:w-8 sm:h-8 bg-white/10 backdrop-blur-md shadow-sm rounded-full flex items-center justify-center border border-white/20 hover:bg-white/20 transition-colors">
+                                    <Smile className="w-4 h-4 text-amber-400" />
+                                </button>
+                                {showEmotes && (
+                                    <div className="absolute top-10 left-0 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-xl rounded-2xl p-2 grid grid-cols-4 gap-2 animate-in fade-in slide-in-from-top-2 w-max">
+                                        {EMOTES.map(e => (
+                                            <button key={e} onClick={() => sendEmote(e)} className="w-8 h-8 flex items-center justify-center text-xl hover:scale-125 transition-transform hover:bg-slate-800 rounded-lg">{e}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 items-end">
+                        <div id="score-hud-box" className="top-hud-element pointer-events-auto bg-white/10 backdrop-blur-md shadow-lg rounded-2xl px-4 py-1.5 sm:px-5 sm:py-2 flex flex-col items-end border border-emerald-500/50 relative overflow-hidden transition-all duration-300">
+                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent"></div>
+                            <div className="flex items-center gap-2 mb-0.5 relative z-10">
+                                <div className="flex items-center gap-1 bg-black/30 px-1.5 py-0.5 rounded-full border border-white/10">
+                                    <span className="text-[8px] sm:text-[9px] font-black text-cyan-300">{myPlayer?.diamonds || 0}</span>
+                                    <span className="text-[8px] sm:text-[9px]">💎</span>
+                                </div>
+                                <span className="text-[8px] sm:text-[9px] font-bold text-emerald-200 uppercase tracking-widest leading-none">Tu Score</span>
+                            </div>
+
+                            <div className="text-2xl sm:text-4xl font-black text-white leading-none tracking-tighter flex items-center gap-1.5 relative z-10">
+                                <AnimatedNumber value={myPlayer?.score || 0} />
+                                {preview.valid && pendingPlacements.length > 0 && (
+                                    <span className="text-base sm:text-xl text-emerald-400 opacity-90 animate-pulse drop-shadow-sm">+{preview.score}</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* FEED SOCIAL */}
+                <div className="absolute top-32 left-3 sm:left-4 flex flex-col gap-1.5 max-w-[200px] sm:max-w-[250px] pointer-events-none z-20">
+                    {roomState.logs && roomState.logs.map((log, i) => (
+                        <div key={log.id} className="bg-slate-900/80 backdrop-blur-md text-white border border-white/10 px-3 py-1.5 rounded-xl text-[9px] sm:text-[10px] font-bold flex items-center gap-2 animate-in slide-in-from-left-4 fade-in" style={{ opacity: 1 - ((roomState.logs!.length - 1 - i) * 0.2) }}>
+                            <span>{log.icon}</span> <span className="truncate">{log.text}</span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Indicador de Turno */}
+                <div className="self-center bg-slate-900/90 backdrop-blur-md border border-slate-700 pl-6 pr-2 py-1.5 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 mt-2">
+                    {isMyTurnActual ? (
+                        <>
+                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_#34d399]"></div>
+                            <span className="text-white font-black tracking-widest text-xs sm:text-sm uppercase">¡ES TU TURNO!</span>
+                            <div className={`ml-2 px-3 py-1 rounded-full flex items-center gap-1 font-black text-xs transition-colors ${timeLeft < 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-emerald-400'}`}>
+                                <Clock className="w-3 h-3" /> {timeLeft}s
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#fbbf24]"></div>
+                            <span className="text-slate-300 font-bold tracking-widest text-[10px] sm:text-xs uppercase">Juega {roomState.players[currentTurnUid]?.name}</span>
+                            <div className="ml-2 px-2 py-1 rounded-full bg-slate-800 text-amber-400 flex items-center gap-1 font-black text-[10px]">
+                                <Clock className="w-3 h-3" /> {timeLeft}s
+                            </div>
+                        </>
+                    )}
+                </div>
+
+            </div>
+
+            {/* NOTIFICACIONES Y PREVISIÓN */}
+            <div className="absolute top-40 w-full flex justify-center z-30 pointer-events-none">
+                {errorMsg ? (
+                    <span className="error-msg bg-red-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
+                        <Zap className="w-3 h-3 sm:w-4 sm:h-4" /> {errorMsg}
+                    </span>
+                ) : pendingPlacements.length > 0 ? (
+                    preview.valid ? (
+                        <div className="flex flex-col items-center gap-1 animate-in slide-in-from-top-2 fade-in duration-200">
+                            <span className="bg-slate-900/90 backdrop-blur-sm text-emerald-400 border border-emerald-500/50 text-[9px] sm:text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg uppercase tracking-widest">
+                                Estimado
+                            </span>
+                            {preview.words.map((lw, i) => (
+                                <span key={i} className="bg-gradient-to-r from-[#1fa95b] to-[#15803d] text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-emerald-400">
+                                    <Flame className="w-3 h-3" /> {lw.word} <span className="text-emerald-100 font-bold opacity-90">+{lw.points}</span>
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <span className="bg-amber-500/95 backdrop-blur-md text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-amber-400">
+                            <Info className="w-3 h-3 sm:w-4 sm:h-4" /> {preview.error}
+                        </span>
+                    )
+                ) : null}
+            </div>
+
+            {/* ÁREA DE JUEGO CENTRAL */}
+            <div
+                ref={boardWrapperRef}
+                className="board-wrapper absolute inset-0 flex items-center justify-center z-10 overflow-hidden pb-24 sm:pb-28"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp}
+                onPointerCancel={onPointerUp}
+            >
+                <div
+                    className="w-full h-full flex items-center justify-center pointer-events-none"
+                    style={{ transform: `translate(${camTransform.x}px, ${camTransform.y}px) scale(${camTransform.scale})`, transition: pointerState.current.isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)', transformOrigin: 'center center' }}
+                >
+                    <div
+                        className={`board-container pointer-events-auto ${currentTheme.boardBg} rounded-lg sm:rounded-xl p-[2px] sm:p-1 shadow-2xl flex flex-col relative border-b-[4px] sm:border-b-[6px] border-r-[2px] sm:border-r-[4px] ${currentTheme.boardBorder} mx-auto w-[100vmin] max-w-[800px] aspect-square transition-colors duration-500`}
+                    >
+                        <div className="w-full h-full grid gap-[1px] sm:gap-[2px]" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))', gridTemplateRows: 'repeat(15, minmax(0, 1fr))' }}>
+                            {displayBoard.map((row, r) =>
+                                row.map((cell, c) => {
+                                    const isCenter = r === 7 && c === 7;
+                                    const visual = getCellVisuals(cell.mult, isCenter);
+                                    const isHighlighted = hintHighlights.some(h => h.r === r && h.c === c);
+                                    const ghostPlacement = hintGhost.find(h => h.r === r && h.c === c);
+
+                                    return (
+                                        <div key={`${r}-${c}`} onClick={() => handleBoardClick(r, c)} className={`cell-${r}-${c} relative flex items-center justify-center transition-colors duration-500 ${visual.bg} ${(!cell.tile && selectedRackIdx !== null && isMyTurnActual) ? 'cursor-pointer hover:brightness-125 shadow-inner' : ''} ${(cell.tile && !roomState.board[r][c].tile && isMyTurnActual) ? 'cursor-pointer z-10' : ''}`}>
+                                            {!cell.tile && cell.mult === '' && !isCenter && <div className={`absolute inset-0 ${currentTheme.cellEmpty} transition-colors duration-500`}></div>}
+                                            {!cell.tile && isCenter && <Star className={`w-[60%] h-[60%] fill-current ${currentTheme.centerStar} pointer-events-none transition-colors duration-500`} />}
+
+                                            {/* Highlights para Zonas Clave (EFECTO RADAR CSS) */}
+                                            {!cell.tile && isHighlighted && (
+                                                <div className="radar-highlight absolute inset-[1px] bg-cyan-400/60 ring-4 ring-cyan-300 rounded-[2px] sm:rounded-sm z-30 pointer-events-none shadow-[0_0_20px_rgba(34,211,238,1)]"></div>
+                                            )}
+
+                                            {/* Ghost Tiles para Pistas Holográficas (EFECTO GHOST CSS) */}
+                                            {!cell.tile && ghostPlacement && (
+                                                <div className={`ghost-tile absolute inset-[1px] bg-cyan-500/60 backdrop-blur-md rounded-[2px] sm:rounded-sm flex items-center justify-center border-[3px] border-cyan-300 z-[60] pointer-events-none shadow-[0_0_25px_rgba(34,211,238,0.9)]`}>
+                                                    <span className={`font-black text-white text-[clamp(16px,5vmin,40px)] leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>{ghostPlacement.tile.isBlank ? '?' : ghostPlacement.tile.letter}</span>
+                                                </div>
+                                            )}
+
+                                            {cell.tile && (
+                                                <div className={`tile-placed absolute inset-[0px] sm:inset-[1px] ${currentTheme.tileBg} rounded-[2px] sm:rounded-sm flex items-center justify-center border ${currentTheme.tileBorder} transition-all duration-500
+                            ${(roomState.board as Cell[][])[r][c].tile ? currentTheme.tileShadow : 'ring-1 ring-emerald-400 ring-offset-1 ring-offset-black/50 z-20 shadow-[0_5px_15px_rgba(0,0,0,0.6)]'}`}>
+                                                    <span className={`font-black ${cell.tile.isBlank ? 'text-rose-500' : currentTheme.tileText} text-[clamp(14px,4.5vmin,36px)] leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? cell.tile.blankLetter : cell.tile.letter}</span>
+                                                    <span className={`absolute bottom-[1px] right-[2px] text-[clamp(6px,1.5vmin,12px)] font-bold opacity-60 ${currentTheme.tileText} leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? 0 : cell.tile.value}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* CONTROLES DE CÁMARA Y PISTAS */}
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-5 z-40 pointer-events-auto">
+
+                {/* PISTAS SEPARADAS EN BOTONES */}
+                <div className="flex flex-col gap-2">
+                    <button onClick={() => setShowHints(true)} disabled={isSpinning || hintHighlights.length > 0 || hintGhost.length > 0 || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.6)] flex items-center justify-center border border-yellow-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                        <Lightbulb className="w-5 h-5 text-amber-950 fill-current" />
+                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
+                    </button>
+
+                    <button onClick={activateRadar} disabled={hintHighlights.length > 0 || hintGhost.length > 0 || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.6)] flex items-center justify-center border border-cyan-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                        <Search className="w-5 h-5 text-blue-950" />
+                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
+                    </button>
+
+                    <button onClick={activateMagicSwap} disabled={isSpinning || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.6)] flex items-center justify-center border border-pink-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                        <Wand2 className="w-5 h-5 text-rose-950" />
+                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
+                    </button>
+                </div>
+
+                <div className="w-6 h-px bg-white/20 self-center"></div>
+
+                <div className="flex flex-col gap-2">
+                    <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 3) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><ZoomIn className="w-5 h-5" /></button>
+                    <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.5) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><ZoomOut className="w-5 h-5" /></button>
+                    <button onClick={() => setCamTransform({ x: 0, y: 0, scale: 1 })} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Maximize className="w-5 h-5" /></button>
+                </div>
+            </div>
+
+            {/* RACK FLOTANTE Y CONTROLES (Bottom) */}
+            <div className={`floating-rack absolute bottom-0 left-0 right-0 w-full z-40 flex flex-col items-center gap-2 pb-3 sm:pb-4 transition-opacity duration-300 ${!isMyTurnActual ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'pointer-events-none'}`}>
+                <div className={`rack-container relative ${currentTheme.rackBg} rounded-xl p-1.5 sm:p-2 shadow-2xl flex justify-center gap-1 sm:gap-1.5 mx-auto pointer-events-auto w-max transition-colors duration-500`}>
+                    {localRack.map((tile, idx) => (
+                        <div
+                            key={idx}
+                            onClick={() => handleRackClick(idx)}
+                            className={`tile-rack tile-rack-${idx} relative w-[13vw] sm:w-[8vw] max-w-[55px] aspect-[1/1.1] rounded-md transition-all duration-300 cursor-pointer border
+                ${tile ? `${currentTheme.tileBg} ${currentTheme.tileBorder} ${currentTheme.tileShadow} border-b-[3px]` : currentTheme.rackTileEmpty}
+                ${selectedRackIdx === idx ? 'tile-selected ring-4 ring-emerald-400' : 'hover:-translate-y-1'}
+            `}
+                        >
+                            {tile && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className={`text-2xl sm:text-3xl font-black ${currentTheme.tileText} leading-none transition-colors duration-500`}>{tile.letter}</span>
+                                    <span className={`absolute bottom-[2px] right-[3px] text-[0.55rem] sm:text-[0.65rem] font-bold opacity-60 ${currentTheme.tileText} transition-colors duration-500`}>{tile.value}</span>
+                                    <div className="absolute top-1 left-1 right-1 h-1/4 bg-white/20 rounded-t-sm pointer-events-none"></div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex justify-between items-center gap-2 px-2 sm:px-4 w-full max-w-[600px] pointer-events-none">
+                    <div className="flex gap-2 pointer-events-auto">
+                        <button onClick={shuffleRack} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg hover:rotate-180 duration-500 disabled:opacity-50">
+                            <Shuffle className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                        <button onClick={recallAll} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg active:-rotate-45 disabled:opacity-50">
+                            <Undo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex gap-2 flex-1 justify-end pointer-events-auto">
+                        {pendingPlacements.length === 0 ? (
+                            <>
+                                <button onClick={swapTiles} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-3 sm:px-4 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 border-b-[3px] border-blue-800 rounded-xl flex items-center justify-center text-white transition-all active:translate-y-[3px] active:border-b-0 shadow-lg disabled:opacity-50">
+                                    <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+                                </button>
+                                <button onClick={() => skipTurn(false)} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-4 sm:px-6 bg-slate-800 hover:bg-slate-700 border-b-[3px] border-black rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-xs sm:text-sm transition-all active:translate-y-[3px] active:border-b-0 shadow-lg">
+                                    <SkipForward className="w-4 h-4" /> Pasar
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                onClick={handlePlay}
+                                disabled={!isMyTurnActual || !preview.valid}
+                                className={`btn-jugar h-10 sm:h-12 flex-1 max-w-[140px] border-b-[3px] rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-sm transition-all shadow-lg
+                    ${!preview.valid ? 'bg-slate-800/80 backdrop-blur-md border-black cursor-not-allowed opacity-80' : 'bg-gradient-to-b from-[#22c55e] to-[#16a34a] hover:from-[#4ade80] hover:to-[#15803d] border-[#14532d] active:translate-y-[3px] active:border-b-0'}`}
+                            >
+                                <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> JUGAR
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* MODAL RULETA DE PISTAS CON 4 PORCIONES (Solo Hologramas) */}
+            {showHints && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-md rounded-3xl shadow-2xl border border-amber-500/30 flex flex-col animate-in zoom-in-95 overflow-hidden">
+
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center relative overflow-hidden bg-gradient-to-r from-amber-500/10 to-orange-600/10">
+                            <h2 className="text-xl font-black text-amber-400 tracking-widest flex items-center gap-2 uppercase">
+                                <Lightbulb className="w-5 h-5" /> Ruleta de Palabras
+                            </h2>
+                            <button onClick={() => { setShowHints(false); setHintResult(null); }} disabled={isSpinning} className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors disabled:opacity-50"><Zap className="w-4 h-4" /></button>
+                        </div>
+
+                        <div className="p-6 flex flex-col items-center">
+                            <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[15px] border-t-white mb-2 relative z-10 filter drop-shadow-md"></div>
+
+                            {/* Ruleta CSS de 4 Porciones */}
+                            <div className="w-56 h-56 rounded-full border-4 border-slate-700 shadow-[0_0_30px_rgba(0,0,0,0.5)] overflow-hidden relative mb-6">
+                                <div className="roulette-wheel w-full h-full absolute inset-0"></div>
+                                {/* Líneas separadoras */}
+                                {[0, 90, 180, 270].map(deg => (
+                                    <div key={deg} className="absolute top-0 left-1/2 w-1 h-1/2 bg-slate-900 origin-bottom -translate-x-1/2 z-10" style={{ transform: `rotate(${deg}deg)` }}></div>
+                                ))}
+                                <div className="absolute inset-0 pointer-events-none z-20">
+                                    {[
+                                        { name: 'Normal', deg: 45 },
+                                        { name: 'Buena', deg: 135 },
+                                        { name: 'S. Buena', deg: 225 },
+                                        { name: 'Mejor', deg: 315 },
+                                    ].map(item => (
+                                        <div key={item.name} className="absolute inset-0 flex items-start justify-center pt-5" style={{ transform: `rotate(${item.deg}deg)` }}>
+                                            <span className="font-black text-white drop-shadow-md text-[11px] uppercase tracking-widest" style={{ transform: (item.deg > 90 && item.deg < 270) ? 'rotate(180deg)' : 'none' }}>
+                                                {item.name}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-slate-800 rounded-full border-[3px] border-slate-600 shadow-inner z-30 flex items-center justify-center">
+                                    <Lightbulb className="w-4 h-4 text-amber-500" />
+                                </div>
+                            </div>
+
+                            {hintResult ? (
+                                <div className="bg-slate-800 border border-slate-600 p-4 rounded-xl w-full text-center animate-in zoom-in slide-in-from-bottom-4">
+                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded text-white mb-2 inline-block shadow-sm
+                                ${hintResult.tier === 'Normal' ? 'bg-slate-500' : hintResult.tier === 'Buena' ? 'bg-emerald-500' : hintResult.tier === 'Super Buena' ? 'bg-purple-500' : 'bg-amber-500'}`}>
+                                        Pista {hintResult.tier}
+                                    </span>
+                                    <p className="text-sm font-bold text-slate-300">{hintResult.text}</p>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={spinRoulette}
+                                    disabled={isSpinning || (myPlayer?.diamonds || 0) < 10}
+                                    className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-2"
+                                >
+                                    Girar por 10 💎
+                                </button>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+            )}
+
+            {/* MODALES SECUNDARIOS */}
+            {pendingBlank && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200 pointer-events-auto">
+                    <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl max-w-sm w-full flex flex-col items-center animate-in zoom-in-95 duration-200">
+                        <div className="w-16 h-16 bg-rose-500/20 rounded-2xl flex items-center justify-center mb-4 shadow-inner border border-rose-500/50">
+                            <Star className="w-8 h-8 text-rose-500 fill-current" />
+                        </div>
+                        <h3 className="text-xl font-black text-white mb-1">Elegir Letra</h3>
+                        <p className="text-xs text-slate-400 mb-6 text-center font-bold">El comodín valdrá 0 puntos, pero actuará como la letra que elijas.</p>
+                        <div className="flex flex-wrap justify-center gap-2 mb-6">
+                            {ALPHABET.map(l => (
+                                <button key={l} onClick={() => handleBlankSelection(l)} className="w-10 h-12 bg-slate-800 hover:bg-rose-500 text-white border-b-[3px] border-slate-900 hover:border-rose-700 rounded-lg font-black text-lg transition-all active:border-b-0 active:translate-y-1 shadow-sm">{l}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => { const { tileIndex } = pendingBlank; if ((window as any).gsap) (window as any).gsap.to(`.tile-rack-${tileIndex}`, { y: 0, duration: 0.3 }); setPendingBlank(null); }} className="w-full text-slate-400 font-black uppercase tracking-widest text-sm hover:text-white bg-slate-800 py-3 rounded-xl transition-colors">Cancelar</button>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE TIENDA (Boutique Premium) */}
+            {showShop && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-3xl rounded-3xl shadow-2xl border border-slate-700 flex flex-col max-h-[90vh] animate-in zoom-in-95">
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center relative overflow-hidden rounded-t-3xl">
+                            <div className="absolute inset-0 bg-gradient-to-r from-amber-500/20 to-orange-600/20"></div>
+                            <h2 className="text-2xl font-black text-white tracking-widest flex items-center gap-3 relative z-10 uppercase">
+                                <Palette className="w-6 h-6 text-amber-400" /> Boutique Premium
+                            </h2>
+                            <button onClick={() => setShowShop(false)} className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors relative z-10"><Zap className="w-5 h-5" /></button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto custom-scrollbar">
+                            <p className="text-sm text-slate-400 font-bold mb-6 text-center">Personaliza tu tablero y tus fichas. Las apariencias se aplican solo a tu pantalla.</p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {THEMES.map(theme => {
+                                    const isUnlocked = unlockedThemes.includes(theme.id);
+                                    const isEquipped = currentTheme.id === theme.id;
+
+                                    return (
+                                        <div key={theme.id} className={`border ${isEquipped ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'border-slate-700 hover:border-slate-500'} bg-slate-800 rounded-2xl p-4 flex flex-col gap-4 transition-all`}>
+
+                                            <div className={`w-full h-24 rounded-xl ${theme.boardBg} ${theme.boardBorder} border flex items-center justify-center gap-2 overflow-hidden relative`}>
+                                                <div className={`w-12 h-14 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center ${theme.tileShadow}`}>
+                                                    <span className={`text-2xl font-black ${theme.tileText}`}>A</span>
+                                                </div>
+                                                <div className={`w-12 h-14 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center ${theme.tileShadow}`}>
+                                                    <span className={`text-2xl font-black ${theme.tileText}`}>Z</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-between items-end mt-auto">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-white">{theme.name}</h3>
+                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{isUnlocked ? 'En propiedad' : theme.price}</span>
+                                                </div>
+
+                                                {isEquipped ? (
+                                                    <button disabled className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest flex items-center gap-1">
+                                                        <CheckCircle2 className="w-4 h-4" /> Equipado
+                                                    </button>
+                                                ) : isUnlocked ? (
+                                                    <button onClick={() => equipTheme(theme.id)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition-colors flex items-center gap-1">
+                                                        <Unlock className="w-4 h-4" /> Equipar
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => purchaseTheme(theme.id)} className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition-colors shadow-lg flex items-center gap-1">
+                                                        <ShoppingCart className="w-4 h-4" /> Comprar
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE CLASIFICACIÓN (PERFIL) */}
+            {showProfile && (
+                <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-md sm:p-4 animate-in fade-in duration-300 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in slide-in-from-bottom-10 sm:zoom-in-95 border border-slate-700">
+                        <div className="px-6 pt-6 pb-4 border-b border-slate-800 flex justify-between items-center sticky top-0 rounded-t-3xl z-10">
+                            <h2 className="text-lg font-black text-white tracking-widest flex items-center gap-2 uppercase">
+                                <Users className="w-5 h-5 text-indigo-400" /> Clasificación
+                            </h2>
+                            <button onClick={() => setShowProfile(false)} className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors"><Zap className="w-4 h-4" /></button>
+                        </div>
+                        <div className="p-4 overflow-y-auto custom-scrollbar">
+                            <div className="space-y-3">
+                                {roomState.playerIds.map((uid, index) => {
+                                    const p = roomState.players[uid];
+                                    const isMe = uid === user?.uid;
+                                    const isTurn = uid === currentTurnUid;
+                                    return (
+                                        <div key={uid} className={`border ${isMe ? 'border-emerald-500/50 bg-emerald-950/30' : 'border-slate-700 bg-slate-800/50'} rounded-2xl p-4 flex items-center gap-4 relative overflow-hidden`}>
+                                            {isTurn && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-400 animate-pulse"></div>}
+                                            <div className={`w-12 h-12 rounded-full ${isMe ? 'bg-emerald-500' : 'bg-slate-700'} flex items-center justify-center shadow-inner relative`}>
+                                                <span className={`font-black text-lg text-white`}>{index + 1}</span>
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-center mb-0.5">
+                                                    <span className="font-black text-white text-sm">{p.name} {isMe && <span className="text-emerald-400 text-xs ml-1">(Tú)</span>}</span>
+                                                    <span className="text-xl font-black text-amber-400 drop-shadow-md">{p.score}</span>
+                                                </div>
+                                                {isTurn && <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-1">Pensando su jugada...</p>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </div>
+    );
+}

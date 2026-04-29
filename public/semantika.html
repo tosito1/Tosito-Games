@@ -196,44 +196,135 @@ async function resolveFusionResult(w1, w2, currentUser, onStatusChange, log) {
 }
 
 
-// --- MOTOR GRÁFICO: UNIVERSO 6.0 (CLEAN) ---
+// --- MOTOR GRÁFICO: UNIVERSO 6.0 (ZOOM & PAN) ---
 function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, combo, energy, trigger, hasSurrendered }) {
   const canvasRef = useRef(null);
   const nodesRef = useRef([]); 
   const mouseRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, mx: 0, my: 0, draggedNode: null  }); 
+  const viewState = useRef({ zoom: 1, offsetX: 0, offsetY: 0 });
+  const touchState = useRef({ lastDist: 0, lastX: 0, lastY: 0, isPanning: false });
+  
   const isComboActive = combo >= 3;
 
   useEffect(() => {
     const updateMousePos = (clientX, clientY) => {
-      mouseRef.current.targetX = (clientX - window.innerWidth / 2) / (window.innerWidth / 2);
-      mouseRef.current.targetY = (clientY - window.innerHeight / 2) / (window.innerHeight / 2);
-      mouseRef.current.mx = clientX; mouseRef.current.my = clientY;
+      mouseRef.current.mx = clientX; 
+      mouseRef.current.my = clientY;
+      
+      // Convert screen coords to world coords
+      const worldX = (clientX - window.innerWidth / 2 - viewState.current.offsetX) / viewState.current.zoom;
+      const worldY = (clientY - window.innerHeight / 2 - viewState.current.offsetY) / viewState.current.zoom;
+      
+      mouseRef.current.targetX = worldX / (window.innerWidth / 2);
+      mouseRef.current.targetY = worldY / (window.innerHeight / 2);
     };
-    const handleMouseMove = (e) => updateMousePos(e.clientX, e.clientY);
-    const handleTouchMove = (e) => { if(e.touches.length > 0) updateMousePos(e.touches[0].clientX, e.touches[0].clientY); };
+
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const zoomSpeed = 0.001;
+      const delta = -e.deltaY;
+      const newZoom = Math.min(Math.max(viewState.current.zoom + delta * zoomSpeed * viewState.current.zoom, 0.2), 5);
+      
+      // Zoom toward mouse position
+      const mouseWorldX = (mouseRef.current.mx - window.innerWidth / 2 - viewState.current.offsetX) / viewState.current.zoom;
+      const mouseWorldY = (mouseRef.current.my - window.innerHeight / 2 - viewState.current.offsetY) / viewState.current.zoom;
+      
+      viewState.current.offsetX -= mouseWorldX * (newZoom - viewState.current.zoom);
+      viewState.current.offsetY -= mouseWorldY * (newZoom - viewState.current.zoom);
+      viewState.current.zoom = newZoom;
+    };
+
+    const handleMouseMove = (e) => {
+      updateMousePos(e.clientX, e.clientY);
+      if (touchState.current.isPanning && !mouseRef.current.draggedNode) {
+          viewState.current.offsetX += e.clientX - touchState.current.lastX;
+          viewState.current.offsetY += e.clientY - touchState.current.lastY;
+          touchState.current.lastX = e.clientX;
+          touchState.current.lastY = e.clientY;
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (e.touches.length === 1) {
+          const touch = e.touches[0];
+          updateMousePos(touch.clientX, touch.clientY);
+          if (touchState.current.isPanning && !mouseRef.current.draggedNode) {
+              viewState.current.offsetX += touch.clientX - touchState.current.lastX;
+              viewState.current.offsetY += touch.clientY - touchState.current.lastY;
+              touchState.current.lastX = touch.clientX;
+              touchState.current.lastY = touch.clientY;
+          }
+      } else if (e.touches.length === 2) {
+          e.preventDefault();
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const midX = (t1.clientX + t2.clientX) / 2;
+          const midY = (t1.clientY + t2.clientY) / 2;
+          
+          if (touchState.current.lastDist > 0) {
+              const delta = dist / touchState.current.lastDist;
+              const newZoom = Math.min(Math.max(viewState.current.zoom * delta, 0.2), 5);
+              
+              const midWorldX = (midX - window.innerWidth / 2 - viewState.current.offsetX) / viewState.current.zoom;
+              const midWorldY = (midY - window.innerHeight / 2 - viewState.current.offsetY) / viewState.current.zoom;
+              
+              viewState.current.offsetX -= midWorldX * (newZoom - viewState.current.zoom);
+              viewState.current.offsetY -= midWorldY * (newZoom - viewState.current.zoom);
+              viewState.current.zoom = newZoom;
+          }
+          touchState.current.lastDist = dist;
+      }
+    };
     
-    const handleDown = (clientX, clientY) => {
-      const clicked = nodesRef.current.find(n => Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size || 10) + 35);
-      if (clicked) mouseRef.current.draggedNode = clicked;
+    const handleDown = (clientX, clientY, isTouch = false) => {
+      touchState.current.lastX = clientX;
+      touchState.current.lastY = clientY;
+      touchState.current.isPanning = true;
+
+      const clicked = nodesRef.current.find(n => Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size * viewState.current.zoom || 10) + 35);
+      if (clicked) {
+          mouseRef.current.draggedNode = clicked;
+          touchState.current.isPanning = false; // Don't pan if dragging node
+      }
     };
+
     const handleMouseDown = (e) => handleDown(e.clientX, e.clientY);
-    const handleTouchStart = (e) => { if(e.touches.length > 0) handleDown(e.touches[0].clientX, e.touches[0].clientY); };
+    const handleTouchStart = (e) => { 
+        if(e.touches.length === 1) {
+            handleDown(e.touches[0].clientX, e.touches[0].clientY, true); 
+        } else if (e.touches.length === 2) {
+            touchState.current.lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        }
+    };
 
     const handleUp = (clientX, clientY) => {
       const d = mouseRef.current.draggedNode;
       if (d) {
-        const target = nodesRef.current.find(n => n !== d && Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size || 10) + 45);
+        const target = nodesRef.current.find(n => n !== d && Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size * viewState.current.zoom || 10) + 45);
         if (target) onFusion(d.word, target.word);
         mouseRef.current.draggedNode = null;
       }
+      touchState.current.isPanning = false;
+      touchState.current.lastDist = 0;
     };
     const handleMouseUp = (e) => handleUp(e.clientX, e.clientY);
-    const handleTouchEnd = (e) => { if(e.changedTouches.length > 0) handleUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY); };
+    const handleTouchEnd = (e) => { 
+        if(e.changedTouches.length > 0) handleUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY); 
+        touchState.current.lastDist = 0;
+    };
 
-    window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleTouchMove, { passive: false }); window.addEventListener('touchstart', handleTouchStart); window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('mousemove', handleMouseMove); 
+    window.addEventListener('mousedown', handleMouseDown); 
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false }); 
+    window.addEventListener('touchstart', handleTouchStart, { passive: false }); 
+    window.addEventListener('touchend', handleTouchEnd);
+    
     return () => { 
       window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); 
+      window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('touchmove', handleTouchMove); window.removeEventListener('touchstart', handleTouchStart); window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [onFusion]);
@@ -254,21 +345,31 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
 
     const draw = () => {
       time++;
+      const { zoom, offsetX, offsetY } = viewState.current;
+      
       mouseRef.current.x += (mouseRef.current.targetX - mouseRef.current.x) * 0.05;
       mouseRef.current.y += (mouseRef.current.targetY - mouseRef.current.y) * 0.05;
-      const pX = mouseRef.current.x * 40; const pY = mouseRef.current.y * 40;
+      
+      const pX = mouseRef.current.x * 40 * zoom; 
+      const pY = mouseRef.current.y * 40 * zoom;
 
       ctx.fillStyle = isComboActive ? '#0f0a02' : '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const cX = canvas.width / 2 - pX; const cY = canvas.height * 0.4 - pY;
-      const absR = Math.min(canvas.width, canvas.height) * 0.7;
+      const cX = canvas.width / 2 + offsetX - pX; 
+      const cY = canvas.height * 0.4 + offsetY - pY;
+      const absR = Math.min(canvas.width, canvas.height) * 0.7 * zoom;
 
+      // Grid
       ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-      for(let gx = (cX % 40) - 40; gx < canvas.width; gx+=40) {
-        for(let gy = (cY % 40) - 40; gy < canvas.height; gy+=40) { ctx.fillRect(gx, gy, 1, 1); }
+      const gridSize = 40 * zoom;
+      for(let gx = (cX % gridSize) - gridSize; gx < canvas.width; gx += gridSize) {
+        for(let gy = (cY % gridSize) - gridSize; gy < canvas.height; gy += gridSize) { ctx.fillRect(gx, gy, 1, 1); }
       }
 
-      stars.forEach(s => { ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha * (Math.sin(time*0.05 + s.x) * 0.5 + 0.5)})`; ctx.fillRect(s.x - pX*0.3, s.y - pY*0.3, s.size, s.size); });
+      stars.forEach(s => { 
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha * (Math.sin(time*0.05 + s.x) * 0.5 + 0.5)})`; 
+          ctx.fillRect(s.x * zoom + cX - pX*0.3, s.y * zoom + cY - pY*0.3, s.size * zoom, s.size * zoom); 
+      });
 
       ctx.lineWidth = 1;
       const zones = [{ score: 50, color: '#f43f5e', dash: [4, 8] }, { score: 500, color: '#f59e0b', dash: [2, 10] }, { score: 5000, color: '#8b5cf6', dash: [2, 20] }, { score: 50000, color: '#06b6d4', dash: [1, 30] }];
@@ -282,7 +383,7 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
         let n = nodesRef.current.find(node => node.word === g.word);
         if (!n) {
           const rP = g.score === 1 ? 0 : Math.max(0.06, Math.log10(g.score) / maxLog);
-          n = { word: g.word, theme: getScoreTheme(g.score), tRP: rP, cRP: 1.5, angle: Math.random()*Math.PI*2, speed: (Math.random()-0.5)*0.0015, drawX: 0, drawY: 0, pulseOffset: Math.random() * Math.PI*2 };
+          n = { word: g.word, score: g.score, theme: getScoreTheme(g.score), tRP: rP, cRP: 1.5, angle: Math.random()*Math.PI*2, speed: (Math.random()-0.5)*0.0015, drawX: 0, drawY: 0, pulseOffset: Math.random() * Math.PI*2 };
           nodesRef.current.push(n);
         }
         if (n.cRP > n.tRP) n.cRP -= (n.cRP - n.tRP) * 0.08; 
@@ -290,7 +391,7 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
         
         if (mouseRef.current.draggedNode === n) { n.drawX = mouseRef.current.mx; n.drawY = mouseRef.current.my; }
         else { n.drawX = cX + Math.cos(n.angle) * (n.cRP * absR); n.drawY = cY + Math.sin(n.angle) * (n.cRP * absR); }
-        n.size = Math.max(3, 7 - (n.tRP * 4));
+        n.size = Math.max(2, 7 - (n.tRP * 4));
       });
 
       ctx.beginPath();
@@ -313,16 +414,17 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
         if (mouseRef.current.draggedNode !== n && n.cRP <= n.tRP + 0.05) {
           ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(n.drawX, n.drawY); ctx.strokeStyle = `${n.theme.color}15`; ctx.lineWidth = 1; ctx.stroke();
         }
-        const size = n.size + Math.sin(time*0.05 + n.pulseOffset) * 0.5;
-        ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size, 0, Math.PI*2); ctx.fillStyle = n.theme.color; ctx.shadowBlur = 15; ctx.shadowColor = n.theme.color; ctx.fill(); ctx.shadowBlur = 0;
+        const size = (n.size + Math.sin(time*0.05 + n.pulseOffset) * 0.5) * zoom;
+        ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size, 0, Math.PI*2); ctx.fillStyle = n.theme.color; ctx.shadowBlur = 15 * zoom; ctx.shadowColor = n.theme.color; ctx.fill(); ctx.shadowBlur = 0;
         ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size * 0.4, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
-        if (mouseRef.current.draggedNode === n) { ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size + 10, 0, Math.PI*2); ctx.strokeStyle = '#f43f5e'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); }
+        if (mouseRef.current.draggedNode === n) { ctx.beginPath(); ctx.arc(n.drawX, n.drawY, size + 10 * zoom, 0, Math.PI*2); ctx.strokeStyle = '#f43f5e'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); }
         
-        ctx.font = '700 11px "Rajdhani"'; ctx.fillStyle = '#ffffff'; ctx.textAlign = Math.cos(n.angle) > 0 ? 'left' : 'right';
-        const textOffX = Math.cos(n.angle) > 0 ? size + 6 : -(size + 6);
+        const fontSize = Math.max(8, 11 * zoom);
+        ctx.font = `700 ${fontSize}px "Rajdhani"`; ctx.fillStyle = '#ffffff'; ctx.textAlign = Math.cos(n.angle) > 0 ? 'left' : 'right';
+        const textOffX = Math.cos(n.angle) > 0 ? size + 6 * zoom : -(size + 6 * zoom);
         ctx.fillText(n.word, n.drawX + textOffX, n.drawY - 2);
-        ctx.font = '500 9px "JetBrains Mono"'; ctx.fillStyle = n.theme.color;
-        ctx.fillText(`[${n.score}]`, n.drawX + textOffX, n.drawY + 8);
+        ctx.font = `500 ${fontSize * 0.8}px "JetBrains Mono"`; ctx.fillStyle = n.theme.color;
+        ctx.fillText(`[${n.score}]`, n.drawX + textOffX, n.drawY + fontSize * 0.8);
       });
 
       ctx.save(); ctx.translate(cX, cY); 
@@ -330,24 +432,24 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
       const pulse = Math.sin(time * 0.05) * 0.1 + 1;
 
       ctx.rotate(time * (isComboActive ? 0.05 : 0.01));
-      ctx.beginPath(); ctx.arc(0, 0, 45, 0, Math.PI*2); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 45 * zoom, 0, Math.PI*2); ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 6 * zoom; ctx.stroke();
       if (energy > 0) {
-        ctx.beginPath(); ctx.arc(0, 0, 45, -Math.PI/2, (-Math.PI/2) + (Math.PI*2*(energy/100)));
-        ctx.strokeStyle = energy === 100 ? '#f59e0b' : '#0ea5e9'; ctx.lineWidth = 6; ctx.lineCap = 'round';
-        ctx.shadowBlur = 15; ctx.shadowColor = ctx.strokeStyle; ctx.stroke(); ctx.shadowBlur = 0;
+        ctx.beginPath(); ctx.arc(0, 0, 45 * zoom, -Math.PI/2, (-Math.PI/2) + (Math.PI*2*(energy/100)));
+        ctx.strokeStyle = energy === 100 ? '#f59e0b' : '#0ea5e9'; ctx.lineWidth = 6 * zoom; ctx.lineCap = 'round';
+        ctx.shadowBlur = 15 * zoom; ctx.shadowColor = ctx.strokeStyle; ctx.stroke(); ctx.shadowBlur = 0;
       }
 
       ctx.rotate(-time * (isComboActive ? 0.08 : 0.02));
-      ctx.beginPath(); ctx.setLineDash([10, 15]); ctx.strokeStyle = `${themeColor}80`; ctx.lineWidth = 2;
-      ctx.arc(0, 0, 32 * pulse, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.setLineDash([10 * zoom, 15 * zoom]); ctx.strokeStyle = `${themeColor}80`; ctx.lineWidth = 2 * zoom;
+      ctx.arc(0, 0, 32 * pulse * zoom, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
 
-      ctx.beginPath(); ctx.arc(0, 0, 22 * pulse, 0, Math.PI*2); ctx.fillStyle = hasWon ? '#10b981' : '#020617'; ctx.shadowBlur = 30; ctx.shadowColor = themeColor; ctx.fill(); ctx.shadowBlur = 0;
-      ctx.strokeStyle = themeColor; ctx.lineWidth = 2; ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, 25 * pulse, 0, Math.PI*2); ctx.strokeStyle = `${themeColor}40`; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 22 * pulse * zoom, 0, Math.PI*2); ctx.fillStyle = hasWon ? '#10b981' : '#020617'; ctx.shadowBlur = 30 * zoom; ctx.shadowColor = themeColor; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = themeColor; ctx.lineWidth = 2 * zoom; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 25 * pulse * zoom, 0, Math.PI*2); ctx.strokeStyle = `${themeColor}40`; ctx.lineWidth = 1 * zoom; ctx.stroke();
 
       if (hasWon) {
-        ctx.fillStyle = '#ffffff'; ctx.font = '900 36px "Rajdhani"'; ctx.textAlign = 'center';
-        ctx.shadowBlur = 20; ctx.shadowColor = '#10b981'; ctx.fillText(GLOBAL_PUZZLE.targetWord, 0, -55); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff'; ctx.font = `900 ${36 * zoom}px "Rajdhani"`; ctx.textAlign = 'center';
+        ctx.shadowBlur = 20 * zoom; ctx.shadowColor = '#10b981'; ctx.fillText(GLOBAL_PUZZLE.targetWord, 0, -55 * zoom); ctx.shadowBlur = 0;
       }
       ctx.restore();
 
@@ -356,7 +458,24 @@ function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, c
     draw(); return () => cancelAnimationFrame(frameId);
   }, [guesses, isProcessing, hasWon, isTyping, isComboActive, energy, trigger]);
 
-  return <canvas ref={canvasRef} className={`fixed inset-0 z-0 cursor-crosshair touch-none transition-colors duration-1000`} />;
+  return (
+    <div className="relative w-full h-full">
+      <canvas ref={canvasRef} className={`fixed inset-0 z-0 cursor-crosshair touch-none transition-colors duration-1000`} />
+      
+      {/* Zoom Controls UI */}
+      <div className="absolute bottom-40 md:bottom-32 right-3 md:right-6 z-50 flex flex-col gap-2 pointer-events-auto">
+          <button onClick={() => { viewState.current.zoom = Math.min(viewState.current.zoom * 1.2, 5); }} className="w-10 h-10 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-xl text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-lg">
+              <Icon name="Plus" size={18} />
+          </button>
+          <button onClick={() => { viewState.current.zoom = Math.max(viewState.current.zoom / 1.2, 0.2); }} className="w-10 h-10 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-xl text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-lg">
+              <Icon name="Minus" size={18} />
+          </button>
+          <button onClick={() => { viewState.current.zoom = 1; viewState.current.offsetX = 0; viewState.current.offsetY = 0; }} className="w-10 h-10 bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-xl text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-lg">
+              <Icon name="Maximize" size={18} />
+          </button>
+      </div>
+    </div>
+  );
 }
 
 // --- COMPONENTES UI ---

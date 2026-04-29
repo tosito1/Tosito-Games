@@ -609,12 +609,30 @@ window.showBeepBoxScreen = function () {
 
 window.exitHubGame = window.exitGame = function () {
   document.body.classList.remove('game-mode');
-  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame', 'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame', 'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame'];
+  const frames = ['anomalia-frame', 'slither-frame', 'turbo-drift-frame', 'stack-frame', 'logicmaster-frame', 'mario64-frame', 'sonic-frame', 'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame', 'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame', 'palabritas-go-frame', 'semantika-frame'];
   frames.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.src = 'about:blank';
   });
   showScreen('hub');
+};
+
+/**
+ * Admin utility to manually trigger a reconstruction of the hub games catalog.
+ */
+window.rebuildHubCatalog = async function() {
+  if (!userProfile.isAdmin) return toast("Acceso denegado 🔐");
+  const confirmAction = confirm("¿Deseas reconstruir el catálogo del Hub? Se restablecerán todos los juegos predeterminados.");
+  if (!confirmAction) return;
+
+  toast("🔄 Reconstruyendo catálogo...");
+  try {
+    await autoSeedHub();
+    toast("✅ Hub sincronizado!");
+  } catch (e) {
+    console.error("Rebuild error:", e);
+    toast("❌ Error al reconstruir hub");
+  }
 };
 
 
@@ -889,7 +907,8 @@ function showScreen(id) {
     'tictactoe', 'checkers', 'stack', 'slither',
     'logicmaster', 'hexa-falls', 'mario64', 'sonic',
     'anomalia', 'turbo-drift', 'rhythm-hero', 'neon-piano',
-    'beepbox', 'voxlab', 'bloxorz', 'clickers', 'badminton', 'leek_tycoon'
+    'beepbox', 'voxlab', 'bloxorz', 'clickers', 'badminton', 'leek_tycoon',
+    'palabritas_go', 'semantika'
   ];
   const hiddenScreens = [...gameScreens];
 
@@ -1016,6 +1035,19 @@ window.exitLeekTycoon = function () {
   showScreen('hub');
 };
 
+// ============================================================
+//  PALABRITAS GO INTEGRATION
+// ============================================================
+window.showPalabritasGoScreen = function () {
+  const frame = document.getElementById('palabritas-go-frame');
+  if (frame && !frame.src) {
+    const config = encodeURIComponent(JSON.stringify(firebaseConfig));
+    frame.src = `/palabritas_go.html?config=${config}`;
+  }
+  showScreen('palabritas_go');
+  if (typeof syncNavOpen === 'function') syncNavOpen(false);
+};
+
 function triggerCelebration() {
   const colors = ['#FBBF24', '#38BDF8', '#10B981', '#F43F5E', '#8B5CF6'];
   for (let i = 0; i < 50; i++) {
@@ -1133,7 +1165,7 @@ window.exitCurrentGame = function () {
     'stack-frame', 'slither-frame', 'logicmaster-frame',
     'hexa-falls-frame', 'anomalia-frame', 'turbo-drift-frame',
     'rhythm-hero-frame', 'neon-piano-frame', 'beepbox-frame',
-    'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame'
+    'badminton-frame', 'voxlab-frame', 'bloxorz-frame', 'clicker-frame', 'leek-tycoon-frame', 'palabritas-go-frame'
   ];
 
   iframeIds.forEach(fid => {
@@ -4999,6 +5031,7 @@ async function autoSeedHub() {
     { id: 'sudoku', section: 'puzzles', title: 'Zen Sudoku', emoji: '🧩', desc: 'Relaja tu mente con desafíos de lógica pura...', action: "showLogicGame('sudoku')", color: '#3b82f6', order: 6, visible: true },
     { id: 'bloxorz', section: 'puzzles', title: 'Bloxorz 3D', emoji: '🧱', desc: 'Desafío de lógica espacial. Lleva el bloque al agujero...', action: "showBloxorzScreen()", color: 'var(--sky)', order: 7, visible: true },
     { id: 'semantika', section: 'puzzles', title: 'Semantika', emoji: '🧠', desc: 'Adivina la palabra oculta por su relevancia semántica...', action: 'showSemantikaScreen()', color: '#10b981', order: 8, visible: true },
+    { id: 'palabritas_go', section: 'puzzles', title: 'Palabritas GO', emoji: '📝', desc: 'Conecta letras y descubre todas las palabras ocultas...', action: 'showPalabritasGoScreen()', color: '#38bdf8', order: 9, visible: true },
 
     // --- NINTENDO RETRO ---
     { id: 'mario64', section: 'retro', title: 'Super Mario 64', emoji: '🍄', desc: 'El clásico revolucionario en 3D de Nintendo...', action: 'showMario64Screen()', color: '#E60012', order: 1, visible: true },

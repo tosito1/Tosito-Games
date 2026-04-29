@@ -32,6 +32,21 @@
           "destination": "/semantika.html"
         }
       ]
+    },
+    {
+      "target": "palabritas-go",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/palabritas_go.html"
+        }
+      ]
     }
   ]
 }

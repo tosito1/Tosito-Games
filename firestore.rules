@@ -90,6 +90,12 @@ service cloud.firestore {
       allow update, delete: if false; // Logs inmutables
     }
 
+    // --- PALABRITAS GO ---
+    match /artifacts/palabritas-go/public/data/palabritas_rooms/{roomId} {
+      allow read, create: if isSignedIn();
+      allow update: if isSignedIn(); // Se permite actualizar para unirse y jugar
+    }
+
     // Regla por defecto: denegar todo lo demás
     match /{document=**} {
       allow read, write: if isAdmin();
