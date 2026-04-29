@@ -197,32 +197,45 @@ async function resolveFusionResult(w1, w2, currentUser, onStatusChange, log) {
 
 
 // --- MOTOR GRÁFICO: UNIVERSO 6.0 (CLEAN) ---
-function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, combo, energy, trigger }) {
+function SemanticUniverse({ guesses, hasWon, isProcessing, isTyping, onFusion, combo, energy, trigger, hasSurrendered }) {
   const canvasRef = useRef(null);
   const nodesRef = useRef([]); 
   const mouseRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, mx: 0, my: 0, draggedNode: null  }); 
   const isComboActive = combo >= 3;
 
   useEffect(() => {
-    const handleMouseMove = (e) => { 
-      mouseRef.current.targetX = (e.clientX - window.innerWidth / 2) / (window.innerWidth / 2);
-      mouseRef.current.targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
-      mouseRef.current.mx = e.clientX; mouseRef.current.my = e.clientY;
+    const updateMousePos = (clientX, clientY) => {
+      mouseRef.current.targetX = (clientX - window.innerWidth / 2) / (window.innerWidth / 2);
+      mouseRef.current.targetY = (clientY - window.innerHeight / 2) / (window.innerHeight / 2);
+      mouseRef.current.mx = clientX; mouseRef.current.my = clientY;
     };
-    const handleMouseDown = (e) => {
-      const clicked = nodesRef.current.find(n => Math.hypot(n.drawX - e.clientX, n.drawY - e.clientY) < (n.size || 10) + 20);
+    const handleMouseMove = (e) => updateMousePos(e.clientX, e.clientY);
+    const handleTouchMove = (e) => { if(e.touches.length > 0) updateMousePos(e.touches[0].clientX, e.touches[0].clientY); };
+    
+    const handleDown = (clientX, clientY) => {
+      const clicked = nodesRef.current.find(n => Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size || 10) + 35);
       if (clicked) mouseRef.current.draggedNode = clicked;
     };
-    const handleMouseUp = (e) => {
+    const handleMouseDown = (e) => handleDown(e.clientX, e.clientY);
+    const handleTouchStart = (e) => { if(e.touches.length > 0) handleDown(e.touches[0].clientX, e.touches[0].clientY); };
+
+    const handleUp = (clientX, clientY) => {
       const d = mouseRef.current.draggedNode;
       if (d) {
-        const target = nodesRef.current.find(n => n !== d && Math.hypot(n.drawX - e.clientX, n.drawY - e.clientY) < (n.size || 10) + 40);
+        const target = nodesRef.current.find(n => n !== d && Math.hypot(n.drawX - clientX, n.drawY - clientY) < (n.size || 10) + 45);
         if (target) onFusion(d.word, target.word);
         mouseRef.current.draggedNode = null;
       }
     };
+    const handleMouseUp = (e) => handleUp(e.clientX, e.clientY);
+    const handleTouchEnd = (e) => { if(e.changedTouches.length > 0) handleUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY); };
+
     window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
-    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); };
+    window.addEventListener('touchmove', handleTouchMove, { passive: false }); window.addEventListener('touchstart', handleTouchStart); window.addEventListener('touchend', handleTouchEnd);
+    return () => { 
+      window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp); 
+      window.removeEventListener('touchmove', handleTouchMove); window.removeEventListener('touchstart', handleTouchStart); window.removeEventListener('touchend', handleTouchEnd);
+    };
   }, [onFusion]);
 
   useEffect(() => {
@@ -368,7 +381,9 @@ function App() {
   const [errorMsg, setErrorMsg] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [hasWon, setHasWon] = useState(false);
+  const [hasSurrendered, setHasSurrendered] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState('');
   const [puzzleTrigger, setPuzzleTrigger] = useState(0); 
@@ -381,6 +396,7 @@ function App() {
   const [showRanking, setShowRanking] = useState(false);
   
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [logs, setLogs] = useState(['> INICIANDO SISTEMA LOCAL...', '> CARGANDO DICCIONARIO...']);
   
   // Admin State (AHORA SIN IA, SOLO TEXTO JSON)
@@ -417,7 +433,24 @@ function App() {
     };
 
     if (auth) { 
-        onAuthStateChanged(auth, setUser); 
+        onAuthStateChanged(auth, async (u) => {
+          setUser(u);
+          if (u) {
+            try {
+              const userRef = doc(db, 'users', u.uid);
+              const snap = await getDoc(userRef);
+              if (snap.exists && snap.data().role === 'admin') {
+                setIsAdmin(true);
+              } else {
+                setIsAdmin(false);
+              }
+            } catch (e) {
+              setIsAdmin(false);
+            }
+          } else {
+            setIsAdmin(false);
+          }
+        }); 
     }
     
     loadConfig();
@@ -441,6 +474,7 @@ function App() {
       setEnergy(p.energy || 100);
       setCombo(p.combo || 0);
       setFreeHintUsed(p.freeHintUsed || false);
+      setHasSurrendered(p.hasSurrendered || false);
       if (p.guesses.some((g) => g.score === 1)) setHasWon(true);
     }
   }, [puzzleTrigger]);
@@ -453,14 +487,16 @@ function App() {
         guesses, 
         energy, 
         combo, 
-        freeHintUsed 
+        freeHintUsed,
+        hasSurrendered
       }));
     }
-  }, [guesses, energy, combo, freeHintUsed]);
+  }, [guesses, energy, combo, freeHintUsed, hasSurrendered]);
 
   const bestScore = guesses.length > 0 ? Math.min(...guesses.map(g => g.score)) : GLOBAL_PUZZLE.maxRank;
 
   const injectWord = async (wordInput, isFusion = false) => {
+    if (hasWon || hasSurrendered) return;
     const raw = wordInput.trim().toUpperCase();
     if (!raw || guesses.some(g => g.word === raw)) { setIsProcessing(false); return; }
     
@@ -552,7 +588,7 @@ function App() {
   };
 
   const handleHint = (type) => {
-    if (isProcessing || hasWon) return;
+    if (isProcessing || hasWon || hasSurrendered) return;
     let maxRank = 1000;
     if (type === 'free') {
         if (freeHintUsed) return;
@@ -575,7 +611,7 @@ function App() {
     setTimeout(() => {
         if (available.length > 0) {
             const hint = available[Math.floor(Math.random() * Math.min(10, available.length))];
-            const newG: Guess = { word: hint[0], score: hint[1], number: guesses.length + 1, source: 'PROBE', isNew: true };
+            const newG = { word: hint[0], score: hint[1], number: guesses.length + 1, source: 'PROBE', isNew: true };
             setGuesses(p => [...p.map(g=>({...g, isNew:false})), newG].sort((a,b)=>a.score - b.score));
             addLog(`> SONDA RECUPERADA: DATO [${hint[0]}] EXTRAÍDO.`);
             if (hint[1] < bestScore) setCombo(c => c + 1);
@@ -585,6 +621,30 @@ function App() {
     }, 1500);
   };
 
+  const saveScore = async (scoreCount, status = 'WON') => {
+    if (!user || !db) return;
+    try {
+      const entryRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'leaderboard', `day_${GLOBAL_PUZZLE.day}`, 'entries', user.uid);
+      await setDoc(entryRef, { 
+        userName: user.displayName || 'Piloto Estelar', 
+        photoURL: user.photoURL || null, 
+        guesses: scoreCount, 
+        status: status, 
+        timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+      });
+      addLog(status === 'WON' ? "> PUNTUACIÓN SINCRONIZADA." : "> ABANDONO REGISTRADO EN EL RANKING.");
+    } catch (e) { console.warn(e); }
+  };
+
+  const handleSurrender = async () => {
+    if (hasWon || hasSurrendered) return;
+    if (window.confirm("¿CONFIRMAS ABANDONO? NO PODRÁS VOLVER A JUGAR ESTE NIVEL.")) {
+      setHasSurrendered(true);
+      await saveScore(guesses.length, 'SURRENDERED');
+      addLog("> SISTEMA BLOQUEADO POR ABANDONO.");
+    }
+  };
+
   // --- NUEVA LÓGICA DEL PANEL DE ADMINISTRADOR (MANUAL Y LOCAL) ---
   const handleSaveAdmin = async () => {
     if (!adminWord.trim()) return;
@@ -592,8 +652,10 @@ function App() {
     setAdminStatus("Validando y procesando JSON local...");
     
     try {
-        let parsedDict = JSON.parse(adminDictJSON);
-        parsedDict[newTarget] = 1; // Asegurar que la palabra objetivo es el rank 1
+        // Limpiamos posibles espacios o caracteres raros al inicio/final
+        const cleanJSON = adminDictJSON.trim();
+        let parsedDict = JSON.parse(cleanJSON);
+        parsedDict[newTarget] = 1; 
         
         const newPuzzleConfig = { day: adminDay, targetWord: newTarget, maxRank: 50000, dictionary: parsedDict };
         
@@ -603,43 +665,48 @@ function App() {
         GLOBAL_PUZZLE = newPuzzleConfig;
         setPuzzleTrigger(Date.now()); 
         setGuesses([]); setEnergy(0); setCombo(0); setHasWon(false);
-        setAdminStatus("¡Diccionario actualizado con éxito!");
+        setAdminStatus("¡ÉXITO: DICCIONARIO ACTUALIZADO!");
         setTimeout(() => { setShowAdmin(false); setAdminStatus(''); }, 2000);
         addLog(`> ALERTA MAESTRA: NUEVO DICCIONARIO CARGADO (${Object.keys(parsedDict).length} palabras).`);
         
     } catch(e) {
-        setAdminStatus("Error de formato JSON: Asegúrate de que las comillas sean válidas.");
+        console.error("Error de JSON:", e);
+        setAdminStatus("Error JSON: " + e.message);
     }
   };
 
   const thermo = 100 - (Math.log10(Math.max(1, bestScore)) / Math.log10(GLOBAL_PUZZLE.maxRank)) * 100;
 
   return (
-    <div className="fixed inset-0 bg-[#020617] text-slate-100 overflow-hidden font-sans">
-      <SemanticUniverse guesses={guesses} hasWon={hasWon} isProcessing={isProcessing} isTyping={!!inputValue} onFusion={handleFusion} combo={combo} energy={energy} trigger={puzzleTrigger}/>
+    <div className="fixed inset-0 bg-[#020617] text-slate-100 overflow-hidden font-sans" style={{ height: '100dvh' }}>
+      <SemanticUniverse guesses={guesses} hasWon={hasWon} isProcessing={isProcessing} isTyping={!!inputValue} onFusion={handleFusion} combo={combo} energy={energy} trigger={puzzleTrigger} hasSurrendered={hasSurrendered}/>
       
-      <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-6">
+      <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-3 md:p-6 pb-4 md:pb-6" style={{ height: '100dvh' }}>
         
-        <div className="flex justify-between items-start pointer-events-auto">
+        <div className="flex justify-between items-start pointer-events-auto gap-2">
           <div className="flex flex-col items-start gap-2">
-            <div className={`bg-[#030712]/60 backdrop-blur-xl border p-4 rounded-2xl transition-colors duration-500 ${combo >= 3 ? 'border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-white/5'}`}>
-                <h1 className="text-xl font-black tracking-widest flex items-center gap-3">
-                <Icon name="BrainCircuit" className={combo >= 3 ? "text-amber-400" : "text-cyan-400"} /> 
+            <div className={`bg-[#030712]/60 backdrop-blur-xl border p-3 md:p-4 rounded-2xl transition-colors duration-500 ${combo >= 3 ? 'border-amber-500/50 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-white/5'}`}>
+                <h1 className="text-base md:text-xl font-black tracking-widest flex items-center gap-2 md:gap-3">
+                <Icon name="BrainCircuit" className={`w-5 h-5 md:w-6 md:h-6 ${combo >= 3 ? "text-amber-400" : "text-cyan-400"}`} /> 
                 SEMÁNTIKA <span className={`text-[8px] px-1.5 py-0.5 rounded border ${combo >= 3 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
                     {gameMode === 'INFINITE' ? 'SINGULARIDAD INFINITA' : `DÍA ${GLOBAL_PUZZLE.day}`}
                 </span>
                 </h1>
-                {combo > 1 && <div className="text-[10px] font-black text-amber-400 tracking-widest mt-1 animate-pulse">RACHA x{combo}</div>}
+                {combo > 1 && <div className="text-[9px] md:text-[10px] font-black text-amber-400 tracking-widest mt-1 animate-pulse">RACHA x{combo}</div>}
             </div>
-            <button onClick={() => setShowAdmin(true)} className="ml-2 w-8 h-8 flex items-center justify-center bg-slate-900/50 border border-slate-800 rounded-lg text-slate-600 hover:text-emerald-500 hover:border-emerald-500/50 transition-colors">
-                <Icon name="ShieldAlert" className="w-4 h-4" />
-            </button>
+            {isAdmin && (
+              <button onClick={() => setShowAdmin(true)} className="ml-2 w-8 h-8 flex items-center justify-center bg-slate-900/50 border border-slate-800 rounded-lg text-slate-600 hover:text-emerald-500 hover:border-emerald-500/50 transition-colors">
+                  <Icon name="ShieldAlert" className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <div className="flex gap-2 relative">
-            <button onClick={() => setShowDaySelector(true)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-cyan-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800" title="Seleccionar Día"><Icon name="RefreshCw" className="w-5 h-5"/></button>
-            <button onClick={()=>setShowRanking(true)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-amber-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="Trophy" className="w-5 h-5"/></button>
-            <button onClick={()=>setShowProfile(!showProfile)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-emerald-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="User" className="w-5 h-5"/></button>
-            <button onClick={()=>setShowInfo(true)} className="w-10 h-10 bg-slate-900/60 border border-slate-700 text-slate-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="HelpCircle" className="w-5 h-5"/></button>
+          <div className="flex gap-1.5 md:gap-2 relative flex-wrap justify-end max-w-[150px] md:max-w-none">
+            <button onClick={() => setShowHistory(!showHistory)} className="md:hidden w-9 h-9 md:w-10 md:h-10 bg-slate-900/60 border border-slate-700 text-purple-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="Activity" className="w-4 h-4 md:w-5 md:h-5"/></button>
+            <button onClick={() => setShowDaySelector(true)} className="w-9 h-9 md:w-10 md:h-10 bg-slate-900/60 border border-slate-700 text-cyan-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800" title="Seleccionar Día"><Icon name="RefreshCw" className="w-4 h-4 md:w-5 md:h-5"/></button>
+            <button onClick={()=>setShowRanking(true)} className="w-9 h-9 md:w-10 md:h-10 bg-slate-900/60 border border-slate-700 text-amber-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="Trophy" className="w-4 h-4 md:w-5 md:h-5"/></button>
+            <button onClick={()=>setShowProfile(!showProfile)} className="w-9 h-9 md:w-10 md:h-10 bg-slate-900/60 border border-slate-700 text-emerald-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="User" className="w-4 h-4 md:w-5 md:h-5"/></button>
+            <button onClick={()=>setShowInfo(true)} className="w-9 h-9 md:w-10 md:h-10 bg-slate-900/60 border border-slate-700 text-slate-400 flex items-center justify-center rounded-xl pointer-events-auto hover:bg-slate-800"><Icon name="HelpCircle" className="w-4 h-4 md:w-5 md:h-5"/></button>
+            
             {showProfile && (
               <div className="absolute top-12 right-0 z-50 bg-[#030b14]/95 backdrop-blur-2xl border border-emerald-500/30 p-6 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-72 pointer-events-auto animate-in fade-in slide-in-from-top-4">
                 <div className="flex items-center gap-4 mb-6">
@@ -680,9 +747,12 @@ function App() {
           </div>
         </div>
 
-        <div className="absolute right-6 top-24 bottom-32 w-52 pointer-events-auto hidden md:flex flex-col">
-          <div className="bg-[#030712]/40 backdrop-blur-xl border border-white/5 rounded-2xl h-full flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-white/5 text-[9px] font-black text-slate-500 uppercase tracking-widest bg-black/40 text-center">Registro de Datos</div>
+        <div className={`absolute right-3 left-3 md:left-auto md:right-6 top-24 bottom-40 md:bottom-32 md:w-52 pointer-events-auto flex-col z-40 transition-all duration-300 ${showHistory ? 'flex' : 'hidden md:flex'}`}>
+          <div className="bg-[#030712]/90 md:bg-[#030712]/40 backdrop-blur-xl border border-white/10 md:border-white/5 rounded-2xl h-full flex flex-col overflow-hidden shadow-2xl md:shadow-none">
+            <div className="p-3 border-b border-white/5 text-[9px] font-black text-slate-500 uppercase tracking-widest bg-black/60 md:bg-black/40 flex justify-between items-center">
+              <span className="mx-auto">Registro de Datos</span>
+              <button className="md:hidden text-slate-400 hover:text-white p-1" onClick={() => setShowHistory(false)}>✕</button>
+            </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
               {guesses.map(g => {
                 const sTheme = getScoreTheme(g.score);
@@ -700,55 +770,81 @@ function App() {
           </div>
         </div>
 
-        <div className="absolute left-6 bottom-32 max-w-[280px] font-mono text-[9px] text-cyan-500/50 space-y-1">
-          {logs.map((l, i) => <div key={i} className={l.includes('🔥') || l.includes('SONDA') || l.includes('MAESTRA') ? 'text-amber-400' : ''}>{l}</div>)}
-        </div>
 
-        <div className="max-w-xl mx-auto w-full pointer-events-auto">
-          <div className="mb-4 flex items-center gap-3">
-             <div className="flex-1 h-1.5 bg-slate-900 overflow-hidden relative rounded-full">
+
+        <div className="max-w-xl mx-auto w-full pointer-events-auto relative z-30">
+          <div className="mb-3 flex items-center gap-3">
+             <div className="flex-1 h-1 md:h-1.5 bg-slate-900 overflow-hidden relative rounded-full">
                 <div className="absolute top-0 bottom-0 left-0 transition-all duration-1000 ease-out bg-white shadow-[0_0_15px_white]" style={{ width: `${thermo}%` }}></div>
              </div>
           </div>
 
-          <div className="flex gap-2 mb-3 pointer-events-auto justify-center">
-            <button onClick={()=>handleHint('free')} disabled={freeHintUsed || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${freeHintUsed ? 'bg-slate-800/50 text-slate-600' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'}`}>
+          <div className="flex flex-wrap gap-1.5 md:gap-2 mb-2 md:mb-3 pointer-events-auto justify-center">
+            <button onClick={()=>handleHint('free')} disabled={freeHintUsed || isProcessing || hasWon} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black flex items-center gap-1.5 transition-all ${freeHintUsed ? 'bg-slate-800/50 text-slate-600' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'}`}>
                 <Icon name="Sparkles" className="w-3 h-3"/> GRATIS {freeHintUsed ? '(0/1)' : '(1/1)'}
             </button>
-            <button onClick={()=>handleHint('50')} disabled={energy < 50 || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${energy < 50 ? 'bg-slate-800/50 text-slate-600' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'}`}>
+            <button onClick={()=>handleHint('50')} disabled={energy < 50 || isProcessing || hasWon} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black flex items-center gap-1.5 transition-all ${energy < 50 ? 'bg-slate-800/50 text-slate-600' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30'}`}>
                 <Icon name="Zap" className="w-3 h-3"/> PISTA 50%
             </button>
-            <button onClick={()=>handleHint('100')} disabled={energy < 100 || isProcessing || hasWon} className={`px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all ${energy < 100 ? 'bg-slate-800/50 text-slate-600 border border-transparent' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)] animate-pulse'}`}>
+            <button onClick={()=>handleHint('100')} disabled={energy < 100 || isProcessing || hasWon} className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] md:text-[10px] font-black flex items-center gap-1.5 transition-all ${energy < 100 ? 'bg-slate-800/50 text-slate-600 border border-transparent' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.3)] animate-pulse'}`}>
                 <Icon name="Radar" className="w-3 h-3"/> PISTA 100%
             </button>
           </div>
 
-          <form onSubmit={(e)=>{e.preventDefault(); if(!isProcessing && inputValue) { setIsProcessing(true); injectWord(inputValue); }}} 
-                className={`relative flex items-center bg-[#050914]/90 backdrop-blur-2xl border-2 rounded-2xl p-1.5 shadow-2xl transition-all ${isProcessing ? 'border-emerald-500/50' : (combo >= 3 ? 'border-amber-500/50' : 'border-white/10')}`}>
-            <input type="text" value={inputValue} onChange={(e)=>setInputValue(e.target.value)} disabled={hasWon || isProcessing}
-                   placeholder={isProcessing ? "PROCESANDO..." : "INYECTAR CONCEPTO..."}
-                   className="w-full bg-transparent px-4 py-3 text-xl outline-none font-black uppercase tracking-widest text-white" />
-            <button type="submit" disabled={!inputValue.trim() || isProcessing} className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${inputValue.trim() ? 'bg-cyan-500 text-cyan-950 hover:bg-cyan-400' : 'bg-slate-800/50 text-slate-600'}`}>
-              <Icon name="Send" className="w-5 h-5"/>
+          <form onSubmit={(e)=>{e.preventDefault(); if(!isProcessing && inputValue && !hasWon && !hasSurrendered) { setIsProcessing(true); injectWord(inputValue); }}} 
+                className={`relative flex items-center bg-[#050914]/90 backdrop-blur-2xl border md:border-2 rounded-2xl p-1 md:p-1.5 shadow-2xl transition-all ${isProcessing ? 'border-emerald-500/50' : (combo >= 3 ? 'border-amber-500/50' : 'border-white/10')}`}>
+            <input type="text" value={inputValue} onChange={(e)=>setInputValue(e.target.value)} disabled={hasWon || isProcessing || hasSurrendered}
+                   placeholder={hasWon ? "SINCRONIZACIÓN COMPLETADA" : (hasSurrendered ? "SISTEMA BLOQUEADO" : "INYECTAR...")}
+                   className="w-full bg-transparent px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-xl outline-none font-black uppercase tracking-widest text-white" />
+            <button type="submit" disabled={!inputValue.trim() || isProcessing || hasWon || hasSurrendered} className={`w-10 h-10 md:w-12 md:h-12 flex-shrink-0 rounded-xl flex items-center justify-center transition-all ${inputValue.trim() && !hasWon && !hasSurrendered ? 'bg-cyan-500 text-cyan-950 hover:bg-cyan-400' : 'bg-slate-800/50 text-slate-600'}`}>
+              <Icon name="Send" className="w-4 h-4 md:w-5 md:h-5"/>
             </button>
           </form>
+
+          <div className="mt-3 md:mt-4 flex justify-between items-center px-2">
+              <div className="text-[9px] md:text-[10px] font-bold text-slate-500 tracking-widest flex items-center gap-1.5 md:gap-2">
+                <Icon name="Database" size={10} /> {guesses.length} TÉRMINOS
+              </div>
+              {!hasWon && !hasSurrendered && guesses.length > 5 && (
+                  <button onClick={handleSurrender} className="text-[9px] md:text-[10px] font-black text-rose-500/50 hover:text-rose-500 transition-colors flex items-center gap-1 uppercase tracking-tighter pointer-events-auto">
+                      <Icon name="Flag" size={10} /> Rendirse
+                  </button>
+              )}
+              {hasSurrendered && (
+                  <div className="text-[9px] md:text-[10px] font-black text-rose-500 flex items-center gap-1 uppercase">
+                      <Icon name="Lock" size={10} /> Abandonado. Palabra: <span className="text-white">{GLOBAL_PUZZLE.targetWord}</span>
+                  </div>
+              )}
+          </div>
         </div>
       </div>
 
       {hasWon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-2xl animate-in fade-in duration-1000 pointer-events-auto text-center">
-          <div className="bg-[#030b14] border border-emerald-500/50 p-12 max-w-sm w-full rounded-3xl relative shadow-[0_0_100px_rgba(16,185,129,0.3)]">
-            <Icon name="Trophy" className="w-16 h-16 text-emerald-400 mx-auto mb-6" />
-            <h2 className="text-3xl font-black text-emerald-400 mb-2 uppercase tracking-tighter">Sincronizado</h2>
-            <div className="bg-black/80 p-6 rounded-2xl mb-8 border border-white/5 font-black text-4xl text-white tracking-widest">{GLOBAL_PUZZLE.targetWord}</div>
+          <div className="bg-[#030b14] border border-emerald-500/50 p-6 md:p-12 max-w-[90%] md:max-w-sm w-full rounded-3xl relative shadow-[0_0_100px_rgba(16,185,129,0.3)]">
+            <Icon name="Trophy" className="w-12 h-12 md:w-16 md:h-16 text-emerald-400 mx-auto mb-4 md:mb-6" />
+            <h2 className="text-2xl md:text-3xl font-black text-emerald-400 mb-2 uppercase tracking-tighter">Sincronizado</h2>
+            <div className="bg-black/80 p-4 md:p-6 rounded-2xl mb-6 md:mb-8 border border-white/5 font-black text-2xl md:text-4xl text-white tracking-widest">{GLOBAL_PUZZLE.targetWord}</div>
               
-              <button onClick={()=>{const t=`SEMÁNTIKA ${gameMode === "INFINITE" ? "INFINITO" : "#" + GLOBAL_PUZZLE.day}\nOBJETIVO: ${guesses.length} NODOS\n-> semantika.es`; navigator.clipboard.writeText(t);}} className="w-full bg-emerald-500 text-emerald-950 rounded-xl font-black py-4 flex items-center justify-center gap-3 hover:bg-emerald-400 transition-colors"><Icon name="Share2" /> COMPARTIR</button>
+            <div className="flex flex-col gap-2 md:gap-3">
+              <button onClick={()=>{const t=`SEMÁNTIKA ${gameMode === "INFINITE" ? "INFINITO" : "#" + GLOBAL_PUZZLE.day}\nOBJETIVO: ${guesses.length} NODOS\n-> semantika.es`; navigator.clipboard.writeText(t);}} className="w-full bg-emerald-500 text-emerald-950 rounded-xl font-black py-3 md:py-4 flex items-center justify-center gap-2 md:gap-3 hover:bg-emerald-400 transition-colors">
+                <Icon name="Share2" className="w-4 h-4 md:w-5 md:h-5"/> COMPARTIR
+              </button>
 
-              {gameMode === "INFINITE" && (
-                <button onClick={handleStartInfinite} className="w-full bg-white text-black rounded-xl font-black py-4 mt-3 flex items-center justify-center gap-3 hover:bg-cyan-400 transition-colors">
-                    <Icon name="RefreshCw" className="w-4 h-4"/> SIGUIENTE RETO
+              {gameMode === "INFINITE" ? (
+                <button onClick={handleStartInfinite} className="w-full bg-white text-black rounded-xl font-black py-3 md:py-4 flex items-center justify-center gap-2 md:gap-3 hover:bg-cyan-400 transition-colors">
+                    <Icon name="RefreshCw" className="w-4 h-4 md:w-5 md:h-5"/> SIGUIENTE RETO
+                </button>
+              ) : (
+                <button onClick={() => { setShowDaySelector(true); }} className="w-full bg-white text-black rounded-xl font-black py-3 md:py-4 flex items-center justify-center gap-2 md:gap-3 hover:bg-cyan-400 transition-colors">
+                    <Icon name="RefreshCw" className="w-4 h-4 md:w-5 md:h-5"/> OTRO RETO
                 </button>
               )}
+              
+              <button onClick={() => setHasWon(false)} className="w-full bg-white/5 text-slate-400 rounded-xl font-black py-3 md:py-4 flex items-center justify-center gap-2 md:gap-3 hover:bg-white/10 hover:text-white transition-colors">
+                  VOLVER AL UNIVERSO
+              </button>
+            </div>
             
           </div>
         </div>
@@ -756,36 +852,36 @@ function App() {
 
       {showInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="bg-[#030b14] border border-cyan-500/30 p-10 rounded-3xl max-w-lg w-full text-sm">
-            <h2 className="text-xl font-black mb-6 text-cyan-400 tracking-widest uppercase">Protocolo V12.0 Local</h2>
-            <div className="space-y-4 text-slate-300 font-semibold">
+          <div className="bg-[#030b14] border border-cyan-500/30 p-6 md:p-10 rounded-3xl max-w-[95%] md:max-w-lg w-full text-xs md:text-sm max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg md:text-xl font-black mb-4 md:mb-6 text-cyan-400 tracking-widest uppercase">Protocolo V12.0 Local</h2>
+            <div className="space-y-3 md:space-y-4 text-slate-300 font-semibold">
               <p>Halla la <strong className="text-white">Singularidad</strong> del día inyectando palabras.</p>
-              <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 md:p-4 rounded-xl">
                 <h3 className="font-black text-emerald-400 flex items-center gap-2 mb-1"><Icon name="Beaker" className="w-4 h-4"/> FUSIÓN CUÁNTICA</h3>
-                <p className="text-[11px]">Arrastra un planeta sobre otro para sintetizar un nuevo concepto si existe un enlace lógico directo.</p>
+                <p className="text-[10px] md:text-[11px]">Arrastra un planeta sobre otro para sintetizar un nuevo concepto si existe un enlace lógico directo.</p>
               </div>
             </div>
-            <button onClick={()=>setShowInfo(false)} className="w-full mt-8 bg-white/10 text-white font-black py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
+            <button onClick={()=>setShowInfo(false)} className="w-full mt-6 md:mt-8 bg-white/10 text-white font-black py-3 md:py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
           </div>
         </div>
       )}
 
       {showDaySelector && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-2xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="bg-[#030b14] border-2 border-cyan-500/30 p-8 rounded-[2.5rem] max-w-md w-full shadow-[0_0_100px_rgba(6,182,212,0.15)]">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-cyan-400 tracking-widest uppercase">Elegir Singularidad</h2>
+          <div className="bg-[#030b14] border-2 border-cyan-500/30 p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] max-w-[95%] md:max-w-md w-full shadow-[0_0_100px_rgba(6,182,212,0.15)] max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6 md:mb-8">
+              <h2 className="text-xl md:text-2xl font-black text-cyan-400 tracking-widest uppercase">Elegir Singularidad</h2>
               <button onClick={() => setShowDaySelector(false)} className="text-slate-500 hover:text-white transition-colors">
-                <Icon name="RefreshCw" className="w-6 h-6 rotate-45" />
+                <Icon name="RefreshCw" className="w-5 h-5 md:w-6 md:h-6 rotate-45" />
               </button>
             </div>
             
-            <div className="grid grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
               {[1, 2, 3, 4, 5, 6, 7, 8].map(d => (
                 <button
                   key={d}
                   onClick={() => handleSelectDay(d)}
-                  className={`h-16 rounded-2xl font-black text-xl transition-all flex items-center justify-center border ${
+                  className={`h-12 md:h-16 rounded-2xl font-black text-lg md:text-xl transition-all flex items-center justify-center border ${
                     gameMode === 'DAILY' && GLOBAL_PUZZLE.day === d 
                     ? 'bg-cyan-500 text-cyan-950 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)]' 
                     : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-white/20'
@@ -798,16 +894,16 @@ function App() {
 
             <button 
               onClick={handleStartInfinite}
-              className={`w-full py-5 rounded-2xl font-black text-sm tracking-widest transition-all border flex items-center justify-center gap-3 mb-8 ${
+              className={`w-full py-4 md:py-5 rounded-2xl font-black text-xs md:text-sm tracking-widest transition-all border flex items-center justify-center gap-2 md:gap-3 mb-6 md:mb-8 ${
                 gameMode === 'INFINITE'
                 ? 'bg-purple-500 text-purple-950 border-purple-400 shadow-[0_0_30px_rgba(168,85,247,0.4)]'
                 : 'bg-white/5 text-purple-400 border-purple-500/30 hover:bg-purple-500/10'
               }`}
             >
-              <Icon name="Sparkles" className="w-5 h-5" /> MODO INFINITO
+              <Icon name="Sparkles" className="w-4 h-4 md:w-5 md:h-5" /> MODO INFINITO
             </button>
             
-            <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest text-center">
+            <p className="text-[9px] md:text-[10px] text-slate-500 font-mono uppercase tracking-widest text-center">
               Selecciona un archivo del pasado para sincronizar su enlace lógico.
             </p>
           </div>
@@ -816,22 +912,22 @@ function App() {
 
       {showRanking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="bg-[#0a0f1c] border-2 border-amber-500/50 p-8 rounded-3xl max-w-lg w-full shadow-[0_0_50px_rgba(245,158,11,0.2)]">
-            <h2 className="text-xl font-black mb-6 text-amber-400 tracking-widest uppercase flex items-center gap-2">
-              <Icon name="Trophy" className="w-6 h-6" /> RANKING GLOBAL
+          <div className="bg-[#0a0f1c] border-2 border-amber-500/50 p-6 md:p-8 rounded-3xl max-w-[95%] md:max-w-lg w-full shadow-[0_0_50px_rgba(245,158,11,0.2)] max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg md:text-xl font-black mb-4 md:mb-6 text-amber-400 tracking-widest uppercase flex items-center gap-2">
+              <Icon name="Trophy" className="w-5 h-5 md:w-6 md:h-6" /> RANKING GLOBAL
             </h2>
-            <div className="space-y-2 mb-6">
+            <div className="space-y-2 mb-4 md:mb-6">
                 {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="flex justify-between items-center p-3 bg-black/40 border border-white/5 rounded-xl">
-                        <div className="flex items-center gap-3">
+                    <div key={i} className="flex justify-between items-center p-2.5 md:p-3 bg-black/40 border border-white/5 rounded-xl">
+                        <div className="flex items-center gap-2 md:gap-3 text-sm md:text-base">
                             <span className="text-amber-500 font-black">#{i}</span>
-                            <span className="text-white font-bold">Jugador_{Math.floor(Math.random()*1000)}</span>
+                            <span className="text-white font-bold text-xs md:text-sm">Jugador_{Math.floor(Math.random()*1000)}</span>
                         </div>
-                        <span className="text-emerald-400 font-mono text-xs">{Math.floor(Math.random()*20 + 5)} intentos</span>
+                        <span className="text-emerald-400 font-mono text-[10px] md:text-xs">{Math.floor(Math.random()*20 + 5)} intentos</span>
                     </div>
                 ))}
             </div>
-            <button onClick={()=>setShowRanking(false)} className="w-full bg-white/10 text-white font-black py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
+            <button onClick={()=>setShowRanking(false)} className="w-full bg-white/10 text-white font-black py-3 md:py-4 rounded-xl uppercase transition-all hover:bg-white/20">Cerrar</button>
           </div>
         </div>
       )}
@@ -839,47 +935,47 @@ function App() {
       {/* MODAL ADMIN ACTUALIZADO (SÓLO TEXTO LOCAL) */}
       {showAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#020617]/95 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="bg-[#0a0f1c] border-2 border-emerald-500/50 p-8 rounded-3xl max-w-lg w-full shadow-[0_0_50px_rgba(16,185,129,0.2)]">
-            <h2 className="text-xl font-black mb-2 text-emerald-500 tracking-widest uppercase flex items-center gap-2">
-              <Icon name="ShieldAlert" className="w-6 h-6" /> ADMINISTRADOR LOCAL
+          <div className="bg-[#0a0f1c] border-2 border-emerald-500/50 p-6 md:p-8 rounded-3xl max-w-[95%] md:max-w-lg w-full shadow-[0_0_50px_rgba(16,185,129,0.2)] max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg md:text-xl font-black mb-1 md:mb-2 text-emerald-500 tracking-widest uppercase flex items-center gap-2">
+              <Icon name="ShieldAlert" className="w-5 h-5 md:w-6 md:h-6" /> ADMIN LOCAL
             </h2>
-            <p className="text-xs text-slate-400 mb-6 uppercase tracking-widest">Inyección Directa de Diccionario (Coste 0€)</p>
+            <p className="text-[10px] md:text-xs text-slate-400 mb-4 md:mb-6 uppercase tracking-widest">Inyección Directa de Diccionario</p>
             
-            <div className="space-y-4">
-              <div className="flex gap-4">
+            <div className="space-y-3 md:space-y-4">
+              <div className="flex flex-col md:flex-row gap-3 md:gap-4">
                 <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">DÍA</label>
-                  <input type="number" value={adminDay} onChange={e => setAdminDay(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-mono outline-none focus:border-emerald-500" />
+                  <label className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 md:mb-2">DÍA</label>
+                  <input type="number" value={adminDay} onChange={e => setAdminDay(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 md:p-3 text-white font-mono outline-none focus:border-emerald-500" />
                 </div>
                 <div className="flex-[2]">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">PALABRA SECRETA</label>
-                  <input type="text" value={adminWord} onChange={e => setAdminWord(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white font-black tracking-widest uppercase outline-none focus:border-emerald-500" />
+                  <label className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 md:mb-2">PALABRA SECRETA</label>
+                  <input type="text" value={adminWord} onChange={e => setAdminWord(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 md:p-3 text-white font-black tracking-widest uppercase outline-none focus:border-emerald-500" />
                 </div>
               </div>
               
               <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">
-                  DICCIONARIO JSON PRECALCULADO (Pega aquí la salida de tu script)
+                <label className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 md:mb-2">
+                  DICCIONARIO JSON PRECALCULADO
                 </label>
                 <textarea 
                   value={adminDictJSON} 
                   onChange={e => setAdminDictJSON(e.target.value)} 
-                  className="w-full h-40 bg-black/50 border border-white/10 rounded-xl p-3 text-emerald-400 font-mono text-[10px] outline-none focus:border-emerald-500 custom-scrollbar resize-none leading-relaxed" 
+                  className="w-full h-32 md:h-40 bg-black/50 border border-white/10 rounded-xl p-2.5 md:p-3 text-emerald-400 font-mono text-[9px] md:text-[10px] outline-none focus:border-emerald-500 custom-scrollbar resize-none leading-relaxed" 
                   spellCheck="false"
                 />
               </div>
               
               {adminStatus && (
-                <div className="text-[10px] font-mono text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/30 flex items-center gap-2">
+                <div className="text-[9px] md:text-[10px] font-mono text-amber-400 bg-amber-500/10 p-2.5 md:p-3 rounded-lg border border-amber-500/30 flex items-center gap-2">
                   {adminStatus.includes('procesando') ? <Icon name="RefreshCw" className="w-3 h-3 animate-spin"/> : <Icon name="Sparkles" className="w-3 h-3"/>}
                   {adminStatus}
                 </div>
               )}
 
-              <div className="pt-4 flex gap-3">
-                <button onClick={() => setShowAdmin(false)} className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl uppercase text-xs tracking-widest hover:bg-slate-700">Cancelar</button>
-                <button onClick={handleSaveAdmin} disabled={!!adminStatus && !adminStatus.includes('éxito')} className="flex-1 bg-emerald-600 text-white font-black py-3 rounded-xl uppercase text-xs tracking-widest hover:bg-emerald-500 disabled:opacity-50 flex items-center justify-center gap-2">
-                  <Icon name="FileJson" className="w-4 h-4" /> INYECTAR DATOS
+              <div className="pt-2 md:pt-4 flex gap-2 md:gap-3">
+                <button onClick={() => setShowAdmin(false)} className="flex-1 bg-slate-800 text-slate-300 font-bold py-2.5 md:py-3 rounded-xl uppercase text-[10px] md:text-xs tracking-widest hover:bg-slate-700">Cancelar</button>
+                <button onClick={handleSaveAdmin} disabled={!!adminStatus && !adminStatus.includes('ÉXITO') && !adminStatus.includes('Validando')} className="flex-1 bg-emerald-600 text-white font-black py-2.5 md:py-3 rounded-xl uppercase text-[10px] md:text-xs tracking-widest hover:bg-emerald-500 disabled:opacity-50 flex items-center justify-center gap-1.5 md:gap-2">
+                  <Icon name="FileJson" className="w-3 h-3 md:w-4 md:h-4" /> INYECTAR DATOS
                 </button>
               </div>
             </div>
