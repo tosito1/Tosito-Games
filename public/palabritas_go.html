@@ -105,7 +105,7 @@ const EMOTES = ['😂', '😡', '🤯', '🥳', '🥺', '👏', '🔥', '🥶'];
 const ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Ñ', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const BOARD_SIZE = 15;
 
-const MULTIPLIERS: Record<string, string> = {
+const MULTIPLIERS = {
     '0,0': 'TW', '0,7': 'TW', '0,14': 'TW', '7,0': 'TW', '7,14': 'TW', '14,0': 'TW', '14,7': 'TW', '14,14': 'TW',
     '1,1': 'DW', '2,2': 'DW', '3,3': 'DW', '4,4': 'DW', '10,10': 'DW', '11,11': 'DW', '12,12': 'DW', '13,13': 'DW',
     '1,13': 'DW', '2,12': 'DW', '3,11': 'DW', '4,10': 'DW', '10,4': 'DW', '11,3': 'DW', '12,2': 'DW', '13,1': 'DW',
@@ -231,6 +231,13 @@ function App() {
     const [errorMsg, setErrorMsg] = useState('');
     const [gsapLoaded, setGsapLoaded] = useState(false);
     const [showProfile, setShowProfile] = useState(false);
+    const [profileTab, setProfileTab] = useState('stats'); // 'stats', 'friends', 'search', 'ranking', 'account'
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [globalRanking, setGlobalRanking] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [userBio, setUserBio] = useState('');
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [showShop, setShowShop] = useState(false);
     const [showEmotes, setShowEmotes] = useState(false);
 
@@ -250,6 +257,10 @@ function App() {
 
     const [unlockedThemes, setUnlockedThemes] = useState(['classic']);
     const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
+    const [diamonds, setDiamonds] = useState(50);
+    const [stats, setStats] = useState({ wins: 0, totalScore: 0, gamesPlayed: 0 });
+    const [friends, setFriends] = useState([]);
+    const [showFriends, setShowFriends] = useState(false);
 
     const handleGoogleLogin = async () => {
         try {
@@ -267,6 +278,23 @@ function App() {
         auth.signOut();
         setRoomCode('');
         setRoomState(null);
+    };
+
+    const handleShare = async () => {
+        if (!roomCode) return;
+        const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+        const text = `¡Únete a mi partida de Palabritas GO! Código: ${roomCode}`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: 'Palabritas GO', text, url });
+            } catch (e) {}
+        } else {
+            try {
+                await navigator.clipboard.writeText(url);
+                showError("¡Enlace de invitación copiado!");
+            } catch (e) { showError("No se pudo copiar el enlace"); }
+        }
     };
 
 
@@ -300,32 +328,193 @@ function App() {
     }, []);
 
     useEffect(() => {
-        const savedUnlocked = localStorage.getItem('palabritas_unlocked_themes');
-        const savedThemeId = localStorage.getItem('palabritas_current_theme');
-        if (savedUnlocked) setUnlockedThemes(JSON.parse(savedUnlocked));
-        if (savedThemeId) {
-            const t = THEMES.find(th => th.id === savedThemeId);
-            if (t) setCurrentTheme(t);
+        const params = new URLSearchParams(window.location.search);
+        const room = params.get('room');
+        if (room && room.length === 4) {
+            setJoinCode(room.toUpperCase());
+            if (window.gsap) spawnFloatingText(`CÓDIGO ${room} DETECTADO`, "body");
         }
     }, []);
 
-    const purchaseTheme = (themeId) => {
-        if (window.confirm("Simulación de Compra: ¿Deseas adquirir este aspecto premium?")) {
-            const newUnlocked = [...unlockedThemes, themeId];
-            setUnlockedThemes(newUnlocked);
-            localStorage.setItem('palabritas_unlocked_themes', JSON.stringify(newUnlocked));
-            equipTheme(themeId);
-            if ((window).gsap) spawnFloatingText("¡COMPRA EXITOSA!", "body");
+    useEffect(() => {
+        const unsub = auth.onAuthStateChanged((u) => {
+            setUser(u);
+            if (!u) {
+                setUserName("INVITADO_" + Math.floor(Math.random() * 1000));
+                setIsAuthLoading(false);
+            }
+        });
+        return () => unsub();
+    }, []);
+
+    useEffect(() => {
+        if (!user || !db) {
+            // If we are not logged in, we are not loading profile anymore
+            if (!user) setIsAuthLoading(false);
+            return;
+        }
+        const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+        const unsub = onSnapshot(userRef, (snap) => {
+            if (snap.exists) {
+                const data = snap.data();
+                if (data.name) setUserName(data.name);
+                if (data.diamonds !== undefined) setDiamonds(data.diamonds);
+                if (data.stats) setStats(data.stats);
+                if (data.friends) setFriends(data.friends);
+                if (data.unlockedThemes) setUnlockedThemes(data.unlockedThemes);
+                if (data.bio) setUserBio(data.bio);
+                
+                // Equip current theme if saved
+                if (data.currentThemeId) {
+                    const t = THEMES.find(th => th.id === data.currentThemeId);
+                    if (t) setCurrentTheme(t);
+                }
+                setIsAuthLoading(false);
+            } else {
+                // If doc doesn't exist, create it but mark loading as finished
+                setDoc(userRef, { 
+                    uid: user.uid, 
+                    name: userName || 'ANÓNIMO', 
+                    friends: [], 
+                    diamonds: 50, 
+                    unlockedThemes: ['classic'],
+                    currentThemeId: 'classic',
+                    stats: { wins: 0, totalScore: 0, gamesPlayed: 0 }
+                }).then(() => setIsAuthLoading(false));
+            }
+        });
+        return () => unsub();
+    }, [user, db]);
+
+    const purchaseTheme = async (themeId) => {
+        const theme = THEMES.find(t => t.id === themeId);
+        if (!theme) return;
+        const diamondPrice = 100; 
+
+        if (diamonds < diamondPrice) return showError("No tienes suficientes diamantes");
+
+        if (window.confirm(`¿Deseas comprar "${theme.name}" por ${diamondPrice} diamantes?`)) {
+            try {
+                const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+                await updateDoc(userRef, { 
+                    unlockedThemes: [...unlockedThemes, themeId],
+                    diamonds: diamonds - diamondPrice,
+                    currentThemeId: themeId
+                });
+                if (window.gsap) spawnFloatingText("¡COMPRA EXITOSA!", "body");
+            } catch (e) { showError("Error en la compra"); }
         }
     };
 
-    const equipTheme = (themeId) => {
+    const equipTheme = async (themeId) => {
         const t = THEMES.find(th => th.id === themeId);
         if (t) {
-            setCurrentTheme(t);
-            localStorage.setItem('palabritas_current_theme', themeId);
+            try {
+                const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+                await updateDoc(userRef, { currentThemeId: themeId });
+                setCurrentTheme(t);
+            } catch (e) {}
         }
     };
+
+    const deductDiamonds = async (amount) => {
+        if (diamonds < amount) {
+            showError("No tienes diamantes suficientes");
+            return false;
+        }
+        try {
+            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            await updateDoc(userRef, { diamonds: diamonds - amount });
+            return true;
+        } catch (e) {
+            showError("Error al usar diamantes");
+            return false;
+        }
+    };
+
+    const toggleFriend = async (targetUid, targetName) => {
+        if (!user || !targetUid || targetUid === user.uid) return;
+        const isFriend = friends.find(f => f.uid === targetUid);
+        const newFriends = isFriend ? friends.filter(f => f.uid !== targetUid) : [...friends, { uid: targetUid, name: targetName }];
+        try {
+            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            await updateDoc(userRef, { friends: newFriends });
+            if (window.gsap) spawnFloatingText(isFriend ? "ADIÓS AMIGO" : "¡NUEVO AMIGO!", "body");
+        } catch (e) { 
+            console.error(e);
+            showError("Error al actualizar amigos"); 
+        }
+    };
+
+    const handleUpdateName = async (newName) => {
+        if (!user || !newName.trim()) return;
+        const cleaned = newName.trim().toUpperCase().substring(0, 10);
+        setUserName(cleaned);
+        try {
+            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            await updateDoc(userRef, { name: cleaned });
+            if (window.gsap) spawnFloatingText("¡NOMBRE ACTUALIZADO!", "body");
+        } catch (e) { showError("Error al actualizar nombre"); }
+    };
+
+    const handleUpdateBio = async (newBio) => {
+        if (!user) return;
+        const cleaned = newBio.trim().substring(0, 50);
+        setUserBio(cleaned);
+        try {
+            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            await updateDoc(userRef, { bio: cleaned });
+            if (window.gsap) spawnFloatingText("¡BIO ACTUALIZADA!", "body");
+        } catch (e) { showError("Error al actualizar biografía"); }
+    };
+
+    const handleSearch = async () => {
+        const q = searchQuery.trim().toUpperCase();
+        if (q.length < 3) {
+            showError("Escribe al menos 3 letras para buscar");
+            return;
+        }
+        setIsSearching(true);
+        setSearchResults([]);
+        try {
+            console.log("Searching for:", q);
+            const snap = await db.collection('artifacts').doc(globalAppId).collection('public').doc('data').collection('palabritas_users')
+                .where('name', '>=', q)
+                .where('name', '<=', q + '\uf8ff')
+                .limit(20)
+                .get();
+            
+            if (snap.empty) {
+                console.log("No users found");
+                setSearchResults([]);
+            } else {
+                const results = snap.docs
+                    .map(d => ({ uid: d.id, ...d.data() }))
+                    .filter(r => r.uid !== user?.uid);
+                console.log("Found:", results.length);
+                setSearchResults(results);
+            }
+        } catch (e) { 
+            console.error("Search Error Details:", e);
+            showError("Error técnico al buscar. Inténtalo de nuevo.");
+        }
+        setIsSearching(false);
+    };
+
+    const fetchGlobalRanking = async () => {
+        try {
+            const snap = await db.collection('artifacts').doc(globalAppId).collection('public').doc('data').collection('palabritas_users')
+                .orderBy('stats.wins', 'desc')
+                .limit(20)
+                .get();
+            const rank = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+            setGlobalRanking(rank);
+        } catch (e) { console.error(e); }
+    };
+
+    useEffect(() => {
+        if (showProfile && profileTab === 'ranking') fetchGlobalRanking();
+    }, [showProfile, profileTab]);
 
     // --- ESTADO Y REF DE CÁMARA ---
     const [camTransform, setCamTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -405,7 +594,7 @@ function App() {
         const code = Math.random().toString(36).substring(2, 6).toUpperCase();
         const newRoom = {
             status: 'waiting', host: user.uid,
-            players: { [user.uid]: { name: userName.trim(), score: 0, rack: Array(7).fill(null), diamonds: 50 } },
+            players: { [user.uid]: { name: userName.trim(), score: 0, rack: Array(7).fill(null) } },
             playerIds: [user.uid], turnIndex: 0, turnStartTime: Date.now(),
             board: JSON.stringify(generateEmptyBoard()),
             bag: generateBag(), logs: [{ id: Date.now(), text: `Sala creada por ${userName.trim()}`, icon: '👑' }], lastEmote: null
@@ -431,7 +620,7 @@ function App() {
 
             if (!data.playerIds.includes(user.uid)) {
                 await updateDoc(docRef, {
-                    [`players.${user.uid}`]: { name: userName.trim(), score: 0, rack: Array(7).fill(null), diamonds: 50 },
+                    [`players.${user.uid}`]: { name: userName.trim(), score: 0, rack: Array(7).fill(null) },
                     playerIds: [...data.playerIds, user.uid],
                     logs: [...(data.logs || []), { id: Date.now(), text: `${userName.trim()} se unió`, icon: '👋' }].slice(-5)
                 });
@@ -487,23 +676,7 @@ function App() {
         return true;
     };
 
-    const deductDiamonds = async (amount) => {
-        if (!roomState || !user) return false;
-        const myData = roomState.players[user.uid];
-        if (!myData || myData.diamonds < amount) {
-            showError("No tienes diamantes suficientes");
-            return false;
-        }
-        const newPlayers = { ...roomState.players };
-        newPlayers[user.uid].diamonds -= amount;
-        try {
-            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), { players: newPlayers });
-            return true;
-        } catch (e) {
-            showError("Error conectando con la tienda");
-            return false;
-        }
-    };
+
 
     // 1. Pista: Radar de Zonas (Animación Mejorada)
     const activateRadar = async () => {
@@ -773,11 +946,52 @@ function App() {
         else if (tier === 'Buena') targetPlacement = uniquePlacements[Math.floor(uniquePlacements.length / 2)];
         else if (tier === 'Super Buena') targetPlacement = uniquePlacements[Math.min(uniquePlacements.length - 1, 1)];
 
-        setHintGhost(targetPlacement.tempSlot.map(pos => ({ r: pos.r, c: pos.c, tile: { id: 'ghost', letter: pos.char, value: 0, isBlank: false } })));
-        setHintResult({ tier, text: `¡Cerebro RAE activado Te sugiero jugar la palabra válida: ${targetPlacement.word}. Mírala en el tablero.` });
+        // PISTA REAL: COLOCACIÓN AUTOMÁTICA EN EL TABLERO
+        let autoPlacements = [];
+        let currentRack = [...localRack];
+        
+        targetPlacement.tempSlot.forEach(pos => {
+            // Buscamos la letra exacta
+            let foundIdx = currentRack.findIndex(t => t && t.letter === pos.char);
+            if (foundIdx === -1) {
+                // Si no hay letra exacta, buscamos un comodín
+                foundIdx = currentRack.findIndex(t => t && t.isBlank);
+                if (foundIdx !== -1) {
+                    let tile = { ...currentRack[foundIdx], blankLetter: pos.char };
+                    autoPlacements.push({ r: pos.r, c: pos.c, tile, rackIdx: foundIdx });
+                    currentRack[foundIdx] = null;
+                }
+            } else {
+                autoPlacements.push({ r: pos.r, c: pos.c, tile: currentRack[foundIdx], rackIdx: foundIdx });
+                currentRack[foundIdx] = null;
+            }
+        });
+
+        if (autoPlacements.length > 0) {
+            setPendingPlacements(autoPlacements);
+            setLocalRack(currentRack);
+            setHintGhost([]); // Limpiamos fantasmas previos
+            setHintResult({ tier, text: `¡Cerebro RAE activado! He colocado automáticamente la palabra: ${targetPlacement.word}. ¡Dale a JUGAR!` });
+
+            // Animación premium de caída de fichas
+            if ((window).gsap) {
+                const gsap = (window).gsap;
+                setTimeout(() => {
+                    autoPlacements.forEach((p, i) => {
+                        const target = document.querySelector(`.cell-${p.r}-${p.c} .tile-placed`);
+                        if (target) {
+                            gsap.fromTo(target, 
+                                { scale: 0, opacity: 0, y: -50, rotation: -15 }, 
+                                { scale: 1, opacity: 1, y: 0, rotation: 0, duration: 0.6, delay: i * 0.1, ease: "elastic.out(1, 0.5)" }
+                            );
+                        }
+                    });
+                }, 100);
+            }
+        }
 
         // Auto-cierre del modal para que veas el tablero brillar
-        setTimeout(() => { setShowHints(false); setHintResult(null); }, 3500);
+        setTimeout(() => { setShowHints(false); setHintResult(null); }, 2500);
     };
 
 
@@ -1008,7 +1222,7 @@ function App() {
         }
     };
 
-    const executePlacement = (r, c, rackIdx, tileData: Tile) => {
+    const executePlacement = (r, c, rackIdx, tileData) => {
         setPendingPlacements([...pendingPlacements, { r, c, tile: tileData, rackIdx }]);
         let newRack = [...localRack]; newRack[rackIdx] = null;
 
@@ -1019,10 +1233,15 @@ function App() {
             const gsap = (window).gsap;
             const cellInfo = roomState?.board ? (roomState.board)[r][c] : null;
 
-            gsap.fromTo(`.cell-${r}-${c} .tile-placed`,
-                { scaleX: 1.5, scaleY: 0.5, y: -80, opacity: 0 },
-                { scaleX: 1, scaleY: 1, y: 0, opacity: 1, duration: 0.5, ease: "elastic.out(1, 0.4)", clearProps: "transform,opacity" }
-            );
+            setTimeout(() => {
+                const target = document.querySelector(`.cell-${r}-${c} .tile-placed`);
+                if (target) {
+                    gsap.fromTo(target,
+                        { scaleX: 1.5, scaleY: 0.5, y: -80, opacity: 0 },
+                        { scaleX: 1, scaleY: 1, y: 0, opacity: 1, duration: 0.5, ease: "elastic.out(1, 0.4)", clearProps: "transform,opacity" }
+                    );
+                }
+            }, 50);
 
             const cellEl = document.querySelector(`.cell-${r}-${c}`);
             if (cellEl) {
@@ -1233,7 +1452,10 @@ function App() {
             pendingPlacements.forEach((p, i) => {
                 const cellEl = document.querySelector(`.cell-${p.r}-${p.c}`);
                 if (cellEl) {
-                    gsap.to(cellEl.querySelector('.tile-placed'), { scale: 1.3, zIndex: 50, boxShadow: "0 15px 30px rgba(52, 211, 153, 0.8)", duration: 0.25, yoyo: true, repeat: 1, delay: i * 0.15, ease: "power1.inOut" });
+                    const tileEl = cellEl.querySelector('.tile-placed');
+                    if (tileEl) {
+                        gsap.to(tileEl, { scale: 1.3, zIndex: 50, boxShadow: "0 15px 30px rgba(52, 211, 153, 0.8)", duration: 0.25, yoyo: true, repeat: 1, delay: i * 0.15, ease: "power1.inOut" });
+                    }
                     setTimeout(() => {
                         spawnFloatingText(`+${p.tile?.value || 0}`, `.cell-${p.r}-${p.c}`);
                         const rect = cellEl.getBoundingClientRect();
@@ -1244,15 +1466,38 @@ function App() {
             if (preview.words.some(w => w.word === "¡BINGO!")) spawnConfetti();
         }
 
+        const isGameOver = newBag.length === 0 && newRack.every(t => t === null);
+        const finalStatus = isGameOver ? 'finished' : 'playing';
+
         try {
+            // Recompensa inmediata por jugar y actualización de stats globales
+            const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+            await updateDoc(userRef, { 
+                diamonds: (diamonds || 0) + 5, // 5 diamantes por cada jugada realizada
+                "stats.totalScore": (stats?.totalScore || 0) + preview.score,
+                "stats.gamesPlayed": (stats?.gamesPlayed || 0) + (isGameOver ? 1 : 0)
+            });
+
             await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), {
                 board: JSON.stringify(newBoard),
                 bag: newBag,
                 players: newPlayers,
+                status: finalStatus,
                 turnIndex: nextTurn,
                 turnStartTime: Date.now(),
                 logs: updatedLogs
             });
+
+            if (isGameOver) {
+                // El ganador es el que tiene más puntos al final
+                const winnerUid = Object.keys(newPlayers).reduce((a, b) => newPlayers[a].score > newPlayers[b].score ? a : b);
+                if (winnerUid === user.uid) {
+                    await updateDoc(userRef, { 
+                        diamonds: (diamonds || 0) + 55, // +50 por ganar (+5 de base)
+                        "stats.wins": (stats?.wins || 0) + 1 
+                    });
+                }
+            }
         } catch (e) {
             showError("Error al enviar la jugada al servidor.");
             return;
@@ -1275,416 +1520,554 @@ function App() {
         }
     };
 
-    // --- PANTALLA DE CARGA DEL DICCIONARIO ---
-    if (!dictLoaded) {
-        return (
-            <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center font-sans z-[300]">
-                <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.4)] animate-pulse mb-8 border border-indigo-400">
-                    <Icon name="BrainCircuit" className="w-12 h-12 text-white animate-bounce" />
-                </div>
-                <h1 className="text-3xl sm:text-4xl font-black text-white tracking-widest mb-3 text-center px-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">CARGANDO RAE</h1>
-                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs sm:text-sm tracking-widest uppercase text-center px-8">
-                    <Icon name="BookOpen" className="w-4 h-4" /> <span>Sincronizando &gt;80.000 palabras...</span>
-                </div>
-            </div>
-        );
-    }
-
-    // --- VISTA LOBBY ---
-    if (!roomState || roomState.status === 'waiting') {
-        return (
-            <div className="fixed inset-0 bg-gradient-to-br from-slate-900 to-indigo-950 text-slate-100 flex items-center justify-center p-4 font-sans">
-                <style dangerouslySetInnerHTML={{ __html: `@keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } } .bg-shape { position: absolute; filter: blur(60px); opacity: 0.3; animation: float-bg 12s infinite ease-in-out; pointer-events: none; z-index: 0; }` }} />
-                <div className="bg-shape bg-rose-500 w-[40vw] h-[40vw] top-[-10%] left-[-10%]"></div>
-                <div className="bg-shape bg-blue-500 w-[50vw] h-[50vw] bottom-[-10%] right-[-10%]" style={{ animationDelay: '-5s' }}></div>
-
-                <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full relative z-10 flex flex-col items-center">
-                    <div className="w-20 h-20 bg-gradient-to-br from-[#f59850] to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6 transform rotate-3">
-                        <span className="text-4xl font-black text-white">P</span>
-                    </div>
-                    <h1 className="text-3xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight">Palabritas <span className="text-rose-400">GO</span></h1>
-
-                    {errorMsg && <div className="w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Icon name="Zap" className="w-4 h-4" /> {errorMsg}</div>}
-
-                    {!roomState ? (
-                        <div className="w-full space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tu Nombre</label>
-                                <input type="text" value={userName} onChange={e => setUserName(e.target.value.toUpperCase())} placeholder="JUGADOR1" maxLength={10} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-rose-400 transition-colors" />
-                            </div>
-                            <div className="flex gap-2">
-                                <input type="text" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" maxLength={4} className="w-1/2 bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-blue-400 transition-colors" />
-                                <button onClick={handleJoinRoom} disabled={!userName || !joinCode || joinCode.length !== 4} className="w-1/2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-black rounded-xl uppercase tracking-widest text-sm transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="LogIn" className="w-4 h-4" /> Unirse</button>
-                            </div>
-                            <div className="relative py-4 flex items-center justify-center">
-                                <div className="absolute w-full h-px bg-white/10"></div>
-                                <span className="bg-[#1e293b] px-4 text-xs font-bold text-slate-400 relative">O crea una nueva</span>
-                            </div>
-                            <button onClick={handleCreateRoom} disabled={!userName} className="w-full bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Plus" className="w-5 h-5" /> Crear Sala</button>
-                        </div>
-                    ) : (
-                        <div className="w-full flex flex-col items-center">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Código de Sala</span>
-                            <div className="text-5xl font-black text-white tracking-widest bg-black/20 px-8 py-4 rounded-2xl border border-white/10 mb-8">{roomCode}</div>
-
-                            <div className="w-full bg-black/20 rounded-2xl p-4 mb-8">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="User"s className="w-4 h-4" /> Jugadores ({roomState.playerIds.length}/4)</h3>
-                                <div className="space-y-2">
-                                    {roomState.playerIds.map(uid => (
-                                        <div key={uid} className="bg-white/5 px-4 py-3 rounded-xl flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-black text-xs shadow-inner">
-                                                {roomState.players[uid].name.substring(0, 2)}
-                                            </div>
-                                            <span className="font-black text-white">{roomState.players[uid].name}</span>
-                                            {uid === roomState.host && <Icon name="Crown" className="w-4 h-4 text-amber-400 ml-auto" />}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {user.uid === roomState.host ? (
-                                <button onClick={handleStartGame} disabled={roomState.playerIds.length < 1} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Play" className="w-5 h-5 fill-current" /> Empezar Partida</button>
-                            ) : (
-                                <div className="text-sm font-bold text-amber-400 animate-pulse flex items-center gap-2"><Icon name="Menu" className="w-4 h-4 animate-spin" /> Esperando al anfitrión...</div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
-
-    // --- VISTA JUEGO PRINCIPAL ---
-    const currentTurnUid = roomState.playerIds[roomState.turnIndex];
-    const isMyTurnActual = isMyTurn;
-    const myPlayer = roomState.players[user.uid];
-
+    // --- RENDERIZADO UNIFICADO ---
     return (
-        <div className="fixed inset-0 bg-slate-950 text-slate-800 overflow-hidden font-sans touch-none select-none">
+        <div className="fixed inset-0 overflow-hidden font-sans select-none touch-none bg-slate-950 text-slate-100">
+            {/* 1. PANTALLA DE CARGA DEL DICCIONARIO */}
+            {!dictLoaded ? (
+                <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[300]">
+                    <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.4)] animate-pulse mb-8 border border-indigo-400">
+                        <Icon name="BrainCircuit" className="w-12 h-12 text-white animate-bounce" />
+                    </div>
+                    <h1 className="text-3xl sm:text-4xl font-black text-white tracking-widest mb-3 text-center px-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">CARGANDO RAE</h1>
+                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs sm:text-sm tracking-widest uppercase text-center px-8">
+                        <Icon name="BookOpen" className="w-4 h-4" /> <span>Sincronizando &gt;80.000 palabras...</span>
+                    </div>
+                </div>
+            ) : (!roomState || roomState.status === 'waiting') ? (
+                /* 2. VISTA LOBBY */
+                <div className="fixed inset-0 bg-gradient-to-br from-slate-900 to-indigo-950 text-slate-100 flex items-center justify-center p-4">
+                    <style dangerouslySetInnerHTML={{ __html: `@keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } } .bg-shape { position: absolute; filter: blur(60px); opacity: 0.3; animation: float-bg 12s infinite ease-in-out; pointer-events: none; z-index: 0; }` }} />
+                    <div className="bg-shape bg-rose-500 w-[40vw] h-[40vw] top-[-10%] left-[-10%]"></div>
+                    <div className="bg-shape bg-blue-500 w-[50vw] h-[50vw] bottom-[-10%] right-[-10%]" style={{ animationDelay: '-5s' }}></div>
 
-            <style dangerouslySetInnerHTML={{
-                __html: `
-        @keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } }
-        .bg-shape { position: absolute; filter: blur(60px); opacity: 0.2; animation: float-bg 15s infinite ease-in-out; pointer-events: none; z-index: 0; }
-        .shape-1 { background: #3b82f6; width: 40vw; height: 40vw; top: -10%; left: -10%; animation-delay: 0s; }
-        .shape-2 { background: #a855f7; width: 50vw; height: 50vw; bottom: -10%; right: -10%; animation-delay: -5s; }
-        
-        @keyframes tile-float-anim {
-            0%, 100% { transform: translateY(-16px) scale(1.05); }
-            50% { transform: translateY(-22px) scale(1.05); }
-        }
-        .tile-selected {
-            animation: tile-float-anim 1.5s ease-in-out infinite !important;
-            box-shadow: 0 20px 30px rgba(52, 211, 153, 0.5) !important;
-            border-bottom-width: 2px !important;
-            z-index: 50;
-        }
-
-        /* ANIMACIONES CSS EXCLUSIVAS PARA EVITAR CONFLICTOS CON REACT */
-        @keyframes radar-pop {
-            0% { transform: scale(0) rotate(45deg); opacity: 0; }
-            50% { transform: scale(1.2) rotate(-10deg); opacity: 1; }
-            100% { transform: scale(1) rotate(0deg); opacity: 1; }
-        }
-        .radar-highlight {
-            animation: radar-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        
-        @keyframes ghost-pop {
-            0% { transform: scale(0) translateY(-50px) rotate(15deg); opacity: 0; }
-            100% { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
-        }
-        .ghost-tile {
-            animation: ghost-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-
-        .roulette-wheel {
-            background: conic-gradient(
-                #94a3b8 0deg 90deg,
-                #4ade80 90deg 180deg,
-                #a855f7 180deg 270deg,
-                #fbbf24 270deg 360deg
-            );
-            border-radius: 50%;
-        }
-      `}} />
-            <div className="bg-shape shape-1"></div>
-            <div className="bg-shape shape-2"></div>
-
-            {/* TOP HUD */}
-            <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 flex flex-col gap-2 z-30 pointer-events-none">
-
-                <div className="flex justify-between items-start">
-                    <div className="flex flex-col gap-1.5 sm:gap-2">
-                        <div className="flex gap-2 pointer-events-auto">
-                            <button onClick={() => setShowProfile(true)} className="top-hud-element flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-lg rounded-full pr-3 pl-1 py-1 border border-white/20 hover:bg-white/20 transition-all cursor-pointer group">
-                                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform">
-                                    <Icon name="User"s className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                                </div>
-                                <div className="flex flex-col items-start pr-2">
-                                    <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 uppercase tracking-widest leading-none">SALA: {roomCode}</span>
-                                    <span className="font-black text-white text-[10px] sm:text-xs">Jugadores</span>
-                                </div>
-                            </button>
-                            {/* BOTÓN TIENDA */}
-                            <button onClick={() => setShowShop(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.5)] rounded-full flex items-center justify-center border border-amber-200 hover:scale-110 transition-transform">
-                                <Icon name="Palette" className="w-4 h-4 sm:w-5 sm:h-5 text-orange-950" />
-                            </button>
+                    <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full relative z-10 flex flex-col items-center">
+                        <div className="w-20 h-20 bg-gradient-to-br from-[#f59850] to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6 transform rotate-3">
+                            <span className="text-4xl font-black text-white">P</span>
                         </div>
+                        <h1 className="text-3xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight text-center">Palabritas <span className="text-rose-400">GO</span></h1>
 
-                        <div className="flex gap-2">
-                            <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-white/20 w-max text-white">
-                                <span className="font-black text-[10px] sm:text-xs">Bolsa: <AnimatedNumber value={roomState.bag.length} /></span>
+                        {errorMsg && <div className="w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Icon name="Zap" className="w-4 h-4" /> {errorMsg}</div>}
+
+                        {isAuthLoading ? (
+                            <div className="py-12 flex flex-col items-center gap-4">
+                                <Icon name="Loader2" size={40} className="text-indigo-500 animate-spin" />
+                                <span className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em] animate-pulse">Sincronizando Perfil...</span>
                             </div>
-                            {!dictLoaded && (
-                                <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-rose-500/80 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-rose-400 w-max text-white animate-pulse">
-                                    <Icon name="BrainCircuit" className="w-3 h-3 animate-spin" />
-                                    <span className="font-black text-[9px] uppercase tracking-widest">Cargando RAE...</span>
-                                </div>
-                            )}
-                            <div className="relative pointer-events-auto">
-                                <button onClick={() => setShowEmotes(!showEmotes)} className="top-hud-element w-7 h-7 sm:w-8 sm:h-8 bg-white/10 backdrop-blur-md shadow-sm rounded-full flex items-center justify-center border border-white/20 hover:bg-white/20 transition-colors">
-                                    <Icon name="Smile" className="w-4 h-4 text-amber-400" />
-                                </button>
-                                {showEmotes && (
-                                    <div className="absolute top-10 left-0 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-xl rounded-2xl p-2 grid grid-cols-4 gap-2 animate-in fade-in slide-in-from-top-2 w-max">
-                                        {EMOTES.map(e => (
-                                            <button key={e} onClick={() => sendEmote(e)} className="w-8 h-8 flex items-center justify-center text-xl hover:scale-125 transition-transform hover:bg-slate-800 rounded-lg">{e}</button>
-                                        ))}
+                        ) : (
+                            <div className="w-full">
+                                {user && (
+                                    <button 
+                                        onClick={() => { 
+                                            console.log("Opening Account Tab from Lobby");
+                                            setProfileTab('account'); 
+                                            setShowProfile(true); 
+                                        }} 
+                                        className="w-full bg-white/5 border border-white/10 rounded-3xl p-4 mb-6 flex items-center gap-4 cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all group relative overflow-hidden shadow-xl hover:shadow-indigo-500/10 text-left"
+                                    >
+                                        <div className="absolute top-0 right-0 p-2 opacity-40 group-hover:opacity-100 transition-opacity">
+                                            <Icon name="Settings" size={14} className="text-slate-400" />
+                                        </div>
+                                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-xl shadow-lg border border-white/20 transform group-hover:scale-105 transition-transform">
+                                            {userName.substring(0, 1) || '?'}
+                                        </div>
+                                        <div className="flex flex-col flex-1 truncate">
+                                            <span className="text-white font-black tracking-widest text-base truncate">{userName}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+                                                    <Icon name="Trophy" size={10} /> {stats?.wins || 0} Wins
+                                                </span>
+                                                <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                                                    <Icon name="Gem" size={10} /> {diamonds}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-all">
+                                                <Icon name="ChevronRight" size={16} />
+                                            </div>
+                                        </div>
+                                    </button>
+                                )}
+
+                                {!roomState ? (
+                                    <div className="w-full space-y-4">
+                                        {!user && (
+                                            <div className="space-y-4 mb-4">
+                                                <div>
+                                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Tu Nombre</label>
+                                                    <input type="text" value={userName} onChange={e => setUserName(e.target.value.toUpperCase())} placeholder="JUGADOR1" maxLength={10} className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-rose-400 transition-colors" />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {user && (
+                                            <button onClick={() => { setProfileTab('search'); setShowProfile(true); }} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-xs font-black text-white uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(79,70,229,0.3)] mb-4 active:scale-95">
+                                                <Icon name="UserPlus" size={18} /> Buscar Amigos
+                                            </button>
+                                        )}
+
+                                        <div className="flex gap-2">
+                                            <input type="text" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" maxLength={4} className="w-1/2 bg-black/20 border border-white/10 rounded-xl p-4 text-white font-black tracking-widest text-center outline-none focus:border-blue-400 transition-colors" />
+                                            <button onClick={handleJoinRoom} disabled={!userName || !joinCode || joinCode.length !== 4} className="w-1/2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white font-black rounded-xl uppercase tracking-widest text-sm transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="LogIn" className="w-4 h-4" /> Unirse</button>
+                                        </div>
+                                        
+                                        <button onClick={handleCreateRoom} disabled={!userName} className="w-full bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Plus" className="w-5 h-5" /> Crear Sala</button>
+                                        
+                                        {!user && (
+                                            <>
+                                                <div className="relative py-2 flex items-center justify-center">
+                                                    <div className="absolute w-full h-px bg-white/10"></div>
+                                                    <span className="bg-[#1e293b] px-4 text-xs font-bold text-slate-400 relative uppercase tracking-tighter">Conexión Social</span>
+                                                </div>
+                                                <button onClick={handleGoogleLogin} className="w-full bg-white text-slate-900 font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-3 hover:bg-slate-100">
+                                                    <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                                                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1c-2.9 0-5.51 1.16-7.41 3.05L1.18 7.07l3.66 2.84c.87-2.6 3.33-4.53 6.16-4.53z"/>
+                                                    </svg>
+                                                    Entrar con Google
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="w-full flex flex-col items-center">
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Código de Sala</span>
+                                        <div className="flex items-center gap-3 mb-8">
+                                            <div onClick={handleShare} className="text-5xl font-black text-white tracking-widest bg-black/40 px-8 py-4 rounded-2xl border border-white/20 cursor-pointer hover:bg-black/60 transition-colors shadow-inner relative group">
+                                                {roomCode}
+                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-indigo-600 text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase tracking-tighter whitespace-nowrap">Haz clic para compartir</div>
+                                            </div>
+                                            <button onClick={handleShare} className="w-14 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl flex items-center justify-center shadow-lg transition-all active:scale-90 active:rotate-12 group">
+                                                <Icon name="Share2" className="w-6 h-6" />
+                                            </button>
+                                        </div>
+
+                                        <div className="w-full bg-black/20 rounded-2xl p-4 mb-8">
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="Users" className="w-4 h-4" /> Jugadores ({roomState.playerIds.length}/4)</h3>
+                                            <div className="space-y-2">
+                                                {roomState.playerIds.map(uid => (
+                                                    <div key={uid} className="bg-white/5 px-4 py-3 rounded-xl flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-black text-xs shadow-inner">
+                                                            {roomState.players[uid].name.substring(0, 2)}
+                                                        </div>
+                                                        <span className="font-black text-white">{roomState.players[uid].name}</span>
+                                                        {uid === roomState.host && <Icon name="Crown" className="w-4 h-4 text-amber-400 ml-auto" />}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {user.uid === roomState.host ? (
+                                            <button onClick={handleStartGame} disabled={roomState.playerIds.length < 1} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Play" className="w-5 h-5 fill-current" /> Empezar Partida</button>
+                                        ) : (
+                                            <div className="text-sm font-bold text-amber-400 animate-pulse flex items-center gap-2"><Icon name="Menu" className="w-4 h-4 animate-spin" /> Esperando al anfitrión...</div>
+                                        )}
+
+                                        {friends.length > 0 && (
+                                            <div className="w-full mt-6 text-left">
+                                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 px-1"><Icon name="Users" className="w-4 h-4" /> Amigos Online</h3>
+                                                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                                    {friends.map(f => (
+                                                        <div key={f.uid} onClick={() => { if (window.confirm(`¿Quieres invitar a ${f.name}?`)) handleShare(); }} className="flex-shrink-0 bg-white/5 border border-white/10 p-2 rounded-xl flex flex-col items-center min-w-[70px] cursor-pointer hover:bg-white/10 transition-colors">
+                                                            <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-black text-xs mb-1">{f.name.substring(0, 2)}</div>
+                                                            <span className="text-[9px] font-bold text-white truncate w-full text-center">{f.name}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 items-end">
-                        <div id="score-hud-box" className="top-hud-element pointer-events-auto bg-white/10 backdrop-blur-md shadow-lg rounded-2xl px-4 py-1.5 sm:px-5 sm:py-2 flex flex-col items-end border border-emerald-500/50 relative overflow-hidden transition-all duration-300">
-                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent"></div>
-                            <div className="flex items-center gap-2 mb-0.5 relative z-10">
-                                <div className="flex items-center gap-1 bg-black/30 px-1.5 py-0.5 rounded-full border border-white/10">
-                                    <span className="text-[8px] sm:text-[9px] font-black text-cyan-300">{myPlayer?.diamonds || 0}</span>
-                                    <span className="text-[8px] sm:text-[9px]">💎</span>
-                                </div>
-                                <span className="text-[8px] sm:text-[9px] font-bold text-emerald-200 uppercase tracking-widest leading-none">Tu Score</span>
-                            </div>
-
-                            <div className="text-2xl sm:text-4xl font-black text-white leading-none tracking-tighter flex items-center gap-1.5 relative z-10">
-                                <AnimatedNumber value={myPlayer?.score || 0} />
-                                {preview.valid && pendingPlacements.length > 0 && (
-                                    <span className="text-base sm:text-xl text-emerald-400 opacity-90 animate-pulse drop-shadow-sm">+{preview.score}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* FEED SOCIAL */}
-                <div className="absolute top-32 left-3 sm:left-4 flex flex-col gap-1.5 max-w-[200px] sm:max-w-[250px] pointer-events-none z-20">
-                    {roomState.logs && roomState.logs.map((log, i) => (
-                        <div key={log.id} className="bg-slate-900/80 backdrop-blur-md text-white border border-white/10 px-3 py-1.5 rounded-xl text-[9px] sm:text-[10px] font-bold flex items-center gap-2 animate-in slide-in-from-left-4 fade-in" style={{ opacity: 1 - ((roomState.logs.length - 1 - i) * 0.2) }}>
-                            <span>{log.icon}</span> <span className="truncate">{log.text}</span>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Indicador de Turno */}
-                <div className="self-center bg-slate-900/90 backdrop-blur-md border border-slate-700 pl-6 pr-2 py-1.5 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 mt-2">
-                    {isMyTurnActual ? (
-                        <>
-                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_#34d399]"></div>
-                            <span className="text-white font-black tracking-widest text-xs sm:text-sm uppercase">¡ES TU TURNO!</span>
-                            <div className={`ml-2 px-3 py-1 rounded-full flex items-center gap-1 font-black text-xs transition-colors ${timeLeft < 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-emerald-400'}`}>
-                                <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#fbbf24]"></div>
-                            <span className="text-slate-300 font-bold tracking-widest text-[10px] sm:text-xs uppercase">Juega {roomState.players[currentTurnUid]?.name}</span>
-                            <div className="ml-2 px-2 py-1 rounded-full bg-slate-800 text-amber-400 flex items-center gap-1 font-black text-[10px]">
-                                <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
-                            </div>
-                        </>
-                    )}
-                </div>
-
-            </div>
-
-            {/* NOTIFICACIONES Y PREVISIÓN */}
-            <div className="absolute top-40 w-full flex justify-center z-30 pointer-events-none">
-                {errorMsg ? (
-                    <span className="error-msg bg-red-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
-                        <Icon name="Zap" className="w-3 h-3 sm:w-4 sm:h-4" /> {errorMsg}
-                    </span>
-                ) : pendingPlacements.length > 0 ? (
-                    preview.valid ? (
-                        <div className="flex flex-col items-center gap-1 animate-in slide-in-from-top-2 fade-in duration-200">
-                            <span className="bg-slate-900/90 backdrop-blur-sm text-emerald-400 border border-emerald-500/50 text-[9px] sm:text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg uppercase tracking-widest">
-                                Estimado
-                            </span>
-                            {preview.words.map((lw, i) => (
-                                <span key={i} className="bg-gradient-to-r from-[#1fa95b] to-[#15803d] text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-emerald-400">
-                                    <Icon name="Flame" className="w-3 h-3" /> {lw.word} <span className="text-emerald-100 font-bold opacity-90">+{lw.points}</span>
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <span className="bg-amber-500/95 backdrop-blur-md text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-amber-400">
-                            <Icon name="Info" className="w-3 h-3 sm:w-4 sm:h-4" /> {preview.error}
-                        </span>
-                    )
-                ) : null}
-            </div>
-
-            {/* ÁREA DE JUEGO CENTRAL */}
-            <div
-                ref={boardWrapperRef}
-                className="board-wrapper absolute inset-0 flex items-center justify-center z-10 overflow-hidden pb-24 sm:pb-28"
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerLeave={onPointerUp}
-                onPointerCancel={onPointerUp}
-            >
-                <div
-                    className="w-full h-full flex items-center justify-center pointer-events-none"
-                    style={{ transform: `translate(${camTransform.x}px, ${camTransform.y}px) scale(${camTransform.scale})`, transition: pointerState.current.isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)', transformOrigin: 'center center' }}
-                >
-                    <div
-                        className={`board-container pointer-events-auto ${currentTheme.boardBg} rounded-lg sm:rounded-xl p-[2px] sm:p-1 shadow-2xl flex flex-col relative border-b-[4px] sm:border-b-[6px] border-r-[2px] sm:border-r-[4px] ${currentTheme.boardBorder} mx-auto w-[100vmin] max-w-[800px] aspect-square transition-colors duration-500`}
-                    >
-                        <div className="w-full h-full grid gap-[1px] sm:gap-[2px]" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))', gridTemplateRows: 'repeat(15, minmax(0, 1fr))' }}>
-                            {displayBoard.map((row, r) =>
-                                row.map((cell, c) => {
-                                    const isCenter = r === 7 && c === 7;
-                                    const visual = getCellVisuals(cell.mult, isCenter);
-                                    const isHighlighted = hintHighlights.some(h => h.r === r && h.c === c);
-                                    const ghostPlacement = hintGhost.find(h => h.r === r && h.c === c);
-
-                                    return (
-                                        <div key={`${r}-${c}`} onClick={() => handleBoardClick(r, c)} className={`cell-${r}-${c} relative flex items-center justify-center transition-colors duration-500 ${visual.bg} ${(!cell.tile && selectedRackIdx !== null && isMyTurnActual) ? 'cursor-pointer hover:brightness-125 shadow-inner' : ''} ${(cell.tile && !roomState.board[r][c].tile && isMyTurnActual) ? 'cursor-pointer z-10' : ''}`}>
-                                            {!cell.tile && cell.mult === '' && !isCenter && <div className={`absolute inset-0 ${currentTheme.cellEmpty} transition-colors duration-500`}></div>}
-                                            {!cell.tile && isCenter && <Icon name="Star" className={`w-[60%] h-[60%] fill-current ${currentTheme.centerStar} pointer-events-none transition-colors duration-500`} />}
-
-                                            {/* Highlights para Zonas Clave (EFECTO RADAR CSS) */}
-                                            {!cell.tile && isHighlighted && (
-                                                <div className="radar-highlight absolute inset-[1px] bg-cyan-400/60 ring-4 ring-cyan-300 rounded-[2px] sm:rounded-sm z-30 pointer-events-none shadow-[0_0_20px_rgba(34,211,238,1)]"></div>
-                                            )}
-
-                                            {/* Ghost Tiles para Pistas Holográficas (EFECTO GHOST CSS) */}
-                                            {!cell.tile && ghostPlacement && (
-                                                <div className={`ghost-tile absolute inset-[1px] bg-cyan-500/60 backdrop-blur-md rounded-[2px] sm:rounded-sm flex items-center justify-center border-[3px] border-cyan-300 z-[60] pointer-events-none shadow-[0_0_25px_rgba(34,211,238,0.9)]`}>
-                                                    <span className={`font-black text-white text-[clamp(16px,5vmin,40px)] leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>{ghostPlacement.tile.isBlank ? '?' : ghostPlacement.tile.letter}</span>
-                                                </div>
-                                            )}
-
-                                            {cell.tile && (
-                                                <div className={`tile-placed absolute inset-[0px] sm:inset-[1px] ${currentTheme.tileBg} rounded-[2px] sm:rounded-sm flex items-center justify-center border ${currentTheme.tileBorder} transition-all duration-500
-                            ${(roomState.board)[r][c].tile ? currentTheme.tileShadow : 'ring-1 ring-emerald-400 ring-offset-1 ring-offset-black/50 z-20 shadow-[0_5px_15px_rgba(0,0,0,0.6)]'}`}>
-                                                    <span className={`font-black ${cell.tile.isBlank ? 'text-rose-500' : currentTheme.tileText} text-[clamp(14px,4.5vmin,36px)] leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? cell.tile.blankLetter : cell.tile.letter}</span>
-                                                    <span className={`absolute bottom-[1px] right-[2px] text-[clamp(6px,1.5vmin,12px)] font-bold opacity-60 ${currentTheme.tileText} leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? 0 : cell.tile.value}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* CONTROLES DE CÁMARA Y PISTAS */}
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-5 z-40 pointer-events-auto">
-
-                {/* PISTAS SEPARADAS EN BOTONES */}
-                <div className="flex flex-col gap-2">
-                    <button onClick={() => setShowHints(true)} disabled={isSpinning || hintHighlights.length > 0 || hintGhost.length > 0 || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.6)] flex items-center justify-center border border-yellow-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                        <Icon name="Lightbulb" className="w-5 h-5 text-amber-950 fill-current" />
-                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
-                    </button>
-
-                    <button onClick={activateRadar} disabled={hintHighlights.length > 0 || hintGhost.length > 0 || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.6)] flex items-center justify-center border border-cyan-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                        <Icon name="Search" className="w-5 h-5 text-blue-950" />
-                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
-                    </button>
-
-                    <button onClick={activateMagicSwap} disabled={isSpinning || (myPlayer?.diamonds || 0) < 10} className="relative w-10 h-10 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.6)] flex items-center justify-center border border-pink-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                        <Icon name="Wand2" className="w-5 h-5 text-rose-950" />
-                        <div className="absolute -bottom-2 -right-2 bg-slate-900 text-cyan-300 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-slate-700">10💎</div>
-                    </button>
-                </div>
-
-                <div className="w-6 h-px bg-white/20 self-center"></div>
-
-                <div className="flex flex-col gap-2">
-                    <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 3) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomIn" className="w-5 h-5" /></button>
-                    <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.5) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomOut" className="w-5 h-5" /></button>
-                    <button onClick={() => setCamTransform({ x: 0, y: 0, scale: 1 })} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="Maximize" className="w-5 h-5" /></button>
-                </div>
-            </div>
-
-            {/* RACK FLOTANTE Y CONTROLES (Bottom) */}
-            <div className={`floating-rack absolute bottom-0 left-0 right-0 w-full z-40 flex flex-col items-center gap-2 pb-3 sm:pb-4 transition-opacity duration-300 ${!isMyTurnActual ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'pointer-events-none'}`}>
-                <div className={`rack-container relative ${currentTheme.rackBg} rounded-xl p-1.5 sm:p-2 shadow-2xl flex justify-center gap-1 sm:gap-1.5 mx-auto pointer-events-auto w-max transition-colors duration-500`}>
-                    {localRack.map((tile, idx) => (
-                        <div
-                            key={idx}
-                            onClick={() => handleRackClick(idx)}
-                            className={`tile-rack tile-rack-${idx} relative w-[13vw] sm:w-[8vw] max-w-[55px] aspect-[1/1.1] rounded-md transition-all duration-300 cursor-pointer border
-                ${tile ? `${currentTheme.tileBg} ${currentTheme.tileBorder} ${currentTheme.tileShadow} border-b-[3px]` : currentTheme.rackTileEmpty}
-                ${selectedRackIdx === idx ? 'tile-selected ring-4 ring-emerald-400' : 'hover:-translate-y-1'}
-            `}
-                        >
-                            {tile && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                    <span className={`text-2xl sm:text-3xl font-black ${currentTheme.tileText} leading-none transition-colors duration-500`}>{tile.letter}</span>
-                                    <span className={`absolute bottom-[2px] right-[3px] text-[0.55rem] sm:text-[0.65rem] font-bold opacity-60 ${currentTheme.tileText} transition-colors duration-500`}>{tile.value}</span>
-                                    <div className="absolute top-1 left-1 right-1 h-1/4 bg-white/20 rounded-t-sm pointer-events-none"></div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-
-                <div className="flex justify-between items-center gap-2 px-2 sm:px-4 w-full max-w-[600px] pointer-events-none">
-                    <div className="flex gap-2 pointer-events-auto">
-                        <button onClick={shuffleRack} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg hover:rotate-180 duration-500 disabled:opacity-50">
-                            <Icon name="Shuffle" className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
-                        <button onClick={recallAll} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg active:-rotate-45 disabled:opacity-50">
-                            <Icon name="Undo2" className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
-                    </div>
-
-                    <div className="flex gap-2 flex-1 justify-end pointer-events-auto">
-                        {pendingPlacements.length === 0 ? (
-                            <>
-                                <button onClick={swapTiles} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-3 sm:px-4 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 border-b-[3px] border-blue-800 rounded-xl flex items-center justify-center text-white transition-all active:translate-y-[3px] active:border-b-0 shadow-lg disabled:opacity-50">
-                                    <Icon name="RotateCcw" className="w-4 h-4 sm:w-5 sm:h-5" />
-                                </button>
-                                <button onClick={() => skipTurn(false)} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-4 sm:px-6 bg-slate-800 hover:bg-slate-700 border-b-[3px] border-black rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-xs sm:text-sm transition-all active:translate-y-[3px] active:border-b-0 shadow-lg">
-                                    <Icon name="SkipForward" className="w-4 h-4" /> Pasar
-                                </button>
-                            </>
-                        ) : (
-                            <button
-                                onClick={handlePlay}
-                                disabled={!isMyTurnActual || !preview.valid}
-                                className={`btn-jugar h-10 sm:h-12 flex-1 max-w-[140px] border-b-[3px] rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-sm transition-all shadow-lg
-                    ${!preview.valid ? 'bg-slate-800/80 backdrop-blur-md border-black cursor-not-allowed opacity-80' : 'bg-gradient-to-b from-[#22c55e] to-[#16a34a] hover:from-[#4ade80] hover:to-[#15803d] border-[#14532d] active:translate-y-[3px] active:border-b-0'}`}
-                            >
-                                <Icon name="Play" className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> JUGAR
-                            </button>
                         )}
                     </div>
                 </div>
-            </div>
+            ) : (
+                /* 3. VISTA JUEGO PRINCIPAL */
+                <div className="fixed inset-0 bg-slate-950 text-slate-800">
+                    {/* (El resto del código del juego principal se renderiza aquí) */}
+                    {(() => {
+                        const currentTurnUid = roomState.playerIds[roomState.turnIndex];
+                        const isMyTurnActual = isMyTurn;
+                        const myPlayer = roomState.players[user.uid];
 
-            {/* MODAL RULETA DE PISTAS CON 4 PORCIONES (Solo Hologramas) */}
+                        return (
+                            <>
+                                {/* MODAL GAME OVER / RESULTADOS FINALES */}
+                                {roomState.status === 'finished' && (
+                                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 animate-in fade-in duration-700 pointer-events-auto">
+                                        <div className="bg-slate-900 w-full sm:max-w-lg rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col items-center p-8 animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 overflow-hidden relative">
+                                            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-orange-600 to-amber-500 animate-pulse"></div>
+                                            
+                                            <div className="w-20 h-20 bg-amber-500/20 rounded-3xl flex items-center justify-center mb-4 shadow-inner border border-amber-500/50 relative">
+                                                <Icon name="Trophy" className="w-10 h-10 text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" />
+                                                <div className="absolute -top-2 -right-2 bg-rose-500 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-lg">FIN</div>
+                                            </div>
+
+                                            <h2 className="text-3xl font-black text-white tracking-tighter mb-1 uppercase">Partida Finalizada</h2>
+                                            <p className="text-sm font-medium text-slate-400 mb-8 tracking-widest uppercase">Resultados del Tablero</p>
+
+                                            <div className="w-full space-y-3 mb-10">
+                                                {roomState.playerIds
+                                                    .map(uid => ({ uid, ...roomState.players[uid] }))
+                                                    .sort((a, b) => b.score - a.score)
+                                                    .map((p, i) => (
+                                                        <div key={p.uid} className={`flex items-center gap-4 p-4 rounded-2xl border ${i === 0 ? 'bg-amber-500/10 border-amber-500/50' : 'bg-white/5 border-white/10'}`}>
+                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${i === 0 ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                                {i + 1}
+                                                            </div>
+                                                            <span className={`font-black text-lg flex-1 ${i === 0 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                                            <span className={`text-2xl font-black ${i === 0 ? 'text-amber-400' : 'text-slate-400'}`}>{p.score}</span>
+                                                        </div>
+                                                    ))
+                                                }
+                                            </div>
+
+                                            <div className="w-full flex gap-3">
+                                                <button onClick={() => window.location.reload()} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-sm transition-all active:scale-95 border-b-4 border-black">Lobby</button>
+                                                <button onClick={() => setShowProfile(true)} className="flex-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-sm transition-all active:scale-95 border-b-4 border-indigo-900">Ranking Global</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <style dangerouslySetInnerHTML={{
+                                    __html: `
+                            @keyframes float-bg { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+                            .bg-shape { position: absolute; filter: blur(60px); opacity: 0.2; animation: float-bg 15s infinite ease-in-out; pointer-events: none; z-index: 0; }
+                            .shape-1 { background: #3b82f6; width: 40vw; height: 40vw; top: -10%; left: -10%; animation-delay: 0s; }
+                            .shape-2 { background: #a855f7; width: 50vw; height: 50vw; bottom: -10%; right: -10%; animation-delay: -5s; }
+                            
+                            @keyframes tile-float-anim {
+                                0%, 100% { transform: translateY(-16px) scale(1.05); }
+                                50% { transform: translateY(-22px) scale(1.05); }
+                            }
+                            .tile-selected {
+                                animation: tile-float-anim 1.5s ease-in-out infinite !important;
+                                box-shadow: 0 20px 30px rgba(52, 211, 153, 0.5) !important;
+                                border-bottom-width: 2px !important;
+                                z-index: 50;
+                            }
+
+                            /* ANIMACIONES CSS EXCLUSIVAS PARA EVITAR CONFLICTOS CON REACT */
+                            @keyframes radar-pop {
+                                0% { transform: scale(0) rotate(45deg); opacity: 0; }
+                                50% { transform: scale(1.2) rotate(-10deg); opacity: 1; }
+                                100% { transform: scale(1) rotate(0deg); opacity: 1; }
+                            }
+                            .radar-highlight {
+                                animation: radar-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+                            }
+                            
+                            @keyframes ghost-pop {
+                                0% { transform: scale(0) translateY(-50px) rotate(15deg); opacity: 0; }
+                                100% { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+                            }
+                            .ghost-tile {
+                                animation: ghost-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+                            }
+
+                            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                            .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+                            .roulette-wheel {
+                                background: conic-gradient(
+                                    #94a3b8 0deg 90deg,
+                                    #4ade80 90deg 180deg,
+                                    #a855f7 180deg 270deg,
+                                    #fbbf24 270deg 360deg
+                                );
+                                border-radius: 50%;
+                            }
+                          `}} />
+                                <div className="bg-shape shape-1"></div>
+                                <div className="bg-shape shape-2"></div>
+
+                                {/* TOP HUD */}
+                                <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 flex flex-col gap-2 z-30 pointer-events-none">
+
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex flex-col gap-1.5 sm:gap-2">
+                                            <div className="flex gap-2 pointer-events-auto">
+                                                <button onClick={() => setShowProfile(true)} className="top-hud-element flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-lg rounded-full pr-3 pl-1 py-1 border border-white/20 hover:bg-white/20 transition-all cursor-pointer group">
+                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform">
+                                                        <Icon name="User" className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                                    </div>
+                                                    <div className="flex flex-col items-start pr-2">
+                                                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 uppercase tracking-widest leading-none">SALA: {roomCode}</span>
+                                                        <span className="font-black text-white text-[10px] sm:text-xs">Jugadores</span>
+                                                    </div>
+                                                </button>
+                                                {/* BOTÓN TIENDA */}
+                                                <button onClick={() => setShowShop(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.5)] rounded-full flex items-center justify-center border border-amber-200 hover:scale-110 transition-transform">
+                                                    <Icon name="Palette" className="w-4 h-4 sm:w-5 sm:h-5 text-orange-950" />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2">
+                                                <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-white/20 w-max text-white">
+                                                    <span className="font-black text-[10px] sm:text-xs">Bolsa: <AnimatedNumber value={roomState.bag.length} /></span>
+                                                </div>
+                                                {!dictLoaded && (
+                                                    <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-rose-500/80 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-rose-400 w-max text-white animate-pulse">
+                                                        <Icon name="BrainCircuit" className="w-3 h-3 animate-spin" />
+                                                        <span className="font-black text-[9px] uppercase tracking-widest">Cargando RAE...</span>
+                                                    </div>
+                                                )}
+                                                <div className="relative pointer-events-auto">
+                                                    <button onClick={() => setShowEmotes(!showEmotes)} className="top-hud-element w-7 h-7 sm:w-8 sm:h-8 bg-white/10 backdrop-blur-md shadow-sm rounded-full flex items-center justify-center border border-white/20 hover:bg-white/20 transition-colors">
+                                                        <Icon name="Smile" className="w-4 h-4 text-amber-400" />
+                                                    </button>
+                                                    {showEmotes && (
+                                                        <div className="absolute top-10 left-0 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-xl rounded-2xl p-2 grid grid-cols-4 gap-2 animate-in fade-in slide-in-from-top-2 w-max">
+                                                            {EMOTES.map(e => (
+                                                                <button key={e} onClick={() => sendEmote(e)} className="w-8 h-8 flex items-center justify-center text-xl hover:scale-125 transition-transform hover:bg-slate-800 rounded-lg">{e}</button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-2 items-end">
+                                            <div id="score-hud-box" className="top-hud-element pointer-events-auto bg-white/10 backdrop-blur-md shadow-lg rounded-2xl px-4 py-1.5 sm:px-5 sm:py-2 flex flex-col items-end border border-emerald-500/50 relative overflow-hidden transition-all duration-300">
+                                                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent"></div>
+                                                <div className="flex items-center gap-2 mb-0.5 relative z-10">
+                                                    <div className="flex items-center gap-1 bg-black/30 px-1.5 py-0.5 rounded-full border border-white/10">
+                                                        <Icon name="Zap" className="w-2 h-2 sm:w-2.5 sm:h-2.5 text-yellow-400 fill-current" />
+                                                        <span className="text-[8px] sm:text-[9px] font-black text-cyan-300">{diamonds}</span>
+                                                        <span className="text-[8px] sm:text-[9px]">💎</span>
+                                                    </div>
+                                                    <span className="text-[8px] sm:text-[9px] font-bold text-emerald-200 uppercase tracking-widest leading-none">Tu Score</span>
+                                                </div>
+
+                                                <div className="text-2xl sm:text-4xl font-black text-white leading-none tracking-tighter flex items-center gap-1.5 relative z-10">
+                                                    <AnimatedNumber value={myPlayer?.score || 0} />
+                                                    {preview.valid && pendingPlacements.length > 0 && (
+                                                        <span className="text-base sm:text-xl text-emerald-400 opacity-90 animate-pulse drop-shadow-sm">+{preview.score}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* FEED SOCIAL */}
+                                    <div className="absolute top-32 left-3 sm:left-4 flex flex-col gap-1.5 max-w-[200px] sm:max-w-[250px] pointer-events-none z-20">
+                                        {roomState.logs && roomState.logs.map((log, i) => (
+                                            <div key={log.id} className="bg-slate-900/80 backdrop-blur-md text-white border border-white/10 px-3 py-1.5 rounded-xl text-[9px] sm:text-[10px] font-bold flex items-center gap-2 animate-in slide-in-from-left-4 fade-in" style={{ opacity: 1 - ((roomState.logs.length - 1 - i) * 0.2) }}>
+                                                <span>{log.icon}</span> <span className="truncate">{log.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Indicador de Turno */}
+                                    <div className="self-center bg-slate-900/90 backdrop-blur-md border border-slate-700 pl-6 pr-2 py-1.5 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 mt-2 pointer-events-auto">
+                                        {isMyTurnActual ? (
+                                            <>
+                                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_#34d399]"></div>
+                                                <span className="text-white font-black tracking-widest text-xs sm:text-sm uppercase">¡ES TU TURNO!</span>
+                                                <div className={`ml-2 px-3 py-1 rounded-full flex items-center gap-1 font-black text-xs transition-colors ${timeLeft < 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-emerald-400'}`}>
+                                                    <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#fbbf24]"></div>
+                                                <span className="text-slate-300 font-bold tracking-widest text-[10px] sm:text-xs uppercase">Juega {roomState.players[currentTurnUid]?.name}</span>
+                                                <div className="ml-2 px-2 py-1 rounded-full bg-slate-800 text-amber-400 flex items-center gap-1 font-black text-[10px]">
+                                                    <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                </div>
+
+                                {/* NOTIFICACIONES Y PREVISIÓN */}
+                                <div className="absolute top-40 w-full flex justify-center z-30 pointer-events-none">
+                                    {errorMsg ? (
+                                        <span className="error-msg bg-red-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5">
+                                            <Icon name="Zap" className="w-3 h-3 sm:w-4 sm:h-4" /> {errorMsg}
+                                        </span>
+                                    ) : pendingPlacements.length > 0 ? (
+                                        preview.valid ? (
+                                            <div className="flex flex-col items-center gap-1 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                <span className="bg-slate-900/90 backdrop-blur-sm text-emerald-400 border border-emerald-500/50 text-[9px] sm:text-[10px] font-black px-3 py-0.5 rounded-full shadow-lg uppercase tracking-widest">
+                                                    Estimado
+                                                </span>
+                                                {preview.words.map((lw, i) => (
+                                                    <span key={i} className="bg-gradient-to-r from-[#1fa95b] to-[#15803d] text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-emerald-400">
+                                                        <Icon name="Flame" className="w-3 h-3" /> {lw.word} <span className="text-emerald-100 font-bold opacity-90">+{lw.points}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="bg-amber-500/95 backdrop-blur-md text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 border border-amber-400">
+                                                <Icon name="Info" className="w-3 h-3 sm:w-4 sm:h-4" /> {preview.error}
+                                            </span>
+                                        )
+                                    ) : null}
+                                </div>
+
+                                {/* ÁREA DE JUEGO CENTRAL */}
+                                <div
+                                    ref={boardWrapperRef}
+                                    className="board-wrapper absolute inset-0 flex items-center justify-center z-10 overflow-hidden pb-24 sm:pb-28"
+                                    onPointerDown={onPointerDown}
+                                    onPointerMove={onPointerMove}
+                                    onPointerUp={onPointerUp}
+                                    onPointerLeave={onPointerUp}
+                                    onPointerCancel={onPointerUp}
+                                >
+                                    <div
+                                        className="w-full h-full flex items-center justify-center pointer-events-none"
+                                        style={{ transform: `translate(${camTransform.x}px, ${camTransform.y}px) scale(${camTransform.scale})`, transition: pointerState.current.isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)', transformOrigin: 'center center' }}
+                                    >
+                                        <div
+                                            className={`board-container pointer-events-auto ${currentTheme.boardBg} rounded-lg sm:rounded-xl p-[2px] sm:p-1 shadow-2xl flex flex-col relative border-b-[4px] sm:border-b-[6px] border-r-[2px] sm:border-r-[4px] ${currentTheme.boardBorder} mx-auto w-[100vmin] max-w-[800px] aspect-square transition-colors duration-500`}
+                                        >
+                                            <div className="w-full h-full grid gap-[1px] sm:gap-[2px]" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))', gridTemplateRows: 'repeat(15, minmax(0, 1fr))' }}>
+                                                {displayBoard.map((row, r) =>
+                                                    row.map((cell, c) => {
+                                                        const isCenter = r === 7 && c === 7;
+                                                        const visual = getCellVisuals(cell.mult, isCenter);
+                                                        const isHighlighted = hintHighlights.some(h => h.r === r && h.c === c);
+                                                        const ghostPlacement = hintGhost.find(h => h.r === r && h.c === c);
+
+                                                        return (
+                                                            <div key={`${r}-${c}`} onClick={() => handleBoardClick(r, c)} className={`cell-${r}-${c} relative flex items-center justify-center transition-colors duration-500 ${visual.bg} ${(!cell.tile && selectedRackIdx !== null && isMyTurnActual) ? 'cursor-pointer hover:brightness-125 shadow-inner' : ''} ${(cell.tile && !roomState.board[r][c].tile && isMyTurnActual) ? 'cursor-pointer z-10' : ''}`}>
+                                                                {!cell.tile && cell.mult === '' && !isCenter && <div className={`absolute inset-0 ${currentTheme.cellEmpty} transition-colors duration-500`}></div>}
+                                                                {!cell.tile && isCenter && <Icon name="Star" className={`w-[60%] h-[60%] fill-current ${currentTheme.centerStar} pointer-events-none transition-colors duration-500`} />}
+
+                                                                {/* Highlights para Zonas Clave (EFECTO RADAR CSS) */}
+                                                                {!cell.tile && isHighlighted && (
+                                                                    <div className="radar-highlight absolute inset-[1px] bg-cyan-400/60 ring-4 ring-cyan-300 rounded-[2px] sm:rounded-sm z-30 pointer-events-none shadow-[0_0_20px_rgba(34,211,238,1)]"></div>
+                                                                )}
+
+                                                                {/* Ghost Tiles para Pistas Holográficas (EFECTO GHOST CSS) */}
+                                                                {!cell.tile && ghostPlacement && (
+                                                                    <div className={`ghost-tile absolute inset-[1px] bg-cyan-500/60 backdrop-blur-md rounded-[2px] sm:rounded-sm flex items-center justify-center border-[3px] border-cyan-300 z-[60] pointer-events-none shadow-[0_0_25px_rgba(34,211,238,0.9)]`}>
+                                                                        <span className={`font-black text-white text-[clamp(16px,5vmin,40px)] leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>{ghostPlacement.tile.isBlank ? '?' : ghostPlacement.tile.letter}</span>
+                                                                    </div>
+                                                                )}
+
+                                                                {cell.tile && (
+                                                                    <div className={`tile-placed absolute inset-[0px] sm:inset-[1px] ${currentTheme.tileBg} rounded-[2px] sm:rounded-sm flex items-center justify-center border ${currentTheme.tileBorder} transition-all duration-500
+                                                ${(roomState.board)[r][c].tile ? currentTheme.tileShadow : 'ring-1 ring-emerald-400 ring-offset-1 ring-offset-black/50 z-20 shadow-[0_5px_15px_rgba(0,0,0,0.6)]'}`}>
+                                                                        <span className={`font-black ${cell.tile.isBlank ? 'text-rose-500' : currentTheme.tileText} text-[clamp(14px,4.5vmin,36px)] leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? cell.tile.blankLetter : cell.tile.letter}</span>
+                                                                        <span className={`absolute bottom-[1px] right-[2px] text-[clamp(6px,1.5vmin,12px)] font-bold opacity-60 ${currentTheme.tileText} leading-none pointer-events-none transition-colors duration-500`}>{cell.tile.isBlank ? 0 : cell.tile.value}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* CONTROLES DE CÁMARA Y PISTAS */}
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-5 z-40 pointer-events-auto">
+
+                                    {/* PISTAS SEPARADAS EN BOTONES */}
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={() => setShowHints(true)} disabled={isSpinning || hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.6)] flex items-center justify-center border border-yellow-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                                            <Icon name="Lightbulb" className="w-5 h-5 text-white" />
+                                            <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-amber-500/50 rounded-full w-5 h-5 flex items-center justify-center">
+                                                <span className="text-[10px] font-black text-amber-400">10</span>
+                                            </div>
+                                        </button>
+                                        <button onClick={activateRadar} disabled={hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.6)] flex items-center justify-center border border-cyan-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                                            <Icon name="Zap" className="w-5 h-5 text-white" />
+                                            <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-cyan-500/50 rounded-full w-5 h-5 flex items-center justify-center">
+                                                <span className="text-[10px] font-black text-cyan-400">10</span>
+                                            </div>
+                                        </button>
+                                        <button onClick={activateMagicSwap} disabled={isSpinning || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.6)] flex items-center justify-center border border-pink-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
+                                            <Icon name="Shuffle" className="w-5 h-5 text-white" />
+                                            <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-pink-500/50 rounded-full w-5 h-5 flex items-center justify-center">
+                                                <span className="text-[10px] font-black text-pink-400">10</span>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    <div className="w-6 h-px bg-white/20 self-center"></div>
+
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 3) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomIn" className="w-5 h-5" /></button>
+                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.5) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomOut" className="w-5 h-5" /></button>
+                                        <button onClick={() => setCamTransform({ x: 0, y: 0, scale: 1 })} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="Maximize" className="w-5 h-5" /></button>
+                                    </div>
+                                </div>
+
+                                {/* RACK FLOTANTE Y CONTROLES (Bottom) */}
+                                <div className={`floating-rack absolute bottom-0 left-0 right-0 w-full z-40 flex flex-col items-center gap-2 pb-3 sm:pb-4 transition-opacity duration-300 ${!isMyTurnActual ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'pointer-events-none'}`}>
+                                    <div className={`rack-container relative ${currentTheme.rackBg} rounded-xl p-1.5 sm:p-2 shadow-2xl flex justify-center gap-1 sm:gap-1.5 mx-auto pointer-events-auto w-max transition-colors duration-500`}>
+                                        {localRack.map((tile, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => handleRackClick(idx)}
+                                                className={`tile-rack tile-rack-${idx} relative w-[13vw] sm:w-[8vw] max-w-[55px] aspect-[1/1.1] rounded-md transition-all duration-300 cursor-pointer border
+                                    ${tile ? `${currentTheme.tileBg} ${currentTheme.tileBorder} ${currentTheme.tileShadow} border-b-[3px]` : currentTheme.rackTileEmpty}
+                                    ${selectedRackIdx === idx ? 'tile-selected ring-4 ring-emerald-400' : 'hover:-translate-y-1'}
+                                `}
+                                            >
+                                                {tile && (
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                                        <span className={`text-2xl sm:text-3xl font-black ${currentTheme.tileText} leading-none transition-colors duration-500`}>{tile.letter}</span>
+                                                        <span className={`absolute bottom-[2px] right-[3px] text-[0.55rem] sm:text-[0.65rem] font-bold opacity-60 ${currentTheme.tileText} transition-colors duration-500`}>{tile.value}</span>
+                                                        <div className="absolute top-1 left-1 right-1 h-1/4 bg-white/20 rounded-t-sm pointer-events-none"></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex justify-between items-center gap-2 px-2 sm:px-4 w-full max-w-[600px] pointer-events-none">
+                                        <div className="flex gap-2 pointer-events-auto">
+                                            <button onClick={shuffleRack} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg hover:rotate-180 duration-500 disabled:opacity-50">
+                                                <Icon name="Shuffle" className="w-4 h-4 sm:w-5 sm:h-5" />
+                                            </button>
+                                            <button onClick={recallAll} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg active:-rotate-45 disabled:opacity-50">
+                                                <Icon name="Undo2" className="w-4 h-4 sm:w-5 sm:h-5" />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex gap-2 flex-1 justify-end pointer-events-auto">
+                                            {pendingPlacements.length === 0 ? (
+                                                <>
+                                                    <button onClick={swapTiles} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-3 sm:px-4 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 border-b-[3px] border-blue-800 rounded-xl flex items-center justify-center text-white transition-all active:translate-y-[3px] active:border-b-0 shadow-lg disabled:opacity-50">
+                                                        <Icon name="RotateCcw" className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                    </button>
+                                                    <button onClick={() => skipTurn(false)} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-4 sm:px-6 bg-slate-800 hover:bg-slate-700 border-b-[3px] border-black rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-xs sm:text-sm transition-all active:translate-y-[3px] active:border-b-0 shadow-lg">
+                                                        <Icon name="SkipForward" className="w-4 h-4" /> Pasar
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={handlePlay}
+                                                    disabled={!isMyTurnActual || !preview.valid}
+                                                    className={`btn-jugar h-10 sm:h-12 flex-1 max-w-[140px] border-b-[3px] rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-sm transition-all shadow-lg
+                                        ${!preview.valid ? 'bg-slate-800/80 backdrop-blur-md border-black cursor-not-allowed opacity-80' : 'bg-gradient-to-b from-[#22c55e] to-[#16a34a] hover:from-[#4ade80] hover:to-[#15803d] border-[#14532d] active:translate-y-[3px] active:border-b-0'}`}
+                                                >
+                                                    <Icon name="Play" className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> JUGAR
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        );
+                    })()}
+                </div>
+            )}
+
+            {/* --- MODALES GLOBALES (Siempre accesibles) --- */}
+            
+            {/* MODAL RULETA DE PISTAS */}
             {showHints && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300 pointer-events-auto">
                     <div className="bg-slate-900 w-full sm:max-w-md rounded-3xl shadow-2xl border border-amber-500/30 flex flex-col animate-in zoom-in-95 overflow-hidden">
@@ -1698,11 +2081,8 @@ function App() {
 
                         <div className="p-6 flex flex-col items-center">
                             <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[15px] border-t-white mb-2 relative z-10 filter drop-shadow-md"></div>
-
-                            {/* Ruleta CSS de 4 Porciones */}
                             <div className="w-56 h-56 rounded-full border-4 border-slate-700 shadow-[0_0_30px_rgba(0,0,0,0.5)] overflow-hidden relative mb-6">
                                 <div className="roulette-wheel w-full h-full absolute inset-0"></div>
-                                {/* Líneas separadoras */}
                                 {[0, 90, 180, 270].map(deg => (
                                     <div key={deg} className="absolute top-0 left-1/2 w-1 h-1/2 bg-slate-900 origin-bottom -translate-x-1/2 z-10" style={{ transform: `rotate(${deg}deg)` }}></div>
                                 ))}
@@ -1734,89 +2114,65 @@ function App() {
                                     <p className="text-sm font-bold text-slate-300">{hintResult.text}</p>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={spinRoulette}
-                                    disabled={isSpinning || (myPlayer?.diamonds || 0) < 10}
-                                    className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-2"
-                                >
+                                <button onClick={spinRoulette} disabled={isSpinning || diamonds < 10} className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(245,158,11,0.4)] disabled:opacity-50 disabled:grayscale transition-all flex items-center justify-center gap-2">
                                     Girar por 10 💎
                                 </button>
                             )}
                         </div>
-
                     </div>
                 </div>
             )}
 
-            {/* MODALES SECUNDARIOS */}
+            {/* MODAL COMODÍN */}
             {pendingBlank && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200 pointer-events-auto">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl max-w-sm w-full flex flex-col items-center animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 pointer-events-auto">
+                    <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl max-w-sm w-full flex flex-col items-center animate-in zoom-in-95">
                         <div className="w-16 h-16 bg-rose-500/20 rounded-2xl flex items-center justify-center mb-4 shadow-inner border border-rose-500/50">
                             <Icon name="Star" className="w-8 h-8 text-rose-500 fill-current" />
                         </div>
                         <h3 className="text-xl font-black text-white mb-1">Elegir Letra</h3>
-                        <p className="text-xs text-slate-400 mb-6 text-center font-bold">El comodín valdrá 0 puntos, pero actuará como la letra que elijas.</p>
+                        <p className="text-xs text-slate-400 mb-6 text-center font-bold">El comodín valdrá 0 puntos.</p>
                         <div className="flex flex-wrap justify-center gap-2 mb-6">
                             {ALPHABET.map(l => (
-                                <button key={l} onClick={() => handleBlankSelection(l)} className="w-10 h-12 bg-slate-800 hover:bg-rose-500 text-white border-b-[3px] border-slate-900 hover:border-rose-700 rounded-lg font-black text-lg transition-all active:border-b-0 active:translate-y-1 shadow-sm">{l}</button>
+                                <button key={l} onClick={() => handleBlankSelection(l)} className="w-10 h-12 bg-slate-800 hover:bg-rose-500 text-white border-b-[3px] border-slate-900 rounded-lg font-black text-lg transition-all active:translate-y-1 shadow-sm">{l}</button>
                             ))}
                         </div>
-                        <button onClick={() => { const { tileIndex } = pendingBlank; if ((window).gsap) (window).gsap.to(`.tile-rack-${tileIndex}`, { y: 0, duration: 0.3 }); setPendingBlank(null); }} className="w-full text-slate-400 font-black uppercase tracking-widest text-sm hover:text-white bg-slate-800 py-3 rounded-xl transition-colors">Cancelar</button>
+                        <button onClick={() => setPendingBlank(null)} className="w-full text-slate-400 font-black uppercase tracking-widest text-sm hover:text-white bg-slate-800 py-3 rounded-xl transition-colors">Cancelar</button>
                     </div>
                 </div>
             )}
 
-            {/* MODAL DE TIENDA (Boutique Premium) */}
+            {/* MODAL DE TIENDA */}
             {showShop && (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300 pointer-events-auto">
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 pointer-events-auto">
                     <div className="bg-slate-900 w-full sm:max-w-3xl rounded-3xl shadow-2xl border border-slate-700 flex flex-col max-h-[90vh] animate-in zoom-in-95">
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center relative overflow-hidden rounded-t-3xl">
                             <div className="absolute inset-0 bg-gradient-to-r from-amber-500/20 to-orange-600/20"></div>
                             <h2 className="text-2xl font-black text-white tracking-widest flex items-center gap-3 relative z-10 uppercase">
                                 <Icon name="Palette" className="w-6 h-6 text-amber-400" /> Boutique Premium
                             </h2>
-                            <button onClick={() => setShowShop(false)} className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors relative z-10"><Icon name="Zap" className="w-5 h-5" /></button>
+                            <button onClick={() => setShowShop(false)} className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors relative z-10"><Icon name="X" className="w-5 h-5" /></button>
                         </div>
-
                         <div className="p-6 overflow-y-auto custom-scrollbar">
-                            <p className="text-sm text-slate-400 font-bold mb-6 text-center">Personaliza tu tablero y tus fichas. Las apariencias se aplican solo a tu pantalla.</p>
-
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {THEMES.map(theme => {
                                     const isUnlocked = unlockedThemes.includes(theme.id);
                                     const isEquipped = currentTheme.id === theme.id;
-
                                     return (
-                                        <div key={theme.id} className={`border ${isEquipped ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'border-slate-700 hover:border-slate-500'} bg-slate-800 rounded-2xl p-4 flex flex-col gap-4 transition-all`}>
-
-                                            <div className={`w-full h-24 rounded-xl ${theme.boardBg} ${theme.boardBorder} border flex items-center justify-center gap-2 overflow-hidden relative`}>
-                                                <div className={`w-12 h-14 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center ${theme.tileShadow}`}>
-                                                    <span className={`text-2xl font-black ${theme.tileText}`}>A</span>
-                                                </div>
-                                                <div className={`w-12 h-14 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center ${theme.tileShadow}`}>
-                                                    <span className={`text-2xl font-black ${theme.tileText}`}>Z</span>
-                                                </div>
+                                        <div key={theme.id} className={`border ${isEquipped ? 'border-emerald-500 bg-emerald-950/20' : 'border-slate-700 bg-slate-800'} rounded-2xl p-4 flex flex-col gap-4 transition-all`}>
+                                            <div className={`w-full h-24 rounded-xl ${theme.boardBg} ${theme.boardBorder} border flex items-center justify-center gap-2 overflow-hidden`}>
+                                                <div className={`w-10 h-12 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center`}><span className={`text-xl font-black ${theme.tileText}`}>A</span></div>
+                                                <div className={`w-10 h-12 ${theme.tileBg} ${theme.tileBorder} border-b-[3px] rounded-md flex items-center justify-center`}><span className={`text-xl font-black ${theme.tileText}`}>Z</span></div>
                                             </div>
-
-                                            <div className="flex justify-between items-end mt-auto">
+                                            <div className="flex justify-between items-end">
                                                 <div>
                                                     <h3 className="text-lg font-black text-white">{theme.name}</h3>
-                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{isUnlocked ? 'En propiedad' : theme.price}</span>
+                                                    <span className="text-xs font-bold text-slate-400">{isUnlocked ? 'En propiedad' : theme.price + ' 💎'}</span>
                                                 </div>
-
                                                 {isEquipped ? (
-                                                    <button disabled className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest flex items-center gap-1">
-                                                        <Icon name="CheckCircle2" className="w-4 h-4" /> Equipado
-                                                    </button>
-                                                ) : isUnlocked ? (
-                                                    <button onClick={() => equipTheme(theme.id)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition-colors flex items-center gap-1">
-                                                        <Icon name="Unlock" className="w-4 h-4" /> Equipar
-                                                    </button>
+                                                    <div className="text-emerald-400 text-xs font-black uppercase">Equipado</div>
                                                 ) : (
-                                                    <button onClick={() => purchaseTheme(theme.id)} className="bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-orange-950 px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition-colors shadow-lg flex items-center gap-1">
-                                                        <Icon name="ShoppingCart" className="w-4 h-4" /> Comprar
-                                                    </button>
+                                                    <button onClick={() => isUnlocked ? equipTheme(theme.id) : purchaseTheme(theme.id)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest">{isUnlocked ? 'Equipar' : 'Comprar'}</button>
                                                 )}
                                             </div>
                                         </div>
@@ -1828,44 +2184,124 @@ function App() {
                 </div>
             )}
 
-            {/* MODAL DE CLASIFICACIÓN (PERFIL) */}
+            {/* MODAL DE PERFIL / SOCIAL */}
             {showProfile && (
-                <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-md sm:p-4 animate-in fade-in duration-300 pointer-events-auto">
-                    <div className="bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in slide-in-from-bottom-10 sm:zoom-in-95 border border-slate-700">
-                        <div className="px-6 pt-6 pb-4 border-b border-slate-800 flex justify-between items-center sticky top-0 rounded-t-3xl z-10">
-                            <h2 className="text-lg font-black text-white tracking-widest flex items-center gap-2 uppercase">
-                                <Icon name="User"s className="w-5 h-5 text-indigo-400" /> Clasificación
-                            </h2>
-                            <button onClick={() => setShowProfile(false)} className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors"><Icon name="Zap" className="w-4 h-4" /></button>
+                <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-md sm:p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[85vh] border-t sm:border border-white/10 overflow-hidden relative z-50">
+                        <div className="bg-slate-800/50 p-1 flex border-b border-white/5 overflow-x-auto no-scrollbar">
+                            <button onClick={() => setProfileTab('stats')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'stats' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name="BarChart3" size={14} /> Stats
+                            </button>
+                            <button onClick={() => setProfileTab('friends')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'friends' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name="Heart" size={14} /> Amigos
+                            </button>
+                            <button onClick={() => setProfileTab('search')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'search' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name="Search" size={14} /> Buscar
+                            </button>
+                            <button onClick={() => setProfileTab('ranking')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'ranking' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name="Trophy" size={14} /> Top
+                            </button>
+                            <button onClick={() => setProfileTab('account')} className={`flex-shrink-0 px-4 py-3 rounded-t-2xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1 min-w-[70px] ${profileTab === 'account' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name="User" size={14} /> Cuenta
+                            </button>
+                            <button onClick={() => setShowProfile(false)} className="px-4 flex items-center justify-center text-slate-500 hover:text-rose-400"><Icon name="X" size={20} /></button>
                         </div>
-                        <div className="p-4 overflow-y-auto custom-scrollbar">
-                            <div className="space-y-3">
-                                {roomState.playerIds.map((uid, index) => {
-                                    const p = roomState.players[uid];
-                                    const isMe = uid === user?.uid;
-                                    const isTurn = uid === currentTurnUid;
-                                    return (
-                                        <div key={uid} className={`border ${isMe ? 'border-emerald-500/50 bg-emerald-950/30' : 'border-slate-700 bg-slate-800/50'} rounded-2xl p-4 flex items-center gap-4 relative overflow-hidden`}>
-                                            {isTurn && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-400 animate-pulse"></div>}
-                                            <div className={`w-12 h-12 rounded-full ${isMe ? 'bg-emerald-500' : 'bg-slate-700'} flex items-center justify-center shadow-inner relative`}>
-                                                <span className={`font-black text-lg text-white`}>{index + 1}</span>
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex justify-between items-center mb-0.5">
-                                                    <span className="font-black text-white text-sm">{p.name} {isMe && <span className="text-emerald-400 text-xs ml-1">(Tú)</span>}</span>
-                                                    <span className="text-xl font-black text-amber-400 drop-shadow-md">{p.score}</span>
-                                                </div>
-                                                {isTurn && <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-1">Pensando su jugada...</p>}
+                        <div className="p-4 overflow-y-auto custom-scrollbar bg-slate-900/50 flex-1">
+                            {profileTab === 'stats' && (
+                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                                    <div className="grid grid-cols-3 gap-3 bg-black/40 p-4 rounded-3xl border border-white/10 shadow-inner">
+                                        <div className="flex flex-col items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">Wins</span><span className="text-2xl font-black text-amber-400 leading-none">{stats?.wins || 0}</span></div>
+                                        <div className="flex flex-col items-center border-x border-white/10"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">Score</span><span className="text-2xl font-black text-emerald-400 leading-none">{stats?.totalScore || 0}</span></div>
+                                        <div className="flex flex-col items-center"><span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">Partidas</span><span className="text-2xl font-black text-indigo-400 leading-none">{stats?.gamesPlayed || 0}</span></div>
+                                    </div>
+                                    {userBio && <div className="bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl text-xs font-bold text-slate-300 italic">"{userBio}"</div>}
+                                </div>
+                            )}
+                            {profileTab === 'account' && (
+                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                                    <div className="flex flex-col items-center"><div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-3xl shadow-xl mb-2">{userName.substring(0, 1)}</div></div>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Nombre</label>
+                                            <div className="flex gap-2">
+                                                <input type="text" value={userName} onChange={e => setUserName(e.target.value.toUpperCase())} maxLength={10} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" />
+                                                <button onClick={() => handleUpdateName(userName)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 rounded-xl"><Icon name="Check" size={18} /></button>
                                             </div>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Biografía</label>
+                                            <div className="flex gap-2">
+                                                <input type="text" value={userBio} onChange={e => setUserBio(e.target.value)} maxLength={50} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" />
+                                                <button onClick={() => handleUpdateBio(userBio)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 rounded-xl"><Icon name="Save" size={18} /></button>
+                                            </div>
+                                        </div>
+                                        <button onClick={handleLogout} className="w-full py-4 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-2xl text-xs font-black text-rose-400 uppercase tracking-widest flex items-center justify-center gap-2"><Icon name="LogOut" size={16} /> Cerrar Sesión</button>
+                                    </div>
+                                </div>
+                            )}
+                            {profileTab === 'search' && (
+                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-4">
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-indigo-400"><Icon name="Search" size={18} /></div>
+                                        <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSearch()} placeholder="Buscar por nombre..." className="w-full bg-black/40 border-2 border-white/5 focus:border-indigo-500 rounded-2xl pl-12 pr-4 py-4 text-white font-bold outline-none transition-all placeholder:text-slate-600 shadow-inner" />
+                                        <button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()} className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:grayscale text-white px-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg">
+                                            {isSearching ? <Icon name="Loader2" size={14} className="animate-spin" /> : "Buscar"}
+                                        </button>
+                                    </div>
+                                    <div className="space-y-3 pt-2">
+                                        {searchResults.length > 0 ? (
+                                            searchResults.map(result => (
+                                                <div key={result.uid} className="bg-white/5 border border-white/10 p-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-colors animate-in zoom-in-95 group">
+                                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-black text-lg shadow-lg">{result.name.substring(0, 1)}</div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-black text-white text-sm truncate uppercase tracking-widest">{result.name}</h4>
+                                                        <p className="text-[9px] text-slate-400 truncate font-bold italic opacity-70">"{result.bio || 'Sin biografía'}"</p>
+                                                    </div>
+                                                    <button onClick={() => toggleFriend(result.uid, result.name)} className="bg-emerald-600 hover:bg-emerald-500 text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-90 shadow-lg group-hover:rotate-6"><Icon name="UserPlus" size={18} /></button>
+                                                </div>
+                                            ))
+                                        ) : searchQuery.trim() && !isSearching && (
+                                            <div className="py-12 text-center flex flex-col items-center gap-3 opacity-50">
+                                                <Icon name="Search" size={40} className="text-slate-700" />
+                                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">No se encontraron jugadores</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            {profileTab === 'friends' && (
+                                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-3">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Mis Amigos ({friends.length})</h3>
+                                    {friends.length === 0 ? (
+                                        <div className="p-8 text-center bg-white/5 rounded-3xl border border-dashed border-white/10 text-slate-500 text-xs font-bold italic">Aún no has agregado a nadie</div>
+                                    ) : (
+                                        friends.map(f => (
+                                            <div key={f.uid} className="bg-slate-800 border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center text-white font-black text-sm">{f.name.substring(0, 2)}</div>
+                                                <div className="flex-1">
+                                                    <div className="font-black text-white text-xs">{f.name}</div>
+                                                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Amigo</div>
+                                                </div>
+                                                <button onClick={() => toggleFriend(f.uid, f.name)} className="text-slate-500 hover:text-rose-400 transition-colors p-2"><Icon name="HeartOff" size={16} /></button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* BOTÓN FLOTANTE DE PERFIL (Garantía de acceso) */}
+            {user && !showProfile && (
+                <button 
+                    onClick={() => { console.log("Floating action open"); setShowProfile(true); }}
+                    className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[100] hover:scale-110 active:scale-95 transition-all border-4 border-white/20"
+                >
+                    <Icon name="User" size={24} />
+                </button>
+            )}
         </div>
     );
 }
