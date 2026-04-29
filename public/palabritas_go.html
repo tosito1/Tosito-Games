@@ -150,7 +150,7 @@ const THEMES = [
         centerStar: 'text-orange-400 drop-shadow-sm'
     },
     {
-        id: 'cyber', name: 'Neón Cyberpunk', price: '4.99€',
+        id: 'cyber', name: 'Neón Cyberpunk', price: 250,
         boardBg: 'bg-slate-900', boardBorder: 'border-fuchsia-900',
         cellEmpty: 'bg-slate-800/80', textEmpty: 'text-slate-500',
         tileBg: 'bg-slate-900', tileBorder: 'border-cyan-500',
@@ -160,7 +160,7 @@ const THEMES = [
         centerStar: 'text-cyan-400 drop-shadow-[0_0_8px_#22d3ee]'
     },
     {
-        id: 'luxury', name: 'Oro y Ébano (VIP)', price: '9.99€',
+        id: 'luxury', name: 'Oro y Ébano (VIP)', price: 1000,
         boardBg: 'bg-zinc-950', boardBorder: 'border-amber-700',
         cellEmpty: 'bg-zinc-900', textEmpty: 'text-zinc-600',
         tileBg: 'bg-gradient-to-br from-amber-200 via-yellow-500 to-amber-600', tileBorder: 'border-amber-300',
@@ -170,7 +170,7 @@ const THEMES = [
         centerStar: 'text-amber-400 drop-shadow-[0_0_5px_#fbbf24]'
     },
     {
-        id: 'crystal', name: 'Cristal Esmeralda', price: '7.99€',
+        id: 'crystal', name: 'Cristal Esmeralda', price: 500,
         boardBg: 'bg-emerald-950/40 backdrop-blur-lg', boardBorder: 'border-emerald-400/30',
         cellEmpty: 'bg-white/5 border border-white/5', textEmpty: 'text-emerald-100/50',
         tileBg: 'bg-white/20 backdrop-blur-md', tileBorder: 'border-white/40',
@@ -261,6 +261,9 @@ function App() {
     const [userBio, setUserBio] = useState('');
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [showShop, setShowShop] = useState(false);
+    const [dragInfo, setDragInfo] = useState(null);
+    const [gameInvite, setGameInvite] = useState(null);
+
     const [showBag, setShowBag] = useState(false);
     const [showEmotes, setShowEmotes] = useState(false);
 
@@ -280,7 +283,7 @@ function App() {
 
     const [unlockedThemes, setUnlockedThemes] = useState(['classic']);
     const [currentTheme, setCurrentTheme] = useState(THEMES[0]);
-    const [diamonds, setDiamonds] = useState(50);
+    const [diamonds, setDiamonds] = useState(20);
     const [stats, setStats] = useState({ wins: 0, totalScore: 0, gamesPlayed: 0 });
     const [friends, setFriends] = useState([]);
     const [receivedRequests, setReceivedRequests] = useState([]);
@@ -407,6 +410,7 @@ function App() {
                 if (data.sentRequests) setSentRequests(data.sentRequests);
                 if (data.unlockedThemes) setUnlockedThemes(data.unlockedThemes);
                 if (data.bio) setUserBio(data.bio);
+                setGameInvite(data.gameRequest || null);
                 
                 // Auto-reconexión a partida
                 if (data.currentRoomId && !roomCode) {
@@ -425,7 +429,7 @@ function App() {
                     uid: user.uid, 
                     name: userName || user.displayName || 'ANÓNIMO', 
                     friends: [], 
-                    diamonds: 50, 
+                    diamonds: 20, 
                     unlockedThemes: ['classic'],
                     currentThemeId: 'classic',
                     stats: { wins: 0, totalScore: 0, gamesPlayed: 0 }
@@ -740,7 +744,50 @@ function App() {
     }, [roomState?.turnStartTime, roomState?.status, roomState?.useTimer, isMyTurn]);
 
     // --- ACCIONES DE LOBBY ---
-    const handleCreateRoom = async () => {
+        const sendGameInvite = async (friendUid, friendName) => {
+        if (!user || !db) return;
+        
+        let code = roomCode;
+        // Si no estamos en una sala, creamos una automáticamente
+        if (!code) {
+            code = Math.random().toString(36).substring(2, 6).toUpperCase();
+            const newRoom = {
+                status: 'waiting', host: user.uid,
+                players: { [user.uid]: { name: userName.trim() || user.displayName || 'Tú', score: 0, rack: Array(7).fill(null) } },
+                playerIds: [user.uid], turnIndex: 0, turnStartTime: Date.now(),
+                board: JSON.stringify(generateEmptyBoard()),
+                bag: generateBag(), logs: [{ id: Date.now(), text: `Sala creada por ${userName.trim()}`, icon: '🎮' }], lastEmote: null,
+                useTimer: true,
+                turnTimeLimit: 60
+            };
+            try {
+                await setDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code), newRoom);
+                await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: code });
+                setRoomCode(code);
+            } catch (e) { 
+                showError("Error al crear la sala para invitar");
+                return;
+            }
+        }
+        
+        // Enviamos la invitación al documento del amigo
+        const friendRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', friendUid);
+        try {
+            await updateDoc(friendRef, { 
+                gameRequest: { 
+                    senderUid: user.uid, 
+                    senderName: userName || user.displayName || 'Un amigo', 
+                    roomCode: code,
+                    timestamp: Date.now()
+                } 
+            });
+            showError(`¡Invitación enviada a ${friendName}!`);
+        } catch (e) {
+            showError("Error al enviar la invitación");
+        }
+    };
+
+const handleCreateRoom = async () => {
         if (!userName.trim() || !user || !db) return;
         const code = Math.random().toString(36).substring(2, 6).toUpperCase();
         const newRoom = {
@@ -798,7 +845,65 @@ function App() {
         } catch (e) { console.error(e); }
     };
 
-    const handleAbandonRoom = async () => {
+    
+    const handleAcceptInvite = async () => {
+        if (!gameInvite) return;
+        const code = gameInvite.roomCode;
+        const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+        const roomRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code);
+        
+        try {
+            // 1. Limpiar invitación y marcar la sala actual en el perfil para auto-reconexión
+            await updateDoc(userRef, { 
+                gameRequest: null,
+                currentRoomId: code 
+            });
+            
+            // 2. Unirse a la sala en Firestore
+            const snap = await getDoc(roomRef);
+            if (snap.exists) {
+                const data = snap.data();
+                if (!data.playerIds.includes(user.uid)) {
+                    if (data.playerIds.length >= 4) {
+                        showError("La sala ya está llena");
+                        return;
+                    }
+                    if (data.status !== 'waiting') {
+                        showError("La partida ya ha comenzado");
+                        // Pero igual intentamos entrar si el código es correcto (modo espectador/re-join)
+                    }
+                    
+                    await updateDoc(roomRef, {
+                        [`players.${user.uid}`]: { name: userName.trim() || user.displayName || 'Tú', score: 0, rack: Array(7).fill(null) },
+                        playerIds: [...data.playerIds, user.uid],
+                        logs: [...(data.logs || []), { id: Date.now(), text: `${userName.trim() || 'Alguien'} aceptó tu desafío`, icon: '⚔️' }].slice(-5)
+                    });
+                }
+            } else {
+                showError("La sala ya no existe");
+                return;
+            }
+            
+            // 3. Cambiar estado local para entrar a la partida
+            setGameInvite(null);
+            setRoomCode(code);
+            if (window.gsap) {
+                spawnFloatingText("¡ENTRANDO A PARTIDA!", "body");
+            }
+        } catch (e) {
+            showError("Error al procesar invitación");
+            console.error("Invite Accept Error:", e);
+        }
+    };
+
+    const handleRejectInvite = async () => {
+        if (!gameInvite) return;
+        const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
+        await updateDoc(userRef, { gameRequest: null });
+        setGameInvite(null);
+    };
+
+const handleAbandonRoom = async () => {
         if (!roomCode || !user) return;
         setShowExitModal(false);
         
@@ -1296,13 +1401,26 @@ function App() {
         setErrorMsg(msg);
         if ((window).gsap) {
             const gsap = (window).gsap;
-            gsap.fromTo(".board-wrapper", { x: -12, rotation: -1 }, { x: 12, rotation: 1, duration: 0.08, yoyo: true, repeat: 5, ease: "sine.inOut", clearProps: "all" });
-            const flash = document.createElement('div');
-            flash.className = 'absolute inset-0 bg-red-500/30 z-[100] rounded-xl pointer-events-none mix-blend-overlay';
-            document.querySelector('.board-container')?.appendChild(flash);
-            gsap.to(flash, { opacity: 0, duration: 0.5, onComplete: () => flash.remove() });
+            
+            // Animaciones de sacudida solo si estamos en el tablero
+            if (document.querySelector(".board-wrapper")) {
+                gsap.fromTo(".board-wrapper", { x: -12, rotation: -1 }, { x: 12, rotation: 1, duration: 0.08, yoyo: true, repeat: 5, ease: "sine.inOut", clearProps: "all" });
+            }
+            
+            const boardContainer = document.querySelector('.board-container');
+            if (boardContainer) {
+                const flash = document.createElement('div');
+                flash.className = 'absolute inset-0 bg-red-500/30 z-[100] rounded-xl pointer-events-none mix-blend-overlay';
+                boardContainer.appendChild(flash);
+                gsap.to(flash, { opacity: 0, duration: 0.5, onComplete: () => flash.remove() });
+            }
 
-            gsap.fromTo(".error-msg", { scale: 0.5, opacity: 0, y: 20 }, { scale: 1, opacity: 1, y: 0, duration: 0.4, ease: "back.out(2)", clearProps: "transform,opacity" });
+            // Animación del mensaje de error (esperamos un micro-tick para que React lo monte si es nuevo)
+            setTimeout(() => {
+                if (document.querySelector(".error-msg")) {
+                    gsap.fromTo(".error-msg", { scale: 0.5, opacity: 0, y: 20 }, { scale: 1, opacity: 1, y: 0, duration: 0.4, ease: "back.out(2)", clearProps: "transform,opacity" });
+                }
+            }, 50);
         }
         setTimeout(() => setErrorMsg(''), 3000);
     };
@@ -1346,6 +1464,17 @@ function App() {
         };
         wrapper.addEventListener('wheel', handleWheel, { passive: false });
         return () => wrapper.removeEventListener('wheel', handleWheel);
+
+    useEffect(() => {
+        window.addEventListener('pointermove', handleGlobalPointerMove);
+        window.addEventListener('pointerup', handleGlobalPointerUp);
+        return () => {
+            window.removeEventListener('pointermove', handleGlobalPointerMove);
+            window.removeEventListener('pointerup', handleGlobalPointerUp);
+        };
+    }, [dragInfo, localRack, isMyTurn]);
+
+
     }, [roomState?.status]);
 
     const onPointerDown = (e) => {
@@ -1391,7 +1520,39 @@ function App() {
     };
 
     // --- INTERACCIÓN ---
-    const handleRackClick = (idx) => {
+    
+    const handleRackPointerDown = (e, idx) => {
+        if (!isMyTurn || !localRack[idx]) return;
+        const tile = localRack[idx];
+        setDragInfo({ x: e.clientX, y: e.clientY, tile, rackIdx: idx });
+    };
+
+    const handleGlobalPointerMove = (e) => {
+        if (!dragInfo) return;
+        setDragInfo(prev => ({ ...prev, x: e.clientX, y: e.clientY }));
+    };
+
+    const handleGlobalPointerUp = (e) => {
+        if (!dragInfo) return;
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        const cell = target ? target.closest('.board-cell-target') : null;
+        
+        if (cell) {
+            const classes = Array.from(cell.classList);
+            const cellClass = classes.find(c => c.startsWith('cell-'));
+            if (cellClass) {
+                const [r, c] = cellClass.replace('cell-', '').split('-').map(Number);
+                if (displayBoard[r][c].tile) {
+                    // Si ya hay ficha, no hacemos nada o devolvemos al rack
+                } else {
+                    executePlacement(r, c, dragInfo.rackIdx, dragInfo.tile);
+                }
+            }
+        }
+        setDragInfo(null);
+    };
+
+const handleRackClick = (idx) => {
         if (!isMyTurn || !localRack[idx]) return;
         if (selectedRackIdx === idx) setSelectedRackIdx(null);
         else {
@@ -1695,7 +1856,7 @@ function App() {
             // Recompensa inmediata por jugar y actualización de stats globales
             const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
             await updateDoc(userRef, { 
-                diamonds: (diamonds || 0) + 5, // 5 diamantes por cada jugada realizada
+                diamonds: (diamonds || 0) + 2, // 2 diamantes por cada jugada realizada
                 "stats.totalScore": (stats?.totalScore || 0) + preview.score,
                 "stats.gamesPlayed": (stats?.gamesPlayed || 0) + (isGameOver ? 1 : 0)
             });
@@ -1715,7 +1876,7 @@ function App() {
                 const winnerUid = Object.keys(newPlayers).reduce((a, b) => newPlayers[a].score > newPlayers[b].score ? a : b);
                 if (winnerUid === user.uid) {
                     await updateDoc(userRef, { 
-                        diamonds: (diamonds || 0) + 55, // +50 por ganar (+5 de base)
+                        diamonds: (diamonds || 0) + 22, // +20 por ganar (+2 de base)
                         "stats.wins": (stats?.wins || 0) + 1 
                     });
                 }
@@ -1768,7 +1929,7 @@ function App() {
                         </div>
                         <h1 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight text-center flex-shrink-0">Palabritas <span className="text-rose-400">GO</span></h1>
 
-                        {errorMsg && <div className="w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Icon name="Zap" className="w-4 h-4" /> {errorMsg}</div>}
+                        {errorMsg && <div className="error-msg w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Icon name="Zap" className="w-4 h-4" /> {errorMsg}</div>}
 
                         {isAuthLoading ? (
                             <div className="py-12 flex flex-col items-center gap-4">
@@ -1932,7 +2093,7 @@ function App() {
                                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 px-1"><Icon name="Users" className="w-4 h-4" /> Amigos Online</h3>
                                                 <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                                                     {friends.map(f => (
-                                                        <div key={f.uid} onClick={() => { if (window.confirm(`¿Quieres invitar a ${f.name}?`)) handleShare(); }} className="flex-shrink-0 bg-white/5 border border-white/10 p-2 rounded-xl flex flex-col items-center min-w-[70px] cursor-pointer hover:bg-white/10 transition-colors">
+                                                        <div key={f.uid} onClick={() => { if (window.confirm(`¿Quieres enviar un desafío a ${f.name}?`)) sendGameInvite(f.uid, f.name); }} className="flex-shrink-0 bg-white/5 border border-white/10 p-2 rounded-xl flex flex-col items-center min-w-[70px] cursor-pointer hover:bg-white/10 transition-colors">
                                                             <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-black text-xs mb-1">{f.name.substring(0, 2)}</div>
                                                             <span className="text-[9px] font-bold text-white truncate w-full text-center">{f.name}</span>
                                                         </div>
@@ -2048,80 +2209,47 @@ function App() {
                                 {/* TOP HUD */}
                                 <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 flex flex-col gap-2 z-30 pointer-events-none">
 
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex flex-col gap-1.5 sm:gap-2">
-                                            <div className="flex gap-2 pointer-events-auto">
-                                                <button onClick={() => setShowProfile(true)} className="top-hud-element flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-lg rounded-full pr-3 pl-1 py-1 border border-white/20 hover:bg-white/20 transition-all cursor-pointer group">
-                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-inner group-hover:rotate-12 transition-transform">
-                                                        <Icon name="User" className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                                                    </div>
-                                                    <div className="flex flex-col items-start pr-2">
-                                                        <span className="text-[8px] sm:text-[9px] font-bold text-slate-300 uppercase tracking-widest leading-none">SALA: {roomCode}</span>
-                                                        <span className="font-black text-white text-[10px] sm:text-xs">Jugadores</span>
-                                                    </div>
-                                                </button>
-                                                 {/* BOTÓN TIENDA */}
-                                                <button onClick={() => setShowShop(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.5)] rounded-full flex items-center justify-center border border-amber-200 hover:scale-110 transition-transform">
-                                                    <Icon name="Palette" className="w-4 h-4 sm:w-5 sm:h-5 text-orange-950" />
-                                                </button>
-                                                {/* BOTÓN SALIR */}
-                                                <button onClick={() => setShowExitModal(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-rose-500/20 hover:bg-rose-600 shadow-lg rounded-full flex items-center justify-center border border-rose-500/50 transition-all pointer-events-auto group">
-                                                    <Icon name="LogOut" className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400 group-hover:text-white" />
-                                                </button>
-                                            </div>
+                                    <div className="flex justify-between items-center w-full">
+                                        {/* LADO IZQUIERDO: PERFIL Y SALA */}
+                                        <div className="flex items-center gap-2 pointer-events-auto">
+                                            <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 bg-slate-900/80 backdrop-blur-md border border-white/10 p-1.5 pr-3 rounded-full shadow-lg hover:bg-slate-800 transition-all">
+                                                <div className="w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center"><Icon name="User" size={14} className="text-white" /></div>
+                                                <div className="hidden sm:flex flex-col items-start"><span className="text-[8px] font-black text-indigo-400 uppercase leading-none">SALA</span><span className="text-[10px] font-black text-white uppercase">{roomCode}</span></div>
+                                            </button>
+                                            <button onClick={() => setShowShop(true)} className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center shadow-lg border border-amber-300 hover:scale-110 transition-transform"><Icon name="Palette" size={20} className="text-amber-950" /></button>
+                                        </div>
 
-                                            <div className="flex gap-2">
-                                                <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-white/10 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-white/20 w-max text-white">
-                                                    <span className="font-black text-[10px] sm:text-xs">Bolsa: <AnimatedNumber value={roomState.bag.length} /></span>
-                                                </div>
-                                                {!dictLoaded && (
-                                                    <div className="top-hud-element pointer-events-auto flex items-center gap-1.5 bg-rose-500/80 backdrop-blur-md shadow-sm rounded-full px-3 py-1 border border-rose-400 w-max text-white animate-pulse">
-                                                        <Icon name="BrainCircuit" className="w-3 h-3 animate-spin" />
-                                                        <span className="font-black text-[9px] uppercase tracking-widest">Cargando RAE...</span>
-                                                    </div>
-                                                )}
-                                                <div className="relative pointer-events-auto">
-                                                    <button onClick={() => setShowEmotes(!showEmotes)} className="top-hud-element w-7 h-7 sm:w-8 sm:h-8 bg-white/10 backdrop-blur-md shadow-sm rounded-full flex items-center justify-center border border-white/20 hover:bg-white/20 transition-colors">
-                                                        <Icon name="Smile" className="w-4 h-4 text-amber-400" />
-                                                    </button>
-                                                    {showEmotes && (
-                                                        <div className="absolute top-10 left-0 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-xl rounded-2xl p-2 grid grid-cols-4 gap-2 animate-in fade-in slide-in-from-top-2 w-max">
-                                                            {EMOTES.map(e => (
-                                                                <button key={e} onClick={() => sendEmote(e)} className="w-8 h-8 flex items-center justify-center text-xl hover:scale-125 transition-transform hover:bg-slate-800 rounded-lg">{e}</button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                        {/* CENTRO: MARCADOR REALTIME */}
+                                        <div className="flex-1 flex justify-center px-2">
+                                            <div className="bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl px-4 py-1.5 shadow-2xl flex items-center gap-4 sm:gap-6 pointer-events-auto">
+                                                {roomState.playerIds.map((pid, idx) => {
+                                                    const p = roomState.players[pid] || { name: '...', score: 0 };
+                                                    const isTurn = roomState.playerIds[roomState.turnIndex % roomState.playerIds.length] === pid;
+                                                    return (
+                                                        <React.Fragment key={pid}>
+                                                            <div className={`flex flex-col items-center min-w-[50px] ${isTurn ? 'scale-110' : 'opacity-60'}`}>
+                                                                <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest ${isTurn ? 'text-emerald-400' : 'text-slate-400'}`}>{p.name.split(' ')[0]}</span>
+                                                                <span className={`text-lg sm:text-xl font-black ${isTurn ? 'text-white' : 'text-slate-500'}`}>{p.score}</span>
+                                                            </div>
+                                                            {idx === 0 && roomState.playerIds.length > 1 && <div className="w-[1px] h-8 bg-white/10"></div>}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                                {roomState.playerIds.length === 1 && <div className="flex items-center gap-2 animate-pulse"><div className="w-[1px] h-8 bg-white/10"></div><span className="text-[8px] font-black text-slate-500 uppercase">Esperando...</span></div>}
                                             </div>
                                         </div>
-                                        <div className="flex flex-col gap-2 items-end">
-                                            {roomState.playerIds.map(uid => {
-                                                const p = roomState.players[uid];
-                                                if (!p) return null;
-                                                const isMe = uid === user.uid;
-                                                const isCurrentTurn = uid === roomState.playerIds[roomState.turnIndex];
-                                                
-                                                return (
-                                                    <div key={uid} className={`top-hud-element pointer-events-auto shadow-lg rounded-2xl px-3 py-1 sm:px-4 sm:py-1.5 flex items-center gap-2 sm:gap-3 border transition-all duration-300 ${isMe ? 'bg-emerald-500/20 border-emerald-500/50 scale-105' : 'bg-slate-900/40 backdrop-blur-md border-white/10 opacity-90'}`}>
-                                                        <div className="flex flex-col items-end min-w-[50px]">
-                                                            <span className={`text-[7px] sm:text-[8px] font-black uppercase tracking-widest leading-none mb-0.5 ${isMe ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                                                {isMe ? 'Tú' : p.name.substring(0, 8)}
-                                                            </span>
-                                                            <div className="text-lg sm:text-2xl font-black text-white leading-none flex items-center gap-1">
-                                                                <AnimatedNumber value={p.score} />
-                                                                {isMe && preview.valid && pendingPlacements.length > 0 && (
-                                                                    <span className="text-[10px] sm:text-xs text-emerald-400 animate-pulse">+{preview.score}</span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-black text-[10px] sm:text-xs border transition-all ${isCurrentTurn ? 'bg-amber-400 border-amber-300 text-amber-950 animate-pulse shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                                                            {p.name.substring(0, 2)}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+
+                                        {/* LADO DERECHO: DIAMANTES Y SALIR */}
+                                        <div className="flex items-center gap-2 pointer-events-auto">
+                                            <div className="flex flex-col items-end">
+                                                <div className="bg-slate-900/80 backdrop-blur-md border border-amber-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg mb-1">
+                                                    <Icon name="Diamond" size={12} className="text-amber-400 fill-amber-400/20" /><span className="text-xs font-black text-white">{diamonds}</span>
+                                                </div>
+                                                <button onClick={() => setShowExitModal(true)} className="w-8 h-8 sm:w-10 sm:h-10 bg-rose-500/10 hover:bg-rose-600 text-rose-500 hover:text-white rounded-full flex items-center justify-center border border-rose-500/30 transition-all"><Icon name="LogOut" size={16} /></button>
+                                            </div>
                                         </div>
                                     </div>
+
 
                                     {/* FEED SOCIAL */}
                                     <div className="absolute top-32 left-3 sm:left-4 flex flex-col gap-1.5 max-w-[200px] sm:max-w-[250px] pointer-events-none z-20">
@@ -2294,6 +2422,7 @@ function App() {
                                         {localRack.map((tile, idx) => (
                                             <div
                                                 key={idx}
+                                                onPointerDown={(e) => handleRackPointerDown(e, idx)}
                                                 onClick={() => handleRackClick(idx)}
                                                 className={`tile-rack tile-rack-${idx} relative w-[13vw] sm:w-[8vw] max-w-[55px] aspect-[1/1.1] rounded-md transition-all duration-300 cursor-pointer border
                                     ${tile ? `${currentTheme.tileBg} ${currentTheme.tileBorder} ${currentTheme.tileShadow} border-b-[3px]` : currentTheme.rackTileEmpty}
@@ -2345,10 +2474,64 @@ function App() {
                             </>
                         );
                     })()}
+
+                            {/* MODAL INVITACIÓN DE JUEGO */}
+                            {gameInvite && (
+                                <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 pointer-events-auto">
+                                    <div className="bg-slate-900 w-full sm:max-w-xs rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col items-center p-8 animate-in zoom-in-95 duration-500 overflow-hidden relative text-center">
+                                        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-indigo-600 to-emerald-500 animate-pulse"></div>
+                                        <div className="w-20 h-20 bg-indigo-600/20 rounded-3xl flex items-center justify-center mb-6 border border-indigo-500/50 shadow-inner group">
+                                            <Icon name="Gamepad2" size={40} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                                        </div>
+                                        <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-2">¡NUEVO DESAFÍO!</h3>
+                                        <p className="text-slate-400 font-bold text-sm mb-8 leading-tight"><span className="text-white">{gameInvite.senderName}</span> te ha invitado a una partida.</p>
+                                        <div className="w-full flex flex-col gap-3">
+                                            <button onClick={handleAcceptInvite} className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-black py-4 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Icon name="Check" size={18} /> Aceptar</button>
+                                            <button onClick={handleRejectInvite} className="w-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs">Rechazar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* MODAL INVITACIÓN DE JUEGO */}
+                            {gameInvite && (
+                                <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 pointer-events-auto">
+                                    <div className="bg-slate-900 w-full sm:max-w-xs rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col items-center p-8 animate-in zoom-in-95 duration-500 overflow-hidden relative text-center">
+                                        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-indigo-600 to-emerald-500 animate-pulse"></div>
+                                        <div className="w-20 h-20 bg-indigo-600/20 rounded-3xl flex items-center justify-center mb-6 border border-indigo-500/50 shadow-inner group">
+                                            <Icon name="Gamepad2" size={40} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                                        </div>
+                                        <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-2">¡NUEVO DESAFÍO!</h3>
+                                        <p className="text-slate-400 font-bold text-sm mb-8 leading-tight"><span className="text-white">{gameInvite.senderName}</span> te ha invitado a una partida.</p>
+                                        <div className="w-full flex flex-col gap-3">
+                                            <button onClick={handleAcceptInvite} className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-black py-4 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Icon name="Check" size={18} /> Aceptar</button>
+                                            <button onClick={handleRejectInvite} className="w-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs">Rechazar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                 </div>
             )}
 
             {/* --- MODALES GLOBALES (Siempre accesibles) --- */}
+            {/* MODAL INVITACIÓN DE JUEGO (GLOBAL) */}
+            {gameInvite && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-xs rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 flex flex-col items-center p-8 animate-in zoom-in-95 duration-500 overflow-hidden relative text-center">
+                        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-indigo-600 to-emerald-500 animate-pulse"></div>
+                        <div className="w-20 h-20 bg-indigo-600/20 rounded-3xl flex items-center justify-center mb-6 border border-indigo-500/50 shadow-inner group">
+                            <Icon name="Gamepad2" size={40} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+                        </div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-2">¡NUEVO DESAFÍO!</h3>
+                        <p className="text-slate-400 font-bold text-sm mb-8 leading-tight"><span className="text-white">{gameInvite.senderName}</span> te ha invitado a una partida.</p>
+                        <div className="w-full flex flex-col gap-3">
+                            <button onClick={handleAcceptInvite} className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-black py-4 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.3)] transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-2"><Icon name="Check" size={18} /> Aceptar</button>
+                            <button onClick={handleRejectInvite} className="w-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs">Rechazar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             
             {/* MODAL RULETA DE PISTAS */}
             {showHints && (
@@ -2659,6 +2842,7 @@ function App() {
                                                     <div className="font-black text-white text-xs">{f.name}</div>
                                                     <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Amigo</div>
                                                 </div>
+                                                <button onClick={() => sendGameInvite(f.uid, f.name)} className="bg-indigo-600 hover:bg-indigo-500 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-lg mr-1"><Icon name="Play" size={14} /></button>
                                                 <button onClick={() => removeFriend(f.uid, f.name)} className="text-slate-500 hover:text-rose-400 transition-colors p-2 active:scale-90"><Icon name="UserMinus" size={16} /></button>
                                             </div>
                                         ))
@@ -2727,6 +2911,17 @@ function App() {
                 >
                     <Icon name="User" size={24} />
                 </button>
+            )}
+
+            {/* PREVIEW DE ARRASTRE (TILE FLOTANTE) */}
+            {dragInfo && (
+                <div 
+                    className={`fixed z-[1000] pointer-events-none ${currentTheme.tileBg} ${currentTheme.tileBorder} ${currentTheme.tileShadow} border-b-[3px] rounded-md flex items-center justify-center w-[13vw] sm:w-[8vw] max-w-[55px] aspect-[1/1.1] shadow-2xl`}
+                    style={{ left: dragInfo.x, top: dragInfo.y, transform: 'translate(-50%, -80%) rotate(-5deg)', transition: 'none' }}
+                >
+                    <span className={`font-black ${dragInfo.tile.isBlank ? 'text-rose-500' : currentTheme.tileText} text-[clamp(14px,4.5vmin,36px)] leading-none`}>{dragInfo.tile.isBlank ? '?' : dragInfo.tile.letter}</span>
+                    <span className={`absolute bottom-[1px] right-[2px] text-[clamp(6px,1.5vmin,12px)] font-bold opacity-60 ${currentTheme.tileText}`}>{dragInfo.tile.isBlank ? 0 : dragInfo.tile.value}</span>
+                </div>
             )}
         </div>
     );
