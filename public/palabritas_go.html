@@ -263,6 +263,7 @@ function App() {
     const [showShop, setShowShop] = useState(false);
     const [dragInfo, setDragInfo] = useState(null);
     const [gameInvite, setGameInvite] = useState(null);
+    const [selectedFriend, setSelectedFriend] = useState(null);
 
     const [showBag, setShowBag] = useState(false);
     const [showEmotes, setShowEmotes] = useState(false);
@@ -848,12 +849,17 @@ const handleCreateRoom = async () => {
     
     const handleAcceptInvite = async () => {
         if (!gameInvite) return;
-        const code = gameInvite.roomCode;
+        const inviteCopy = { ...gameInvite };
+        const code = inviteCopy.roomCode;
+        
+        // LIMPIEZA INMEDIATA LOCAL PARA EVITAR RE-APARICIÓN
+        setGameInvite(null);
+        
         const userRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid);
         const roomRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code);
         
         try {
-            // 1. Limpiar invitación y marcar la sala actual en el perfil para auto-reconexión
+            // 1. Limpiar invitación en Firestore
             await updateDoc(userRef, { 
                 gameRequest: null,
                 currentRoomId: code 
@@ -2092,12 +2098,15 @@ const handleRackClick = (idx) => {
                                             <div className="w-full mt-6 text-left">
                                                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2 px-1"><Icon name="Users" className="w-4 h-4" /> Amigos Online</h3>
                                                 <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                                                    {friends.map(f => (
-                                                        <div key={f.uid} onClick={() => { if (window.confirm(`¿Quieres enviar un desafío a ${f.name}?`)) sendGameInvite(f.uid, f.name); }} className="flex-shrink-0 bg-white/5 border border-white/10 p-2 rounded-xl flex flex-col items-center min-w-[70px] cursor-pointer hover:bg-white/10 transition-colors">
+                                                    {friends.filter(f => !roomState?.playerIds?.includes(f.uid)).map(f => (
+                                                        <div key={f.uid} onClick={() => setSelectedFriend(f)} className="flex-shrink-0 bg-white/5 border border-white/10 p-2 rounded-xl flex flex-col items-center min-w-[70px] cursor-pointer hover:bg-white/10 transition-colors">
                                                             <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-black text-xs mb-1">{f.name.substring(0, 2)}</div>
                                                             <span className="text-[9px] font-bold text-white truncate w-full text-center">{f.name}</span>
                                                         </div>
                                                     ))}
+                                                    {friends.filter(f => !roomState?.playerIds?.includes(f.uid)).length === 0 && (
+                                                        <div className="py-2 text-[9px] font-bold text-slate-500 italic">No hay más amigos para invitar</div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -2514,6 +2523,47 @@ const handleRackClick = (idx) => {
             )}
 
             {/* --- MODALES GLOBALES (Siempre accesibles) --- */}
+            {/* MODAL PARA ENVIAR DESAFÍO (VISUAL) */}
+            {selectedFriend && (
+                <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-slate-950/90 backdrop-blur-xl p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-sm rounded-[48px] shadow-[0_0_80px_rgba(79,70,229,0.4)] border border-white/10 flex flex-col items-center p-10 animate-in zoom-in-90 duration-300 relative overflow-hidden">
+                        {/* DECORACIÓN */}
+                        <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-indigo-500 animate-pulse"></div>
+                        <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl"></div>
+                        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-fuchsia-600/10 rounded-full blur-3xl"></div>
+                        
+                        <div className="w-24 h-24 bg-gradient-to-br from-indigo-600 to-indigo-900 rounded-[32px] flex items-center justify-center mb-8 border-2 border-white/20 shadow-2xl transform -rotate-3 hover:rotate-0 transition-transform">
+                            <span className="text-4xl font-black text-white">{selectedFriend.name.substring(0, 2)}</span>
+                        </div>
+
+                        <h2 className="text-3xl font-black text-white uppercase tracking-tighter text-center leading-none">
+                            Lanzar Desafío
+                        </h2>
+                        <p className="text-slate-400 font-bold text-sm mt-3 mb-10 text-center">
+                            ¿Quieres invitar a <span className="text-indigo-400">{selectedFriend.name}</span> a un duelo épico?
+                        </p>
+
+                        <div className="w-full flex flex-col gap-4">
+                            <button 
+                                onClick={() => {
+                                    sendGameInvite(selectedFriend.uid, selectedFriend.name);
+                                    setSelectedFriend(null);
+                                }}
+                                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-5 rounded-3xl shadow-[0_15px_30px_rgba(79,70,229,0.4)] transition-all active:scale-95 uppercase tracking-widest text-xs flex items-center justify-center gap-3 border border-white/20 group"
+                            >
+                                <Icon name="Swords" className="w-5 h-5 group-hover:rotate-12 transition-transform" /> ENVIAR DUELO
+                            </button>
+                            <button 
+                                onClick={() => setSelectedFriend(null)}
+                                className="w-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-black py-4 rounded-2xl transition-all active:scale-95 uppercase tracking-widest text-xs"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* MODAL INVITACIÓN DE JUEGO (GLOBAL) */}
             {gameInvite && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 pointer-events-auto">
@@ -2842,7 +2892,7 @@ const handleRackClick = (idx) => {
                                                     <div className="font-black text-white text-xs">{f.name}</div>
                                                     <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Amigo</div>
                                                 </div>
-                                                <button onClick={() => sendGameInvite(f.uid, f.name)} className="bg-indigo-600 hover:bg-indigo-500 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-lg mr-1"><Icon name="Play" size={14} /></button>
+                                                <button onClick={() => setSelectedFriend(f)} className="bg-indigo-600 hover:bg-indigo-500 text-white w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-lg mr-1"><Icon name="Play" size={14} /></button>
                                                 <button onClick={() => removeFriend(f.uid, f.name)} className="text-slate-500 hover:text-rose-400 transition-colors p-2 active:scale-90"><Icon name="UserMinus" size={16} /></button>
                                             </div>
                                         ))
