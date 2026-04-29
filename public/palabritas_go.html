@@ -14,7 +14,27 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; background: #020617; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
+        body { margin: 0; background: #020617; font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; height: 100vh; height: -webkit-fill-available; }
+        #root { height: 100%; overflow: hidden; }
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom, 16px); }
+        .safe-pt { padding-top: env(safe-area-inset-top, 16px); }
+        
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        @keyframes tada {
+            0% { transform: scale(1); }
+            10%, 20% { transform: scale(0.9) rotate(-3deg); }
+            30%, 50%, 70%, 90% { transform: scale(1.1) rotate(3deg); }
+            40%, 60%, 80% { transform: scale(1.1) rotate(-3deg); }
+            100% { transform: scale(1) rotate(0); }
+        }
+        .animate-tada { animation: tada 1s infinite; }
+        
+        /* Glassmorphism utility */
+        .glass { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
     </style>
 </head>
 <body>
@@ -61,6 +81,8 @@
         const getDoc = (ref) => ref.get();
         const setDoc = (ref, data) => ref.set(data);
         const updateDoc = (ref, data) => ref.update(data);
+        const deleteDoc = (ref) => ref.delete();
+        const collection = (db, ...paths) => db.collection(paths.join('/'));
         const onSnapshot = (ref, cb, err) => ref.onSnapshot(cb, err);
 
         let app, auth, db;
@@ -94,10 +116,10 @@ const TILE_DISTRIBUTION = [
     { letter: 'M', value: 3, count: 2 }, { letter: 'P', value: 3, count: 2 },
     { letter: 'H', value: 4, count: 2 }, { letter: 'F', value: 4, count: 1 },
     { letter: 'V', value: 4, count: 1 }, { letter: 'Y', value: 4, count: 1 },
-    { letter: 'Q', value: 5, count: 1 },
-    { letter: 'J', value: 8, count: 1 }, { letter: 'Ñ', value: 8, count: 1 },
-    { letter: 'X', value: 8, count: 1 },
-    { letter: 'Z', value: 10, count: 1 },
+    { letter: 'CH', value: 5, count: 1 }, { letter: 'Q', value: 5, count: 1 },
+    { letter: 'J', value: 8, count: 1 }, { letter: 'LL', value: 8, count: 1 },
+    { letter: 'Ñ', value: 8, count: 1 }, { letter: 'RR', value: 8, count: 1 },
+    { letter: 'X', value: 8, count: 1 }, { letter: 'Z', value: 10, count: 1 },
     { letter: '', value: 0, count: 2 }
 ];
 
@@ -239,6 +261,7 @@ function App() {
     const [userBio, setUserBio] = useState('');
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [showShop, setShowShop] = useState(false);
+    const [showBag, setShowBag] = useState(false);
     const [showEmotes, setShowEmotes] = useState(false);
 
     // --- STATE PISTAS E IA DE DICCIONARIO ---
@@ -263,6 +286,23 @@ function App() {
     const [receivedRequests, setReceivedRequests] = useState([]);
     const [sentRequests, setSentRequests] = useState([]);
     const [showFriends, setShowFriends] = useState(false);
+    const [activeRooms, setActiveRooms] = useState([]);
+    const [showExitModal, setShowExitModal] = useState(false);
+
+    useEffect(() => {
+        if (!user || !db || roomCode) return;
+        const fetchActiveRooms = async () => {
+            try {
+                const collRef = collection(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms');
+                const snap = await collRef.where('playerIds', 'array-contains', user.uid).get();
+                const rooms = snap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .filter(r => r.status !== 'finished');
+                setActiveRooms(rooms);
+            } catch (e) { console.error("Error fetching active rooms:", e); }
+        };
+        fetchActiveRooms();
+    }, [user, roomCode, db]);
 
     const handleGoogleLogin = async () => {
         try {
@@ -278,7 +318,6 @@ function App() {
 
     const handleLogout = () => {
         auth.signOut();
-        setRoomCode('');
         setRoomState(null);
     };
 
@@ -359,6 +398,7 @@ function App() {
         const unsub = onSnapshot(userRef, (snap) => {
             if (snap.exists) {
                 const data = snap.data();
+                console.log("User data loaded:", data);
                 if (data.name) setUserName(data.name);
                 if (data.diamonds !== undefined) setDiamonds(data.diamonds);
                 if (data.stats) setStats(data.stats);
@@ -368,24 +408,41 @@ function App() {
                 if (data.unlockedThemes) setUnlockedThemes(data.unlockedThemes);
                 if (data.bio) setUserBio(data.bio);
                 
-                // Equip current theme if saved
-                if (data.currentThemeId) {
-                    const t = THEMES.find(th => th.id === data.currentThemeId);
-                    if (t) setCurrentTheme(t);
+                // Auto-reconexión a partida
+                if (data.currentRoomId && !roomCode) {
+                    console.log("Auto-resumiendo partida:", data.currentRoomId);
+                    setRoomCode(data.currentRoomId);
+                }
+
+                if (data.currentRoomId === null && roomCode) {
+                    // Si la base de datos dice que no tenemos sala, limpiamos localmente (evita bucles)
+                    // Pero solo si no estamos intentando entrar activamente
                 }
                 setIsAuthLoading(false);
             } else {
-                // If doc doesn't exist, create it but mark loading as finished
+                console.log("New user detected, creating profile...");
                 setDoc(userRef, { 
                     uid: user.uid, 
-                    name: userName || 'ANÓNIMO', 
+                    name: userName || user.displayName || 'ANÓNIMO', 
                     friends: [], 
                     diamonds: 50, 
                     unlockedThemes: ['classic'],
                     currentThemeId: 'classic',
                     stats: { wins: 0, totalScore: 0, gamesPlayed: 0 }
-                }).then(() => setIsAuthLoading(false));
+                })
+                .then(() => {
+                    console.log("Profile created successfully");
+                    setIsAuthLoading(false);
+                })
+                .catch(err => {
+                    console.error("Error creating profile:", err);
+                    showError("Error al registrar perfil.");
+                    setIsAuthLoading(false);
+                });
             }
+        }, (err) => {
+            console.error("onSnapshot error:", err);
+            setIsAuthLoading(false);
         });
         return () => unsub();
     }, [user, db]);
@@ -614,7 +671,7 @@ function App() {
 
     // --- FIREBASE SYNC ---
     useEffect(() => {
-        if (!user || !roomCode || !db) return;
+        if (!user || !roomCode || !db) { setRoomState(null); return; }
         const docRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode);
         const unsub = onSnapshot(docRef, (snap) => {
             if (snap.exists) {
@@ -623,7 +680,10 @@ function App() {
                 setRoomState(data);
             } else {
                 setErrorMsg("La sala no existe");
-                setRoomCode('');
+                // Limpiar referencia en el perfil del usuario para no intentar reentrar
+                if (user && db) {
+                    updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: null });
+                }
             }
         }, (error) => {
             console.error("Firestore error:", error);
@@ -647,10 +707,15 @@ function App() {
         }
     }, [roomState?.lastEmote]);
 
+    const currentTurnUid = useMemo(() => {
+        if (!roomState) return null;
+        return roomState.playerIds[roomState.turnIndex];
+    }, [roomState]);
+
     const isMyTurn = useMemo(() => {
         if (!roomState || !user) return false;
-        return roomState.status === 'playing' && roomState.playerIds[roomState.turnIndex] === user.uid;
-    }, [roomState, user]);
+        return roomState.status === 'playing' && currentTurnUid === user.uid;
+    }, [roomState, user, currentTurnUid]);
 
     const displayBoard = useMemo(() => {
         if (!roomState) return generateEmptyBoard();
@@ -661,15 +726,18 @@ function App() {
 
     // --- LÓGICA DE TIEMPO ---
     useEffect(() => {
-        if (!roomState || roomState.status !== 'playing') return;
+        if (!roomState || roomState.status !== 'playing' || roomState.useTimer === false) {
+            if (roomState?.useTimer === false) setTimeLeft(999);
+            return;
+        }
         const interval = setInterval(() => {
             const elapsed = Math.floor((Date.now() - roomState.turnStartTime) / 1000);
-            const remaining = Math.max(0, TURN_TIME_LIMIT - elapsed);
+            const remaining = Math.max(0, (roomState.turnTimeLimit || TURN_TIME_LIMIT) - elapsed);
             setTimeLeft(remaining);
             if (remaining <= 0 && isMyTurn) skipTurn(true);
         }, 500);
         return () => clearInterval(interval);
-    }, [roomState?.turnStartTime, roomState?.status, isMyTurn]);
+    }, [roomState?.turnStartTime, roomState?.status, roomState?.useTimer, isMyTurn]);
 
     // --- ACCIONES DE LOBBY ---
     const handleCreateRoom = async () => {
@@ -680,11 +748,14 @@ function App() {
             players: { [user.uid]: { name: userName.trim(), score: 0, rack: Array(7).fill(null) } },
             playerIds: [user.uid], turnIndex: 0, turnStartTime: Date.now(),
             board: JSON.stringify(generateEmptyBoard()),
-            bag: generateBag(), logs: [{ id: Date.now(), text: `Sala creada por ${userName.trim()}`, icon: '👑' }], lastEmote: null
+            bag: generateBag(), logs: [{ id: Date.now(), text: `Sala creada por ${userName.trim()}`, icon: '👑' }], lastEmote: null,
+            useTimer: true,
+            turnTimeLimit: 60
         };
 
         try {
             await setDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', code), newRoom);
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: code });
             setRoomCode(code);
         } catch (e) { showError("Error al crear la sala"); }
     };
@@ -708,8 +779,57 @@ function App() {
                     logs: [...(data.logs || []), { id: Date.now(), text: `${userName.trim()} se unió`, icon: '👋' }].slice(-5)
                 });
             }
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: code });
             setRoomCode(code);
         } catch (e) { showError("Error al unirse"); }
+    };
+
+    const handleExitToLobby = async () => {
+        setShowExitModal(false);
+        try {
+            if (user && db) {
+                await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: null });
+            }
+            setRoomCode(''); setRoomState(null);
+            setLocalRack(Array(7).fill(null));
+            setPendingPlacements([]);
+            setHintHighlights([]);
+            setHintGhost([]);
+        } catch (e) { console.error(e); }
+    };
+
+    const handleAbandonRoom = async () => {
+        if (!roomCode || !user) return;
+        setShowExitModal(false);
+        
+        try {
+            const docRef = doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode);
+            const snap = await getDoc(docRef);
+            if (snap.exists) {
+                const data = snap.data();
+                const newPlayerIds = data.playerIds.filter(id => id !== user.uid);
+                const newPlayers = { ...data.players };
+                delete newPlayers[user.uid];
+                
+                if (newPlayerIds.length === 0) {
+                    await deleteDoc(docRef);
+                } else {
+                    const updates = {
+                        playerIds: newPlayerIds,
+                        players: newPlayers,
+                        logs: [...(data.logs || []), { id: Date.now(), text: `${userName} abandonó la partida`, icon: '💀' }].slice(-5)
+                    };
+                    if (data.host === user.uid && newPlayerIds.length > 0) {
+                        updates.host = newPlayerIds[0];
+                    }
+                    await updateDoc(docRef, updates);
+                }
+            }
+            await updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_users', user.uid), { currentRoomId: null });
+            setRoomCode(''); setRoomState(null);
+            setLocalRack(Array(7).fill(null));
+            setPendingPlacements([]);
+        } catch (e) { showError("Error al abandonar"); }
     };
 
     const handleStartGame = async () => {
@@ -763,7 +883,7 @@ function App() {
 
     // 1. Pista: Radar de Zonas (Animación Mejorada)
     const activateRadar = async () => {
-        if (!isMyTurnActual) return showError("No es tu turno para usar ayudas");
+        if (!isMyTurn) return showError("No es tu turno para usar ayudas");
         if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
 
         const success = await deductDiamonds(10);
@@ -830,7 +950,7 @@ function App() {
 
     // 2. Pista: Cambio Mágico (Animación Mejorada)
     const activateMagicSwap = async () => {
-        if (!isMyTurnActual) return showError("No es tu turno para usar magia");
+        if (!isMyTurn) return showError("No es tu turno para usar magia");
         if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
         if (roomState.bag.length === 0) return showError("La bolsa está vacía");
         const validTiles = localRack.filter(t => t !== null);
@@ -895,7 +1015,7 @@ function App() {
 
     // 3. Pista: Ruleta de Palabras (Hologramas Mejorados)
     const spinRoulette = async () => {
-        if (!isMyTurnActual) return showError("No es tu turno de girar");
+        if (!isMyTurn) return showError("No es tu turno de girar");
         if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
         if (isSpinning) return;
         const success = await deductDiamonds(10);
@@ -1081,7 +1201,6 @@ function App() {
     // --- MOTOR DE PREVISIÓN Y VALIDACIÓN ESTRICTA ---
     useEffect(() => {
         if (!isMyTurn || pendingPlacements.length === 0 || !roomState) {
-            setPreview({ valid: false, score: 0, words: [], error: '' });
             return;
         }
 
@@ -1391,7 +1510,7 @@ function App() {
     };
 
     const swapTiles = async () => {
-        if (!isMyTurnActual) return showError("No es tu turno");
+        if (!isMyTurn) return showError("No es tu turno");
         if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
 
         const tilesToReturn = localRack.filter(t => t !== null);
@@ -1442,8 +1561,14 @@ function App() {
     };
 
     const skipTurn = async (forcedByTimeout = false) => {
-        if (!isMyTurnActual) return showError("No es tu turno");
-        if (pendingPlacements.length > 0) return showError("Recoge tus fichas primero");
+        if (!isMyTurn) return showError("No es tu turno");
+        
+        // Si se acaba el tiempo, recogemos las fichas automáticamente antes de pasar
+        if (forcedByTimeout && pendingPlacements.length > 0) {
+            recallAll();
+        } else if (pendingPlacements.length > 0) {
+            return showError("Recoge tus fichas primero");
+        }
 
         const nextTurn = (roomState.turnIndex + 1) % roomState.playerIds.length;
         try {
@@ -1550,6 +1675,20 @@ function App() {
         }
 
         const isGameOver = newBag.length === 0 && newRack.every(t => t === null);
+        
+        if (isGameOver) {
+            let totalBonus = 0;
+            roomState.playerIds.forEach(uid => {
+                if (uid !== user.uid) {
+                    const otherRack = newPlayers[uid].rack || [];
+                    const penalty = otherRack.reduce((sum, t) => sum + (t ? t.value : 0), 0);
+                    newPlayers[uid].score = Math.max(0, newPlayers[uid].score - penalty);
+                    totalBonus += penalty;
+                }
+            });
+            newPlayers[user.uid].score += totalBonus;
+        }
+
         const finalStatus = isGameOver ? 'finished' : 'playing';
 
         try {
@@ -1589,7 +1728,6 @@ function App() {
         setPendingPlacements([]);
         setHintHighlights([]);
         setHintGhost([]);
-        setPreview({ valid: false, score: 0, words: [], error: '' });
     };
 
     const getCellVisuals = (mult, isCenter) => {
@@ -1624,11 +1762,11 @@ function App() {
                     <div className="bg-shape bg-rose-500 w-[40vw] h-[40vw] top-[-10%] left-[-10%]"></div>
                     <div className="bg-shape bg-blue-500 w-[50vw] h-[50vw] bottom-[-10%] right-[-10%]" style={{ animationDelay: '-5s' }}></div>
 
-                    <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl max-w-sm w-full relative z-10 flex flex-col items-center">
-                        <div className="w-20 h-20 bg-gradient-to-br from-[#f59850] to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6 transform rotate-3">
-                            <span className="text-4xl font-black text-white">P</span>
+                    <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-sm w-full relative z-10 flex flex-col items-center max-h-[95vh] overflow-y-auto custom-scrollbar">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-[#f59850] to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-4 sm:mb-6 transform rotate-3 flex-shrink-0">
+                            <span className="text-3xl sm:text-4xl font-black text-white">P</span>
                         </div>
-                        <h1 className="text-3xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight text-center">Palabritas <span className="text-rose-400">GO</span></h1>
+                        <h1 className="text-2xl sm:text-3xl font-black mb-6 sm:mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight text-center flex-shrink-0">Palabritas <span className="text-rose-400">GO</span></h1>
 
                         {errorMsg && <div className="w-full bg-red-500/20 text-red-200 border border-red-500/50 p-3 rounded-xl mb-6 text-sm font-bold text-center flex items-center justify-center gap-2 animate-in zoom-in-95"><Icon name="Zap" className="w-4 h-4" /> {errorMsg}</div>}
 
@@ -1646,7 +1784,7 @@ function App() {
                                             setProfileTab('account'); 
                                             setShowProfile(true); 
                                         }} 
-                                        className="w-full bg-white/5 border border-white/10 rounded-3xl p-4 mb-6 flex items-center gap-4 cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all group relative overflow-hidden shadow-xl hover:shadow-indigo-500/10 text-left"
+                                        className="w-full bg-white/5 border border-white/10 rounded-3xl p-3 sm:p-4 mb-4 sm:mb-6 flex items-center gap-3 sm:gap-4 cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all group relative overflow-hidden shadow-xl hover:shadow-indigo-500/10 text-left"
                                     >
                                         <div className="absolute top-0 right-0 p-2 opacity-40 group-hover:opacity-100 transition-opacity">
                                             <Icon name="Settings" size={14} className="text-slate-400" />
@@ -1685,9 +1823,26 @@ function App() {
                                         )}
 
                                         {user && (
-                                            <button onClick={() => { setProfileTab('search'); setShowProfile(true); }} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-xs font-black text-white uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(79,70,229,0.3)] mb-4 active:scale-95">
-                                                <Icon name="UserPlus" size={18} /> Buscar Amigos
-                                            </button>
+                                            <div className="w-full space-y-4 mb-6">
+                                                <button onClick={() => { setProfileTab('search'); setShowProfile(true); }} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-xs font-black text-white uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(79,70,229,0.3)] active:scale-95">
+                                                    <Icon name="UserPlus" size={18} /> Buscar Amigos
+                                                </button>
+
+                                                {activeRooms.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest ml-1 mb-1">Partidas Activas</h3>
+                                                        {activeRooms.map(room => (
+                                                            <button key={room.id} onClick={() => setRoomCode(room.id)} className="w-full bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 rounded-xl p-3 flex items-center justify-between group transition-all">
+                                                                <div className="flex flex-col items-start">
+                                                                    <span className="text-white font-black text-xs uppercase tracking-wider">SALA {room.id}</span>
+                                                                    <span className="text-[9px] font-bold text-emerald-400 uppercase">{room.playerIds.length} Jugadores • {room.status === 'playing' ? 'En Juego' : 'Esperando'}</span>
+                                                                </div>
+                                                                <div className="bg-emerald-500 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter group-hover:scale-105 transition-transform">Reanudar</div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
 
                                         <div className="flex gap-2">
@@ -1728,7 +1883,7 @@ function App() {
                                             </button>
                                         </div>
 
-                                        <div className="w-full bg-black/20 rounded-2xl p-4 mb-8">
+                                        <div className="w-full bg-black/20 rounded-2xl p-4 mb-6 sm:mb-8">
                                             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="Users" className="w-4 h-4" /> Jugadores ({roomState.playerIds.length}/4)</h3>
                                             <div className="space-y-2">
                                                 {roomState.playerIds.map(uid => (
@@ -1743,10 +1898,33 @@ function App() {
                                             </div>
                                         </div>
 
+                                        {user.uid === roomState.host && (
+                                            <div className="w-full bg-black/20 rounded-2xl p-4 mb-6">
+                                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Icon name="Settings" className="w-4 h-4" /> Configuración</h3>
+                                                <button onClick={() => updateDoc(doc(db, 'artifacts', globalAppId, 'public', 'data', 'palabritas_rooms', roomCode), { useTimer: !roomState.useTimer })} className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${roomState.useTimer ? 'bg-indigo-500/10 border-indigo-500/50' : 'bg-slate-800/40 border-slate-700'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <Icon name="Clock" className={`w-5 h-5 ${roomState.useTimer ? 'text-indigo-400' : 'text-slate-500'}`} />
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${roomState.useTimer ? 'text-white' : 'text-slate-400'}`}>Tiempo por turno</span>
+                                                    </div>
+                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${roomState.useTimer ? 'bg-indigo-500' : 'bg-slate-700'}`}>
+                                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${roomState.useTimer ? 'left-6' : 'left-1'}`} />
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        )}
+
                                         {user.uid === roomState.host ? (
-                                            <button onClick={handleStartGame} disabled={roomState.playerIds.length < 1} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Play" className="w-5 h-5 fill-current" /> Empezar Partida</button>
+                                            <div className="w-full flex gap-2">
+                                                <button onClick={handleAbandonRoom} className="w-1/4 bg-slate-800 hover:bg-slate-700 text-slate-400 py-4 rounded-xl transition-all flex items-center justify-center"><Icon name="LogOut" className="w-5 h-5" /></button>
+                                                <button onClick={handleStartGame} disabled={roomState.playerIds.length < 1} className="w-3/4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"><Icon name="Play" className="w-5 h-5 fill-current" /> Empezar</button>
+                                            </div>
                                         ) : (
-                                            <div className="text-sm font-bold text-amber-400 animate-pulse flex items-center gap-2"><Icon name="Menu" className="w-4 h-4 animate-spin" /> Esperando al anfitrión...</div>
+                                            <div className="w-full flex flex-col items-center gap-4">
+                                                <div className="text-sm font-bold text-amber-400 animate-pulse flex items-center gap-2"><Icon name="Menu" className="w-4 h-4 animate-spin" /> Esperando al anfitrión...</div>
+                                                <button onClick={handleAbandonRoom} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all flex items-center justify-center gap-2">
+                                                    <Icon name="LogOut" className="w-4 h-4" /> Abandonar Sala
+                                                </button>
+                                            </div>
                                         )}
 
                                         {friends.length > 0 && (
@@ -1773,8 +1951,6 @@ function App() {
                 <div className="fixed inset-0 bg-slate-950 text-slate-800">
                     {/* (El resto del código del juego principal se renderiza aquí) */}
                     {(() => {
-                        const currentTurnUid = roomState.playerIds[roomState.turnIndex];
-                        const isMyTurnActual = isMyTurn;
                         const myPlayer = roomState.players[user.uid];
 
                         return (
@@ -1884,9 +2060,13 @@ function App() {
                                                         <span className="font-black text-white text-[10px] sm:text-xs">Jugadores</span>
                                                     </div>
                                                 </button>
-                                                {/* BOTÓN TIENDA */}
+                                                 {/* BOTÓN TIENDA */}
                                                 <button onClick={() => setShowShop(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.5)] rounded-full flex items-center justify-center border border-amber-200 hover:scale-110 transition-transform">
                                                     <Icon name="Palette" className="w-4 h-4 sm:w-5 sm:h-5 text-orange-950" />
+                                                </button>
+                                                {/* BOTÓN SALIR */}
+                                                <button onClick={() => setShowExitModal(true)} className="top-hud-element w-9 h-9 sm:w-10 sm:h-10 bg-rose-500/20 hover:bg-rose-600 shadow-lg rounded-full flex items-center justify-center border border-rose-500/50 transition-all pointer-events-auto group">
+                                                    <Icon name="LogOut" className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400 group-hover:text-white" />
                                                 </button>
                                             </div>
 
@@ -1915,24 +2095,31 @@ function App() {
                                             </div>
                                         </div>
                                         <div className="flex flex-col gap-2 items-end">
-                                            <div id="score-hud-box" className="top-hud-element pointer-events-auto bg-white/10 backdrop-blur-md shadow-lg rounded-2xl px-4 py-1.5 sm:px-5 sm:py-2 flex flex-col items-end border border-emerald-500/50 relative overflow-hidden transition-all duration-300">
-                                                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent"></div>
-                                                <div className="flex items-center gap-2 mb-0.5 relative z-10">
-                                                    <div className="flex items-center gap-1 bg-black/30 px-1.5 py-0.5 rounded-full border border-white/10">
-                                                        <Icon name="Zap" className="w-2 h-2 sm:w-2.5 sm:h-2.5 text-yellow-400 fill-current" />
-                                                        <span className="text-[8px] sm:text-[9px] font-black text-cyan-300">{diamonds}</span>
-                                                        <span className="text-[8px] sm:text-[9px]">💎</span>
+                                            {roomState.playerIds.map(uid => {
+                                                const p = roomState.players[uid];
+                                                if (!p) return null;
+                                                const isMe = uid === user.uid;
+                                                const isCurrentTurn = uid === roomState.playerIds[roomState.turnIndex];
+                                                
+                                                return (
+                                                    <div key={uid} className={`top-hud-element pointer-events-auto shadow-lg rounded-2xl px-3 py-1 sm:px-4 sm:py-1.5 flex items-center gap-2 sm:gap-3 border transition-all duration-300 ${isMe ? 'bg-emerald-500/20 border-emerald-500/50 scale-105' : 'bg-slate-900/40 backdrop-blur-md border-white/10 opacity-90'}`}>
+                                                        <div className="flex flex-col items-end min-w-[50px]">
+                                                            <span className={`text-[7px] sm:text-[8px] font-black uppercase tracking-widest leading-none mb-0.5 ${isMe ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                                {isMe ? 'Tú' : p.name.substring(0, 8)}
+                                                            </span>
+                                                            <div className="text-lg sm:text-2xl font-black text-white leading-none flex items-center gap-1">
+                                                                <AnimatedNumber value={p.score} />
+                                                                {isMe && preview.valid && pendingPlacements.length > 0 && (
+                                                                    <span className="text-[10px] sm:text-xs text-emerald-400 animate-pulse">+{preview.score}</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className={`w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center font-black text-[10px] sm:text-xs border transition-all ${isCurrentTurn ? 'bg-amber-400 border-amber-300 text-amber-950 animate-pulse shadow-[0_0_10px_rgba(251,191,36,0.5)]' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                                                            {p.name.substring(0, 2)}
+                                                        </div>
                                                     </div>
-                                                    <span className="text-[8px] sm:text-[9px] font-bold text-emerald-200 uppercase tracking-widest leading-none">Tu Score</span>
-                                                </div>
-
-                                                <div className="text-2xl sm:text-4xl font-black text-white leading-none tracking-tighter flex items-center gap-1.5 relative z-10">
-                                                    <AnimatedNumber value={myPlayer?.score || 0} />
-                                                    {preview.valid && pendingPlacements.length > 0 && (
-                                                        <span className="text-base sm:text-xl text-emerald-400 opacity-90 animate-pulse drop-shadow-sm">+{preview.score}</span>
-                                                    )}
-                                                </div>
-                                            </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
@@ -1947,22 +2134,28 @@ function App() {
 
                                     {/* Indicador de Turno */}
                                     <div className="self-center bg-slate-900/90 backdrop-blur-md border border-slate-700 pl-6 pr-2 py-1.5 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 mt-2 pointer-events-auto">
-                                        {isMyTurnActual ? (
+                                        {isMyTurn ? (
                                             <>
                                                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_#34d399]"></div>
                                                 <span className="text-white font-black tracking-widest text-xs sm:text-sm uppercase">¡ES TU TURNO!</span>
-                                                <div className={`ml-2 px-3 py-1 rounded-full flex items-center gap-1 font-black text-xs transition-colors ${timeLeft < 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-emerald-400'}`}>
-                                                    <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
-                                                </div>
+                                                {roomState.useTimer !== false && (
+                                                    <div className={`ml-2 px-3 py-1 rounded-full flex items-center gap-1 font-black text-xs transition-colors ${timeLeft < 15 ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-emerald-400'}`}>
+                                                        <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
+                                                    </div>
+                                                )}
                                             </>
+
                                         ) : (
                                             <>
                                                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#fbbf24]"></div>
                                                 <span className="text-slate-300 font-bold tracking-widest text-[10px] sm:text-xs uppercase">Juega {roomState.players[currentTurnUid]?.name}</span>
-                                                <div className="ml-2 px-2 py-1 rounded-full bg-slate-800 text-amber-400 flex items-center gap-1 font-black text-[10px]">
-                                                    <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
-                                                </div>
+                                                {roomState.useTimer !== false && (
+                                                    <div className="ml-2 px-2 py-1 rounded-full bg-slate-800 text-amber-400 flex items-center gap-1 font-black text-[10px]">
+                                                        <Icon name="Clock" className="w-3 h-3" /> {timeLeft}s
+                                                    </div>
+                                                )}
                                             </>
+
                                         )}
                                     </div>
 
@@ -2020,7 +2213,7 @@ function App() {
                                                         const ghostPlacement = hintGhost.find(h => h.r === r && h.c === c);
 
                                                         return (
-                                                            <div key={`${r}-${c}`} onClick={() => handleBoardClick(r, c)} className={`cell-${r}-${c} relative flex items-center justify-center transition-colors duration-500 ${visual.bg} ${(!cell.tile && selectedRackIdx !== null && isMyTurnActual) ? 'cursor-pointer hover:brightness-125 shadow-inner' : ''} ${(cell.tile && !roomState.board[r][c].tile && isMyTurnActual) ? 'cursor-pointer z-10' : ''}`}>
+                                                            <div key={`${r}-${c}`} onClick={() => handleBoardClick(r, c)} className={`cell-${r}-${c} relative flex items-center justify-center transition-colors duration-500 ${visual.bg} ${(!cell.tile && selectedRackIdx !== null && isMyTurn) ? 'cursor-pointer hover:brightness-125 shadow-inner' : ''} ${(cell.tile && !roomState.board[r][c].tile && isMyTurn) ? 'cursor-pointer z-10' : ''}`}>
                                                                 {!cell.tile && cell.mult === '' && !isCenter && <div className={`absolute inset-0 ${currentTheme.cellEmpty} transition-colors duration-500`}></div>}
                                                                 {!cell.tile && isCenter && <Icon name="Star" className={`w-[60%] h-[60%] fill-current ${currentTheme.centerStar} pointer-events-none transition-colors duration-500`} />}
 
@@ -2056,21 +2249,29 @@ function App() {
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-5 z-40 pointer-events-auto">
 
                                     {/* PISTAS SEPARADAS EN BOTONES */}
-                                    <div className="flex flex-col gap-2">
-                                        <button onClick={() => setShowHints(true)} disabled={isSpinning || hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.6)] flex items-center justify-center border border-yellow-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                                            <Icon name="Lightbulb" className="w-5 h-5 text-white" />
+                                    <div className="flex flex-col gap-3">
+                                        <button 
+                                            onClick={() => { console.log("Hint button clicked"); setShowHints(true); }} 
+                                            disabled={isSpinning || hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} 
+                                            className="relative w-12 h-12 sm:w-10 sm:h-10 bg-gradient-to-br from-yellow-400 to-amber-600 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.6)] flex items-center justify-center border border-yellow-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale pointer-events-auto"
+                                        >
+                                            <Icon name="Lightbulb" className="w-6 h-6 sm:w-5 sm:h-5 text-white" />
                                             <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-amber-500/50 rounded-full w-5 h-5 flex items-center justify-center">
                                                 <span className="text-[10px] font-black text-amber-400">10</span>
                                             </div>
                                         </button>
-                                        <button onClick={activateRadar} disabled={hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.6)] flex items-center justify-center border border-cyan-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                                            <Icon name="Zap" className="w-5 h-5 text-white" />
+                                        <button 
+                                            onClick={() => { console.log("Radar button clicked"); activateRadar(); }} 
+                                            disabled={hintHighlights.length > 0 || hintGhost.length > 0 || diamonds < 10} 
+                                            className="relative w-12 h-12 sm:w-10 sm:h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.6)] flex items-center justify-center border border-cyan-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale pointer-events-auto"
+                                        >
+                                            <Icon name="Zap" className="w-6 h-6 sm:w-5 sm:h-5 text-white" />
                                             <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-cyan-500/50 rounded-full w-5 h-5 flex items-center justify-center">
                                                 <span className="text-[10px] font-black text-cyan-400">10</span>
                                             </div>
                                         </button>
-                                        <button onClick={activateMagicSwap} disabled={isSpinning || diamonds < 10} className="relative w-10 h-10 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.6)] flex items-center justify-center border border-pink-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale">
-                                            <Icon name="Shuffle" className="w-5 h-5 text-white" />
+                                        <button onClick={activateMagicSwap} disabled={isSpinning || diamonds < 10} className="relative w-12 h-12 sm:w-10 sm:h-10 bg-gradient-to-br from-pink-400 to-rose-600 rounded-full shadow-[0_0_15px_rgba(244,63,94,0.6)] flex items-center justify-center border border-pink-200 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale pointer-events-auto">
+                                            <Icon name="Shuffle" className="w-6 h-6 sm:w-5 sm:h-5 text-white" />
                                             <div className="absolute -bottom-1 -right-1 bg-slate-900 border border-pink-500/50 rounded-full w-5 h-5 flex items-center justify-center">
                                                 <span className="text-[10px] font-black text-pink-400">10</span>
                                             </div>
@@ -2080,14 +2281,15 @@ function App() {
                                     <div className="w-6 h-px bg-white/20 self-center"></div>
 
                                     <div className="flex flex-col gap-2">
-                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 3) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomIn" className="w-5 h-5" /></button>
-                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.5) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomOut" className="w-5 h-5" /></button>
-                                        <button onClick={() => setCamTransform({ x: 0, y: 0, scale: 1 })} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="Maximize" className="w-5 h-5" /></button>
+                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.min(p.scale + 0.3, 3) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomIn" size={18} /></button>
+                                        <button onClick={() => setCamTransform(p => ({ ...p, scale: Math.max(p.scale - 0.3, 0.5) }))} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="ZoomOut" size={18} /></button>
+                                        <button onClick={() => setCamTransform({ x: 0, y: 0, scale: 1 })} className="w-10 h-10 bg-white/10 backdrop-blur-md border border-white/20 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-white/30 active:scale-95 transition-all"><Icon name="Maximize" size={18} /></button>
+                                        <button onClick={() => setShowBag(true)} className="w-10 h-10 bg-indigo-600/80 backdrop-blur-md border border-indigo-400/50 rounded-full shadow-lg flex items-center justify-center text-white hover:bg-indigo-500 active:scale-95 transition-all mt-2 animate-in fade-in slide-in-from-right-4"><Icon name="ShoppingBag" size={18} /></button>
                                     </div>
                                 </div>
 
                                 {/* RACK FLOTANTE Y CONTROLES (Bottom) */}
-                                <div className={`floating-rack absolute bottom-0 left-0 right-0 w-full z-40 flex flex-col items-center gap-2 pb-3 sm:pb-4 transition-opacity duration-300 ${!isMyTurnActual ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'pointer-events-none'}`}>
+                                <div className={`floating-rack absolute bottom-0 left-0 right-0 w-full z-40 flex flex-col items-center gap-2 pb-4 sm:pb-6 safe-pb transition-opacity duration-300 ${!isMyTurn ? 'opacity-50 pointer-events-none grayscale-[0.5]' : 'pointer-events-auto'}`}>
                                     <div className={`rack-container relative ${currentTheme.rackBg} rounded-xl p-1.5 sm:p-2 shadow-2xl flex justify-center gap-1 sm:gap-1.5 mx-auto pointer-events-auto w-max transition-colors duration-500`}>
                                         {localRack.map((tile, idx) => (
                                             <div
@@ -2111,28 +2313,26 @@ function App() {
 
                                     <div className="flex justify-between items-center gap-2 px-2 sm:px-4 w-full max-w-[600px] pointer-events-none">
                                         <div className="flex gap-2 pointer-events-auto">
-                                            <button onClick={shuffleRack} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg hover:rotate-180 duration-500 disabled:opacity-50">
+                                            <button onClick={shuffleRack} disabled={!isMyTurn} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg hover:rotate-180 duration-500 disabled:opacity-50">
                                                 <Icon name="Shuffle" className="w-4 h-4 sm:w-5 sm:h-5" />
                                             </button>
-                                            <button onClick={recallAll} disabled={!isMyTurnActual} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg active:-rotate-45 disabled:opacity-50">
+                                            <button onClick={recallAll} disabled={!isMyTurn} className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all active:translate-y-[2px] shadow-lg active:-rotate-45 disabled:opacity-50">
                                                 <Icon name="Undo2" className="w-4 h-4 sm:w-5 sm:h-5" />
                                             </button>
                                         </div>
 
                                         <div className="flex gap-2 flex-1 justify-end pointer-events-auto">
                                             {pendingPlacements.length === 0 ? (
-                                                <>
-                                                    <button onClick={swapTiles} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-3 sm:px-4 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 border-b-[3px] border-blue-800 rounded-xl flex items-center justify-center text-white transition-all active:translate-y-[3px] active:border-b-0 shadow-lg disabled:opacity-50">
-                                                        <Icon name="RotateCcw" className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                    </button>
-                                                    <button onClick={() => skipTurn(false)} disabled={!isMyTurnActual} className="h-10 sm:h-12 px-4 sm:px-6 bg-slate-800 hover:bg-slate-700 border-b-[3px] border-black rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-xs sm:text-sm transition-all active:translate-y-[3px] active:border-b-0 shadow-lg">
+                                                
+                                                    
+                                                    <button onClick={() => skipTurn(false)} disabled={!isMyTurn} className="h-10 sm:h-12 px-6 sm:px-8 bg-slate-800 hover:bg-slate-700 border-b-[3px] border-black rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-xs sm:text-sm transition-all active:translate-y-[3px] active:border-b-0 shadow-lg">
                                                         <Icon name="SkipForward" className="w-4 h-4" /> Pasar
                                                     </button>
-                                                </>
+
                                             ) : (
                                                 <button
                                                     onClick={handlePlay}
-                                                    disabled={!isMyTurnActual || !preview.valid}
+                                                    disabled={!isMyTurn || !preview.valid}
                                                     className={`btn-jugar h-10 sm:h-12 flex-1 max-w-[140px] border-b-[3px] rounded-xl flex items-center justify-center gap-2 text-white font-black tracking-widest uppercase text-sm transition-all shadow-lg
                                         ${!preview.valid ? 'bg-slate-800/80 backdrop-blur-md border-black cursor-not-allowed opacity-80' : 'bg-gradient-to-b from-[#22c55e] to-[#16a34a] hover:from-[#4ade80] hover:to-[#15803d] border-[#14532d] active:translate-y-[3px] active:border-b-0'}`}
                                                 >
@@ -2152,8 +2352,8 @@ function App() {
             
             {/* MODAL RULETA DE PISTAS */}
             {showHints && (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300 pointer-events-auto">
-                    <div className="bg-slate-900 w-full sm:max-w-md rounded-3xl shadow-2xl border border-amber-500/30 flex flex-col animate-in zoom-in-95 overflow-hidden">
+                <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-md p-0 sm:p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl border-t sm:border border-amber-500/30 flex flex-col animate-in slide-in-from-bottom-full sm:zoom-in-95 overflow-hidden safe-pb">
 
                         <div className="p-4 border-b border-slate-800 flex justify-between items-center relative overflow-hidden bg-gradient-to-r from-amber-500/10 to-orange-600/10">
                             <h2 className="text-xl font-black text-amber-400 tracking-widest flex items-center gap-2 uppercase">
@@ -2227,8 +2427,8 @@ function App() {
 
             {/* MODAL DE TIENDA */}
             {showShop && (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 pointer-events-auto">
-                    <div className="bg-slate-900 w-full sm:max-w-3xl rounded-3xl shadow-2xl border border-slate-700 flex flex-col max-h-[90vh] animate-in zoom-in-95">
+                <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-slate-950/90 backdrop-blur-md p-0 sm:p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl border-t sm:border border-slate-700 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:zoom-in-95 safe-pb">
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center relative overflow-hidden rounded-t-3xl">
                             <div className="absolute inset-0 bg-gradient-to-r from-amber-500/20 to-orange-600/20"></div>
                             <h2 className="text-2xl font-black text-white tracking-widest flex items-center gap-3 relative z-10 uppercase">
@@ -2262,6 +2462,51 @@ function App() {
                                     );
                                 })}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE BOLSA DE FICHAS */}
+            {showBag && roomState && (
+                <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-slate-950/90 backdrop-blur-md p-0 sm:p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border-t sm:border border-indigo-500/30 flex flex-col max-h-[85vh] animate-in slide-in-from-bottom-full sm:zoom-in-95 safe-pb">
+                        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-indigo-500/10 to-blue-600/10">
+                            <h2 className="text-xl font-black text-white tracking-widest flex items-center gap-2 uppercase">
+                                <Icon name="ShoppingBag" className="w-5 h-5 text-indigo-400" /> Bolsa de Fichas
+                            </h2>
+                            <button onClick={() => setShowBag(false)} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors"><Icon name="X" size={20} /></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scrollbar">
+                            <div className="flex items-center justify-between mb-6 bg-indigo-500/10 p-4 rounded-2xl border border-indigo-500/20">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Quedan en la bolsa</span>
+                                    <span className="text-3xl font-black text-white leading-none">{roomState.bag.length} fichas</span>
+                                </div>
+                                <Icon name="Hash" size={32} className="text-indigo-500/30" />
+                            </div>
+                            
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                {(() => {
+                                    const counts = roomState.bag.reduce((acc, tile) => {
+                                        const l = tile.isBlank ? '?' : tile.letter;
+                                        acc[l] = (acc[l] || 0) + 1;
+                                        return acc;
+                                    }, {});
+                                    const sortedLetters = Object.keys(counts).sort((a, b) => a === '?' ? 1 : b === '?' ? -1 : a.localeCompare(b));
+                                    
+                                    return sortedLetters.map(l => (
+                                        <div key={l} className="bg-white/5 border border-white/10 rounded-xl p-2 flex flex-col items-center gap-1 group hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all">
+                                            <span className="text-lg font-black text-white group-hover:scale-110 transition-transform">{l}</span>
+                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter bg-black/40 px-2 rounded-full">x{counts[l]}</span>
+                                        </div>
+                                    ));
+                                })()}
+                            </div>
+                            
+                            <p className="mt-8 text-[10px] text-slate-500 font-bold italic text-center px-4">
+                                * Esta bolsa muestra las fichas que aún no han salido al tablero ni están en los racks de los jugadores.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -2441,6 +2686,40 @@ function App() {
             )}
 
             {/* BOTÓN FLOTANTE DE PERFIL (Garantía de acceso) */}
+            {showExitModal && (
+                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 pointer-events-auto">
+                    <div className="bg-slate-900 w-full sm:max-w-md rounded-[32px] shadow-2xl border border-white/10 p-8 flex flex-col gap-6 animate-in zoom-in-95 duration-300 relative overflow-hidden">
+                        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 via-pink-600 to-rose-500 animate-pulse"></div>
+                        <div className="flex flex-col items-center gap-4 text-center">
+                            <div className="w-16 h-16 bg-rose-500/20 rounded-2xl flex items-center justify-center text-rose-500 transform rotate-3">
+                                <Icon name="LogOut" size={32} />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-black text-white uppercase tracking-widest">¿A dónde vas?</h2>
+                                <p className="text-slate-400 font-bold text-sm mt-1">Elige cómo quieres salir de esta partida.</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={handleExitToLobby} className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 group border border-white/5">
+                                <Icon name="Home" className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" />
+                                <div className="flex flex-col items-start leading-tight">
+                                    <span className="uppercase tracking-widest text-sm">Salir al Lobby</span>
+                                    <span className="text-[9px] text-slate-500 font-bold">La partida seguirá activa para luego</span>
+                                </div>
+                            </button>
+                            <button onClick={handleAbandonRoom} className="w-full bg-rose-500/10 hover:bg-rose-600 text-rose-500 hover:text-white border border-rose-500/30 font-black py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 group">
+                                <Icon name="Trash2" className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                <div className="flex flex-col items-start leading-tight">
+                                    <span className="uppercase tracking-widest text-sm">Abandonar Partida</span>
+                                    <span className="text-[9px] opacity-60 font-bold">Se borrará tu progreso en esta sala</span>
+                                </div>
+                            </button>
+                        </div>
+                        <button onClick={() => setShowExitModal(false)} className="text-slate-500 hover:text-white font-black text-[10px] uppercase tracking-[0.3em] transition-colors mt-2">Seguir Jugando</button>
+                    </div>
+                </div>
+            )}
+
             {user && !showProfile && (
                 <button 
                     onClick={() => { console.log("Floating action open"); setShowProfile(true); }}
@@ -2458,3 +2737,9 @@ function App() {
     </script>
 </body>
 </html>
+
+
+
+
+
+

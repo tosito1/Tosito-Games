@@ -91,9 +91,14 @@ service cloud.firestore {
     }
 
     // --- PALABRITAS GO ---
+    match /artifacts/palabritas-go/public/data/palabritas_users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) || isSignedIn(); 
+    }
+
     match /artifacts/palabritas-go/public/data/palabritas_rooms/{roomId} {
       allow read, create: if isSignedIn();
-      allow update: if isSignedIn(); // Se permite actualizar para unirse y jugar
+      allow update, delete: if isSignedIn();
     }
 
     // Regla por defecto: denegar todo lo demás
